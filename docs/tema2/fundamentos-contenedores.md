@@ -1,0 +1,250 @@
+# 📦 1. Fundamentos de contenedores
+
+!!!info "Descarga de diapositivas"
+    [Descarga las diapositivas](diapositivas/fundamentos-contenedores.pptx){target="_blank" rel="noopener"}
+
+---
+
+En la primera sesión hiciste la lista de todo lo que le falta a Escaparate para salir de tu ordenador, y el segundo punto decía: *que arranque en otra máquina con las mismas versiones, y que siga siendo repetible dentro de seis meses*. En la segunda sesión pusiste el código en un repositorio, con su rama de trabajo, su primera etiqueta `v0.1.0` y sus secretos fuera.
+
+Pero un repositorio guarda **el código**, no el entorno donde ese código funciona. Si mañana clonas Escaparate en un ordenador recién formateado, no arranca: falta Java 21, falta PostgreSQL, faltan las variables, falta la carpeta de imágenes con los permisos correctos. El repositorio te da la receta; nadie te da la cocina. Hoy vas a ver la herramienta que resuelve exactamente eso, y por qué se ha convertido en la forma estándar de empaquetar aplicaciones para desplegarlas.
+
+---
+
+## 🧳 Lo que hay que mover no es el código
+
+Vuelve a la tabla de las cinco piezas de la primera sesión y quédate con la segunda fila: **artefacto y runtime**. Para que Escaparate funcione en otra máquina hace falta el `.war`, sí, pero también una versión concreta de Java, un PostgreSQL de una versión compatible, unas variables de entorno, unos directorios y unos permisos.
+
+Históricamente esto se ha resuelto de tres maneras, y las tres siguen existiendo:
+
+| Enfoque | Cómo funciona | Por qué falla |
+|---|---|---|
+| **Documento de instalación** | Un README con cuarenta pasos que alguien sigue a mano | Se desactualiza el primer día; dos personas lo interpretan distinto; nadie lo prueba entero nunca |
+| **Script de aprovisionamiento** | Un guion que instala y configura todo automáticamente | Mejor, pero depende del sistema operativo de destino y de que los paquetes sigan disponibles con la misma versión |
+| **Máquina virtual completa** | Se empaqueta el ordenador entero, sistema operativo incluido | Funciona de verdad, pero pesa gigabytes, tarda minutos en arrancar y no puedes tener veinte a la vez |
+
+El contenedor es el cuarto enfoque: la fiabilidad de la máquina virtual —se empaqueta el entorno, no las instrucciones para construirlo— con un coste parecido al de arrancar un proceso normal.
+
+---
+
+## 🆚 Máquina virtual frente a contenedor
+
+La diferencia está en **qué se virtualiza**.
+
+```mermaid
+flowchart TB
+    subgraph VM["💻 Máquinas virtuales"]
+        direction TB
+        HW1["Hardware"] --> SO1["Sistema operativo anfitrión"]
+        SO1 --> HV["Hipervisor"]
+        HV --> G1["SO invitado 1<br/>+ app A"]
+        HV --> G2["SO invitado 2<br/>+ app B"]
+    end
+    subgraph CT["📦 Contenedores"]
+        direction TB
+        HW2["Hardware"] --> SO2["Sistema operativo anfitrión"]
+        SO2 --> DE["Motor de contenedores"]
+        DE --> C1["Contenedor A"]
+        DE --> C2["Contenedor B"]
+        DE --> C3["Contenedor C"]
+    end
+```
+
+Una **máquina virtual** virtualiza el hardware: el hipervisor simula un ordenador completo, y dentro se instala un sistema operativo entero con su propio arranque, sus servicios y su gestión de memoria. Aislamiento máximo, coste máximo.
+
+Un **contenedor** virtualiza el sistema operativo: todos los contenedores comparten el mismo núcleo del anfitrión, y lo único que se empaqueta son las bibliotecas y ficheros que la aplicación necesita por encima de ese núcleo. Por eso arranca en menos de un segundo y pesa megabytes en lugar de gigabytes.
+
+| | Máquina virtual | Contenedor |
+|---|---|---|
+| **Qué incluye** | Sistema operativo invitado completo | Solo la aplicación y sus dependencias |
+| **Tamaño típico** | Gigabytes | Decenas o centenas de megabytes |
+| **Tiempo de arranque** | Minutos | Segundos o menos |
+| **Cuántos caben en una máquina** | Unos pocos | Decenas |
+| **Aislamiento** | Fuerte: núcleos separados | Menor: núcleo compartido |
+| **Cuándo elegirla** | Necesitas otro sistema operativo, aislamiento fuerte o control fino de recursos | Necesitas desplegar la misma aplicación muchas veces, rápido y de forma idéntica |
+
+!!! warning "No son alternativas excluyentes"
+    La pregunta no es «máquina virtual **o** contenedor». En la práctica se combinan: más adelante vas a ejecutar contenedores **dentro de** una máquina virtual y también mediante servicios administrados en la nube, que es exactamente como funciona casi toda la industria. La máquina virtual da el ordenador; el contenedor, la forma de empaquetar lo que corre dentro.
+
+!!! info "Si algún día lo usas en Windows o macOS"
+    Para ejecutar contenedores Linux en Windows o macOS, Docker utiliza por debajo un entorno Linux virtualizado. En los equipos Linux del aula, los contenedores Linux pueden utilizar directamente el núcleo del anfitrión.
+
+---
+
+## 🧩 Las cuatro palabras que hay que tener claras
+
+### Imagen: el paquete
+
+Una **imagen** es un paquete de solo lectura que contiene el sistema base, el software instalado, tu aplicación y su configuración de fábrica. Es **inmutable**: una vez construida no se modifica; si algo tiene que cambiar, se construye otra.
+
+Aquí está el cambio de mentalidad de este módulo. Puede que hayas visto Docker presentado como «una forma cómoda de tener una base de datos sin instalarla». Eso es cierto y es útil, pero es lo de menos. En despliegue, **la imagen es el artefacto**: es aquello que la primera sesión llamaba «el paquete de la aplicación», el objeto que se construye una vez, se guarda con un número de versión y se ejecuta idéntico en el portátil del desarrollador, en el servidor de pruebas y en producción.
+
+### Contenedor: el paquete en marcha
+
+Un **contenedor** es una imagen arrancada: un proceso en ejecución, con su propio sistema de ficheros, su propia red y su propio nombre. De una misma imagen puedes arrancar tantos contenedores como quieras, y ninguno se entera de los otros. Recuérdalo, porque más adelante vas a ejecutar varias copias de Escaparate a partir de la misma imagen y repartir tráfico entre ellas.
+
+### Registro: dónde viaja
+
+Un **registro** es un servidor donde se publican imágenes para que otras máquinas se las descarguen. Que la imagen viva en un registro es lo que permite que la máquina de producción no necesite tu código, ni Maven, ni Java para compilar: se descarga el paquete ya hecho y lo ejecuta.
+
+Docker Hub es el más conocido y es de donde vas a **descargar** casi todo, porque ahí viven las imágenes oficiales de Nginx, PostgreSQL o Java. Pero para **publicar** las tuyas este módulo usa el registro de GitHub, `ghcr.io`, por una razón práctica: es el mismo sitio donde ya vive tu repositorio, así que no necesitas una cuenta más, y en diciembre el pipeline podrá publicar ahí sin que le des ninguna credencial tuya. Existen muchos otros —el de AWS, el de Azure, registros privados montados en la propia empresa— y todos funcionan igual.
+
+### Etiqueta: qué versión exactamente
+
+El nombre completo de una imagen tiene cuatro partes: `registro/usuario/nombre:etiqueta`. Si no dices el registro, se asume Docker Hub —por eso `nginx` funciona sin más—; las imágenes oficiales tampoco llevan usuario, y si no indicas etiqueta se asume `latest`. Cuando publiques la tuya en el registro de GitHub tendrás que escribir el nombre entero, `ghcr.io/tu-usuario/lo-que-sea:1.0.0`, y ahí se ve bien de dónde sale cada parte.
+
+!!! danger "`latest` no significa «la última»"
+    Significa «la que alguien decidió marcar como `latest` la última vez», y puede cambiar bajo tus pies entre dos despliegues. Un despliegue reproducible **siempre** fija la versión: `postgres:18-alpine`, no `postgres`. Este es uno de los errores que más disgustos da en producción, y a partir de hoy no lo vas a cometer.
+
+```mermaid
+flowchart LR
+    R[("📦 Registro")] -- descarga --> I["Imagen<br/>escaparate:1.0.0"]
+    I -- arranque --> C1["Contenedor 1"]
+    I -- arranque --> C2["Contenedor 2"]
+    C1 -. lo que debe sobrevivir .-> V[("💾 Volumen")]
+```
+
+!!! info "Quién hace realmente el trabajo"
+    Cuando escribes un comando de Docker no estás ejecutando nada directamente: estás enviando una orden a un **demonio** que corre en la máquina y que es quien descarga imágenes, crea contenedores y los ejecuta. Cliente y demonio, otra vez el modelo de la primera sesión. Parece un detalle, pero explica dos cosas que te encontrarás: que haga falta pertenecer a un grupo concreto del sistema para poder dar esas órdenes, y que el mismo cliente pueda gobernar el motor de otra máquina.
+
+---
+
+## 🧱 Capas: por qué una imagen no se copia entera
+
+Una imagen no es un bloque: es una **pila de capas** de solo lectura, apiladas una encima de otra. La primera suele ser un sistema base mínimo; encima se añade el runtime; encima, la aplicación; encima, la configuración.
+
+Esto tiene dos consecuencias muy prácticas:
+
+- **Las capas se comparten.** Si tienes cinco imágenes construidas sobre el mismo sistema base, esa capa está en disco una sola vez. Y si descargas una versión nueva de una imagen, solo viajan por la red las capas que han cambiado.
+- **El contenedor añade una capa más, y es de escritura.** Al arrancar, se coloca sobre la pila una capa fina donde va a parar todo lo que el proceso escriba: ficheros temporales, logs, datos. Esa capa **nace y muere con el contenedor**.
+
+Guarda esa última frase, porque es la que explica la sección de persistencia y la que provoca el 90 % de los sustos de quien empieza. En la sesión 4 volverás a las capas desde el otro lado: cómo se construyen y por qué su orden decide cuánto tarda cada compilación.
+
+---
+
+## ♻️ El ciclo de vida de un contenedor
+
+Un contenedor pasa por unos estados muy concretos, y confundirlos es el origen de casi todas las preguntas del tipo «lo he borrado y sigue ahí» o «lo he parado y he perdido los datos».
+
+```mermaid
+stateDiagram-v2
+    [*] --> creado: crear
+    creado --> enEjecución: arrancar
+    enEjecución --> pausado: pausar
+    pausado --> enEjecución: reanudar
+    enEjecución --> detenido: detener
+    detenido --> enEjecución: arrancar
+    detenido --> [*]: eliminar
+    creado --> [*]: eliminar
+```
+
+- **Creado**: existe, tiene su configuración fijada, pero no hay ningún proceso corriendo.
+- **En ejecución**: el proceso principal está vivo. Ojo: si ese proceso termina, el contenedor se detiene. Un contenedor no es una máquina encendida, **es un proceso**.
+- **Pausado**: los procesos están congelados en memoria. Poco frecuente.
+- **Detenido**: el proceso ha terminado, pero el contenedor sigue existiendo **con su capa de escritura intacta**. Puedes volver a arrancarlo y encontrarás tus ficheros.
+- **Eliminado**: se borra el contenedor y, con él, su capa de escritura. Aquí es donde desaparecen los datos.
+
+Estos son los comandos que vas a usar hoy. No hace falta memorizarlos: hace falta saber qué preguntas responden.
+
+| Comando | Qué hace | Para qué lo quieres |
+|---|---|---|
+| `docker pull <imagen>` | Descarga una imagen del registro | Traerte el paquete antes de ejecutarlo |
+| `docker run <imagen>` | Crea **y** arranca un contenedor | El atajo que usarás el 90 % de las veces |
+| `docker ps` / `docker ps -a` | Lista lo que corre / también lo detenido | Saber qué tienes vivo y qué se te ha quedado por ahí |
+| `docker logs <contenedor>` | Muestra su salida | **Primera parada cuando algo no funciona** |
+| `docker exec -it <contenedor> sh` | Abre una shell dentro | Mirar por dentro sin apagar nada |
+| `docker inspect <contenedor>` | Vuelca toda su configuración real | Comprobar puertos, volúmenes y red cuando no cuadran |
+| `docker stop` / `docker start` | Detiene / rearranca | Parar sin perder la capa de escritura |
+| `docker rm` / `docker rmi` | Elimina contenedor / imagen | Limpiar |
+| `docker system df` | Cuánto disco ocupa todo esto | Enterarte antes de quedarte sin espacio |
+
+!!! tip "El reflejo que te va a salvar el curso"
+    Cuando algo no arranque, la secuencia es siempre la misma: mirar si el contenedor está vivo, leer sus logs y, si hace falta, entrar dentro. En ese orden. La inmensa mayoría de los fallos que verás este curso están escritos, con todas sus letras, en la salida del segundo comando.
+
+---
+
+## 🔌 Puertos: aislado por defecto, expuesto a propósito
+
+Un contenedor tiene su propia red y, por defecto, **nada de fuera puede entrar**. Si arrancas un servidor web dentro de un contenedor y no haces nada más, tu navegador no lo verá.
+
+Para llegar a él se **publica un puerto**: se asocia un puerto de la máquina anfitriona con el puerto en el que escucha el proceso dentro. La notación es siempre `anfitrión:contenedor`, en ese orden, y el error clásico es invertirla.
+
+Lo importante no es la sintaxis, es la decisión: **publicar un puerto es abrir una puerta**. Hoy publicarás todo lo que quieras ver, porque estás en tu máquina experimentando. Pero apunta la pregunta para dentro de dos sesiones: si el único que tiene que hablar con la base de datos es la aplicación, y la aplicación está en la misma máquina, ¿para qué abrir el puerto de la base de datos al exterior? En la sesión 5 montarás el conjunto entero con la base de datos **sin ningún puerto publicado**, y esa será la primera decisión de seguridad real que tomes en el módulo.
+
+---
+
+## 💾 Qué sobrevive cuando el contenedor muere
+
+Ya sabes la respuesta: la capa de escritura se va con el contenedor. Si arrancas una base de datos sin más y luego eliminas el contenedor, los datos **no están en ninguna parte**. No hay papelera.
+
+Docker ofrece dos formas de sacar datos de esa capa condenada:
+
+| | Volumen | Montaje de directorio del anfitrión |
+|---|---|---|
+| **Quién lo gestiona** | Docker, en una zona propia del sistema | Tú: es una carpeta tuya que eliges |
+| **Dónde está** | Donde Docker decida; se referencia por nombre | En la ruta exacta que indiques |
+| **Uso típico** | Datos de una base de datos, contenido que la aplicación genera | Ficheros de configuración, código durante el desarrollo |
+| **Portabilidad** | Alta: no depende de la estructura de carpetas de la máquina | Baja: la ruta tiene que existir en cada máquina |
+| **Se comparte entre contenedores** | Sí, montando el mismo volumen | Sí, pero atado a esa máquina |
+
+La regla práctica: **volumen para los datos, montaje de carpeta para meter configuración desde fuera**. Y una advertencia que vas a ver cumplirse dentro de unas semanas: un dato importante que vive en la capa de escritura de un contenedor es una bomba de relojería. Recuerda que Escaparate guarda las fotos de los productos en una carpeta del disco de la máquina donde corre. De momento funciona. Anótalo igualmente.
+
+---
+
+## 🕸️ Redes, y la deuda que dejamos abierta hoy
+
+Cuando Docker arranca, crea una red por defecto a la que se conectan todos los contenedores que no digan otra cosa. Ahí dentro se ven entre ellos por dirección IP, pero **no por nombre**: si tu aplicación busca un servidor llamado `basededatos`, no lo va a encontrar.
+
+Se pueden crear redes propias, y en ellas Docker sí resuelve el nombre de cada contenedor automáticamente. Es la forma correcta de conectar varios contenedores entre sí, y también aísla: dos contenedores en redes distintas no se hablan.
+
+Hoy vas a ejecutar contenedores sueltos y no vas a necesitar nada de esto. Pero fíjate en el precio que estás pagando: cada arranque exige recordar la imagen exacta, los puertos, las variables, los volúmenes y la red, todo escrito a mano en una sola línea larguísima que nadie va a recordar mañana. Ese es exactamente el problema que resuelve la sesión 5, y conviene que lo sufras un poco antes de que llegue el remedio.
+
+---
+
+## 🔧 La configuración entra desde fuera. Siempre
+
+Última pieza, y es la regla de la primera sesión puesta en práctica por primera vez: **el paquete es idéntico en todos los entornos; lo que cambia es lo que le inyectas al arrancarlo**.
+
+Las imágenes bien hechas se configuran con **variables de entorno** que se les pasan en el momento de ejecutarlas: qué usuario y contraseña debe tener la base de datos, en qué dirección está el servidor, en qué modo arrancar. La misma imagen de PostgreSQL vale para tu máquina y para producción; lo único distinto son los valores que recibe.
+
+!!! danger "Esto se corrige en todas las actividades del curso"
+    Una contraseña escrita **dentro** de la imagen viaja a todas partes donde vaya esa imagen, queda en sus capas para siempre y cualquiera que la descargue puede leerla. Aunque borres esa línea y construyas otra versión, la capa antigua sigue publicada. Las credenciales se pasan **en el momento de ejecutar**, nunca se hornean en el paquete.
+
+---
+
+## 🎯 Qué debes saber hacer al salir de esta sesión
+
+- Explicar la diferencia entre imagen y contenedor, y por qué dos contenedores de la misma imagen son independientes.
+- Arrancar un contenedor en segundo plano, ponerle nombre y publicar su puerto.
+- Diagnosticar siguiendo la rutina: comprobar si está vivo, leer sus logs, entrar dentro.
+- Saber qué desaparece al eliminar un contenedor y qué sobrevive, y por qué.
+- Pasar configuración desde fuera en lugar de escribirla dentro de la imagen.
+- Publicar una imagen en un registro y volver a descargarla en limpio.
+- Limpiar: no dejar contenedores corriendo ni imágenes que no vayas a usar.
+
+Lo que basta con reconocer: el detalle de cómo se apilan las capas, el papel del demonio, y qué cambia cuando Docker corre sobre Windows o macOS.
+
+---
+
+## ✅ Ideas clave
+
+??? tip "Abrir resumen"
+
+    - El repositorio guarda el código; el contenedor empaqueta el entorno donde ese código funciona. Son dos problemas distintos y hacen falta los dos.
+    - Una máquina virtual virtualiza el hardware y lleva dentro un sistema operativo completo; un contenedor virtualiza el sistema operativo y comparte el núcleo del anfitrión. Por eso uno pesa gigabytes y tarda minutos, y el otro megabytes y menos de un segundo.
+    - No compiten: lo habitual es ejecutar contenedores dentro de máquinas virtuales alquiladas en la nube.
+    - **Imagen** es el paquete inmutable, **contenedor** es ese paquete en ejecución, **registro** es el servidor donde se publica y **etiqueta** es la versión concreta. En despliegue, la imagen es el artefacto que se construye una vez y se ejecuta idéntico en todas partes.
+    - `latest` no significa «la última»: significa «la que alguien marcó así». Un despliegue reproducible fija siempre la versión.
+    - Una imagen es una pila de capas de solo lectura que se comparten entre imágenes y entre contenedores; al arrancar se añade encima una capa de escritura que nace y muere con el contenedor.
+    - Un contenedor es un proceso, no una máquina encendida: si su proceso principal termina, el contenedor se detiene. Detenido conserva su capa de escritura; eliminado, no.
+    - Ante un fallo: comprobar si está vivo, leer los logs y entrar dentro. En ese orden.
+    - Por defecto un contenedor está aislado de la red; publicar un puerto es abrir una puerta deliberadamente, y la notación es `anfitrión:contenedor`.
+    - Para que un dato sobreviva hay que sacarlo de la capa de escritura: volumen gestionado por Docker para los datos, montaje de una carpeta del anfitrión para meter configuración.
+    - En la red por defecto los contenedores no se resuelven por nombre; para eso hacen falta redes propias.
+    - La configuración y las credenciales se pasan como variables de entorno al ejecutar. Nunca se escriben dentro de la imagen: quedarían en sus capas para siempre.
+
+---
+
+Con esto ya tienes las piezas para la **Actividad 2.1**. Primero vas a ejecutar imágenes ajenas hasta que el ciclo de vida te salga solo: arrancar, inspeccionar, entrar por la shell, leer los logs y limpiar lo que dejes atrás. Verás con tus ojos qué desaparece cuando eliminas un contenedor y qué no, que es la lección que más caro se paga cuando se aprende en producción.
+
+Y después darás el paso al otro lado: publicarás en un registro una imagen de base de datos que se inicializa sola con el esquema de Escaparate y sus datos de ejemplo la primera vez que arranca, con las credenciales entrando desde fuera. Esa imagen la construirás casi sin explicación, con dos instrucciones, porque hoy solo interesa el efecto. En la sesión 4 abriremos esa receta y verás por qué cada instrucción estaba donde estaba.

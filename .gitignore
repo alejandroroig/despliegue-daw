@@ -1,0 +1,9 @@
+# Soluciones del profesor: nunca deben publicarse en el repo
+*Solucion*.docx
+*Solucion*.pdf
+*_solved.docx
+*_solved.pdf
+soluciones/
+
+# Salida de mkdocs build
+site/
