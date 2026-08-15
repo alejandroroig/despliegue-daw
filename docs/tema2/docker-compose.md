@@ -240,7 +240,7 @@ De ahí sale un principio que conviene que te lleves de hoy, aunque no lo apliqu
 
 ## ⚖️ Hasta dónde llega Compose
 
-Compose es excelente para lo que es: entornos de desarrollo, pruebas automatizadas y despliegues en **una sola máquina**. Ese es también su límite. No reparte servicios entre varios servidores, no repone un contenedor si la máquina se apaga, no actualiza a una versión nueva sin cortar el servicio y no escala automáticamente cuando sube la carga.
+Compose es excelente para lo que es: entornos de desarrollo, pruebas automatizadas y despliegues en **una sola máquina**. Ese es también su límite. No reparte servicios entre varios servidores, no repone un contenedor si la máquina se apaga, no actualiza a una versión nueva sin cortar el servicio y no escala autom  áticamente cuando sube la carga.
 
 Todo eso llega, y llega precisamente por este orden: en la sesión 7 pondrás un punto único de entrada delante de varias réplicas, y en las sesiones 14 a 16 verás qué herramienta se ocupa de reponer, actualizar y escalar sola. Mientras tanto, con lo de hoy ya puedes desplegar el conjunto entero de Escaparate en cualquier máquina que tenga Docker, escribiendo un comando.
 
