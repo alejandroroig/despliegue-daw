@@ -21,11 +21,12 @@ Escribir una aplicación es la mitad del trabajo. La otra mitad es conseguir que
 
 | Tema | Qué cubre | RA |
 |------|-----------|-----|
-| 🧱 [Tema 1 — Arquitecturas web y virtualización](tema1/index.md) | Anatomía de un despliegue, contenedores, imágenes multietapa y Docker Compose | RA1 |
-| 🔀 [Tema 2 — Documentación, versiones e integración continua](tema2/index.md) | Git aplicado al despliegue, documentación, pipelines de integración y despliegue continuo | RA6 |
-| 🌐 [Tema 3 — Administración de servidores web](tema3/index.md) | Sitios virtuales, proxy inverso y balanceo, HTTPS con ACME, observabilidad | RA2 |
+| 🏁 [Tema 1 — Punto de partida](tema1/index.md) | Arquitecturas y proceso de despliegue, control de versiones y documentación aplicados al despliegue | RA1 · RA6 |
+| 📦 [Tema 2 — Virtualización y contenedores](tema2/index.md) | Fundamentos de contenedores, imágenes multietapa y Docker Compose | RA1 |
+| 🌐 [Tema 3 — Administración de servidores web](tema3/index.md) | Sitios virtuales, DNS, proxy inverso y balanceo, HTTPS con ACME, observabilidad | RA2 |
 | ☕ [Tema 4 — Servidores de aplicaciones](tema4/index.md) | Despliegue de artefactos, sesiones, pruebas de carga y rendimiento | RA3 |
-| ☸️ [Tema 5 — Orquestación de contenedores](tema5/index.md) | Kubernetes, actualizaciones sin caída, clúster gestionado y GitOps | RA1 · RA2 · RA3 |
+| 🔁 [Tema 5 — Integración y despliegue continuos](tema5/index.md) | Pipelines de integración continua y despliegue continuo con vuelta atrás | RA6 |
+| ☸️ [Tema 6 — Orquestación de contenedores](tema6/index.md) | Kubernetes, actualizaciones sin caída, clúster gestionado y GitOps | RA1 · RA2 · RA3 |
 
 ---
 
@@ -37,10 +38,10 @@ La vas a desplegar de cuatro formas distintas a lo largo del curso, cada una má
 
 | Forma | Cuándo | Qué añade |
 |---|---|---|
-| Stack local con Compose | Tema 1 | Todo junto, reproducible en cualquier equipo |
+| Stack local con Compose | Tema 2 | Todo junto, reproducible en cualquier equipo |
 | Servidor con proxy y HTTPS | Tema 3 | Balanceo entre réplicas, certificado real, logs centralizados |
-| Despliegue automático por pipeline | Tema 2 | Del `merge` a producción sin tocar el servidor |
-| Orquestado con Kubernetes y GitOps | Tema 5 | El repositorio como única fuente de verdad |
+| Despliegue automático por pipeline | Tema 5 | Del `merge` a producción sin tocar el servidor |
+| Orquestado con Kubernetes y GitOps | Tema 6 | El repositorio como única fuente de verdad |
 
 En la defensa final presentas las cuatro y respondes a la pregunta que resume el módulo: *dado este cliente concreto, ¿cuál le venderías y por qué?*
 
