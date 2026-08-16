@@ -1,6 +1,6 @@
 # 🏁 Cierre del módulo
 
-Has recorrido el camino completo: desde una aplicación que solo funcionaba en tu portátil hasta cuatro formas distintas de ponerla en producción.
+Has recorrido el camino completo: desde una aplicación que solo funcionaba en tu ordenador hasta cuatro formas distintas de ponerla en producción.
 
 ## Lo que sabes hacer ahora
 

@@ -2,7 +2,7 @@
 
 Módulo de **Desarrollo de Aplicaciones Web (DAW)**
 
-Escribir una aplicación es la mitad del trabajo. La otra mitad es conseguir que funcione fuera de tu portátil: en un servidor, con su base de datos, servida por HTTPS, sin caerse cuando llega gente y sin que actualizar una versión sea una noche en vela. De eso va este módulo.
+Escribir una aplicación es la mitad del trabajo. La otra mitad es conseguir que funcione fuera de tu ordenador: en un servidor, con su base de datos, servida por HTTPS, sin caerse cuando llega gente y sin que actualizar una versión sea una noche en vela. De eso va este módulo.
 
 ---
 
@@ -39,7 +39,7 @@ La vas a desplegar de cuatro formas distintas a lo largo del curso, cada una má
 | Forma | Cuándo | Qué añade |
 |---|---|---|
 | Stack local con Compose | Tema 2 | Todo junto, reproducible en cualquier equipo |
-| Servidor con proxy y HTTPS | Tema 3 | Balanceo entre réplicas, certificado real, logs centralizados |
+| Servidor con proxy y HTTPS | Tema 3 | Reparto entre varias copias, certificado real, logs centralizados |
 | Despliegue automático por pipeline | Tema 5 | Del `merge` a producción sin tocar el servidor |
 | Orquestado con Kubernetes y GitOps | Tema 6 | El repositorio como única fuente de verdad |
 
@@ -50,8 +50,10 @@ En la defensa final presentas las cuatro y respondes a la pregunta que resume el
 !!! tip "Cómo navegar"
     Haz clic en cualquier tema para empezar. Dentro de cada uno están los apuntes y las actividades en orden. Puedes usar las **flechas al pie de cada página** para avanzar o retroceder.
 
-!!! info "Actividades A y B"
-    Cada actividad tiene una parte **A**, guiada, que debe terminar todo el mundo, y una parte **B**, un reto que va más allá y suma en la calificación. Si vas justo de tiempo, asegúrate primero de la A.
+!!! info "Cómo son las actividades"
+    Cada actividad tiene un enunciado con pasos numerados, y **todo lo que aparece en él es exigible**: está dimensionado para que dé tiempo. Al final encontrarás dos cosas: la sección **Verificación**, con los comandos exactos que se ejecutarán para dar la práctica por válida, y la lista **Qué se entrega**, que es la referencia de corrección.
+
+    Algunas actividades terminan con un apartado **«Si te sobra tiempo»**. Es opcional, no puntúa y ninguna sesión posterior depende de él: está para quien vaya rápido, no para subir nota.
 
 !!! note "Transferencia de archivos y servicios de red (RA4 y RA5)"
     Estos dos resultados de aprendizaje —servidores FTP/SFTP y servicios de nombres y directorio— no se trabajan en estos apuntes: se acreditan durante la **Formación en Empresa**.

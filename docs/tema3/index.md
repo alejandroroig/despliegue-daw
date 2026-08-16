@@ -30,19 +30,22 @@
 
 ## 📘 Índice de contenidos
 
-1. [Servidores web y nombres de dominio](servidores-web-dns.md)
+1. [Servidores web y DNS](servidores-web-dns.md)
 2. [Proxy inverso y balanceo](proxy-inverso-balanceo.md)
 3. [Seguridad web y HTTPS](seguridad-web-https.md)
 4. [Observabilidad: logs, métricas y alertas](observabilidad.md)
 
 **Actividades:**
 
-- [Actividad 3.1 — Tres sitios, un servidor](actividad_3_1.md)
-- [Actividad 3.2 — Tres réplicas tras un proxy](actividad_3_2.md)
-- [Actividad 3.3 — Certificado real y endurecimiento](actividad_3_3.md)
-- [Actividad 3.4 — Un panel que responda preguntas](actividad_3_4.md)
+- [Actividad 3.1 — Dos sitios, un servidor y un nombre](actividad_3_1.md)
+- [Actividad 3.2 — Una puerta, tres copias](actividad_3_2.md)
+- [Actividad 3.3 — Cierra la puerta y echa la llave](actividad_3_3.md)
+- [Actividad 3.4 — Que te lo cuente el sistema](actividad_3_4.md)
 
 ---
 
 !!! note "Cómo encaja este tema"
-    Es el tema más largo del módulo y el que más peso tiene en la calificación. A partir de la segunda sesión, Escaparate deja de vivir en tu portátil y pasa a un servidor accesible desde internet.
+    Es el tema más largo del módulo y el que más peso tiene en la calificación. Cuatro sesiones que siguen el recorrido de una petición: quién la atiende, quién la reparte, quién la protege y quién la cuenta. A partir de la segunda sesión, Escaparate deja de vivir en tu portátil y pasa a un servidor accesible desde internet.
+
+!!! warning "El cierre del tema es un documento"
+    La última entrega no es una captura más: es la **memoria de configuración y administración segura** del servidor web, que recoge las cuatro sesiones en un solo documento. Ve guardando por el camino lo que te vaya costando resolver —las incidencias también se entregan—.

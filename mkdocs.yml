@@ -31,7 +31,7 @@ nav:
       - Tema 1 - Introducción: tema1/index.md
       - Arquitecturas y proceso de despliegue:
           - Arquitecturas y proceso de despliegue: tema1/arquitecturas-despliegue.md
-          - Actividad 1.1 - Disección de despliegues reales: tema1/actividad_1_1.md
+          - Actividad 1.1 - Qué se puede saber de un despliegue desde fuera: tema1/actividad_1_1.md
       - Control de versiones y documentación:
           - Control de versiones y documentación: tema1/control-versiones-documentacion.md
           - Actividad 1.2 - Tu repositorio como herramienta de despliegue: tema1/actividad_1_2.md
@@ -48,18 +48,18 @@ nav:
           - Actividad 2.3 - El conjunto entero con un comando: tema2/actividad_2_3.md
   - Tema 3 - Administración de servidores web:
       - Tema 3 - Introducción: tema3/index.md
-      - Servidores web y nombres de dominio:
-          - Servidores web y nombres de dominio: tema3/servidores-web-dns.md
-          - Actividad 3.1 - Tres sitios, un servidor: tema3/actividad_3_1.md
+      - Servidores web y DNS:
+          - Servidores web y DNS: tema3/servidores-web-dns.md
+          - Actividad 3.1 - Dos sitios, un servidor y un nombre: tema3/actividad_3_1.md
       - Proxy inverso y balanceo:
           - Proxy inverso y balanceo: tema3/proxy-inverso-balanceo.md
-          - Actividad 3.2 - Tres réplicas tras un proxy: tema3/actividad_3_2.md
+          - Actividad 3.2 - Una puerta, tres copias: tema3/actividad_3_2.md
       - Seguridad web y HTTPS:
           - Seguridad web y HTTPS: tema3/seguridad-web-https.md
-          - Actividad 3.3 - Certificado real y endurecimiento: tema3/actividad_3_3.md
+          - Actividad 3.3 - Cierra la puerta y echa la llave: tema3/actividad_3_3.md
       - Observabilidad - logs, métricas y alertas:
           - Observabilidad - logs, métricas y alertas: tema3/observabilidad.md
-          - Actividad 3.4 - Un panel que responda preguntas: tema3/actividad_3_4.md
+          - Actividad 3.4 - Que te lo cuente el sistema: tema3/actividad_3_4.md
   - Tema 4 - Servidores de aplicaciones:
       - Tema 4 - Introducción: tema4/index.md
       - Servidor de aplicaciones:
