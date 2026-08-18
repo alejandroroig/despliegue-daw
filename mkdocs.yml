@@ -64,26 +64,26 @@ nav:
       - Tema 4 - Introducción: tema4/index.md
       - Servidor de aplicaciones:
           - Servidor de aplicaciones: tema4/servidor-aplicaciones.md
-          - Actividad 4.1 - El mismo artefacto, dos despliegues: tema4/actividad_4_1.md
+          - Actividad 4.1 - El mismo artefacto, dos servidores, y una sesión que deja de perderse: tema4/actividad_4_1.md
       - Rendimiento y pruebas de carga:
           - Rendimiento y pruebas de carga: tema4/rendimiento-pruebas-carga.md
-          - Actividad 4.2 - Buscar el cuello de botella: tema4/actividad_4_2.md
+          - Actividad 4.2 - Cuánta carga aguanta y qué se rinde primero: tema4/actividad_4_2.md
   - Tema 5 - Integración y despliegue continuos:
       - Tema 5 - Introducción: tema5/index.md
       - Integración continua:
           - Integración continua: tema5/integracion-continua.md
-          - Actividad 5.1 - Una puerta antes de main: tema5/actividad_5_1.md
+          - Actividad 5.1 - La puerta de entrada a `main`: tema5/actividad_5_1.md
       - Despliegue continuo:
           - Despliegue continuo: tema5/despliegue-continuo.md
-          - Actividad 5.2 - Publicar, desplegar y volver atrás: tema5/actividad_5_2.md
+          - Actividad 5.2 - Del commit a producción, y vuelta: tema5/actividad_5_2.md
   - Tema 6 - Orquestación de contenedores:
       - Tema 6 - Introducción: tema6/index.md
-      - Kubernetes - arquitectura y objetos:
-          - Kubernetes - arquitectura y objetos: tema6/kubernetes-arquitectura.md
-          - Actividad 6.1 - De Compose a manifiestos: tema6/actividad_6_1.md
-      - Configuración y actualizaciones sin caída:
-          - Configuración y actualizaciones sin caída: tema6/kubernetes-configuracion.md
-          - Actividad 6.2 - Actualizar sin cortar el servicio: tema6/actividad_6_2.md
+      - Arquitectura de Kubernetes:
+          - Arquitectura de Kubernetes - el estado deseado: tema6/kubernetes-arquitectura.md
+          - Actividad 6.1 - El catálogo, declarado: tema6/actividad_6_1.md
+      - Configuración, sondas y actualizaciones:
+          - Configuración, sondas y actualizaciones progresivas: tema6/kubernetes-configuracion.md
+          - Actividad 6.2 - Publicar, vigilar y actualizar sin cortar: tema6/actividad_6_2.md
       - Clúster gestionado y GitOps:
           - Clúster gestionado y GitOps: tema6/eks-gitops.md
           - Actividad 6.3 - El repositorio manda: tema6/actividad_6_3.md
