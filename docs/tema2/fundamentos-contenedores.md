@@ -1,4 +1,4 @@
-# 📦 1. Fundamentos de contenedores
+# 📦 Fundamentos de contenedores
 
 !!!info "Descarga de diapositivas"
     [Descarga las diapositivas](diapositivas/fundamentos-contenedores.pptx){target="_blank" rel="noopener"}
@@ -11,9 +11,11 @@ Pero un repositorio guarda **el código**, no el entorno donde ese código funci
 
 ---
 
-## 🧳 Lo que hay que mover no es el código
+## 🧳 1. Lo que hay que mover no es el código
 
-Vuelve a la tabla de las cinco piezas de la primera sesión y quédate con la segunda fila: **artefacto y runtime**. Para que Escaparate funcione en otra máquina hace falta el `.war`, sí, pero también una versión concreta de Java, un PostgreSQL de una versión compatible, unas variables de entorno, unos directorios y unos permisos.
+Vuelve a la tabla de las cinco piezas de la primera sesión y quédate con la segunda fila: **artefacto y runtime**. Para que el sistema Escaparate funcione en otra máquina hace falta el `.war`, sí, pero también una versión concreta de Java, un PostgreSQL compatible, unas variables de entorno, unos directorios y unos permisos.
+
+Contenerizar no significa meter todo eso dentro de un único contenedor. Cada pieza puede empaquetarse por separado: una imagen para PostgreSQL, otra para la aplicación, otra para un servidor web si hiciera falta. Después las conectaremos entre sí. Esa separación será importante durante todo el módulo.
 
 Históricamente esto se ha resuelto de tres maneras, y las tres siguen existiendo:
 
@@ -23,11 +25,11 @@ Históricamente esto se ha resuelto de tres maneras, y las tres siguen existiend
 | **Script de aprovisionamiento** | Un guion que instala y configura todo automáticamente | Mejor, pero depende del sistema operativo de destino y de que los paquetes sigan disponibles con la misma versión |
 | **Máquina virtual completa** | Se empaqueta el ordenador entero, sistema operativo incluido | Funciona de verdad, pero pesa gigabytes, tarda minutos en arrancar y no puedes tener veinte a la vez |
 
-El contenedor es el cuarto enfoque: la fiabilidad de la máquina virtual —se empaqueta el entorno, no las instrucciones para construirlo— con un coste parecido al de arrancar un proceso normal.
+El contenedor es el cuarto enfoque: empaqueta de forma reproducible la aplicación y sus dependencias sin tener que llevar un sistema operativo invitado completo. El resultado suele ser mucho más ligero y rápido de crear y arrancar que una máquina virtual.
 
 ---
 
-## 🆚 Máquina virtual frente a contenedor
+## 🆚 2. Máquina virtual frente a contenedor
 
 La diferencia está en **qué se virtualiza**.
 
@@ -50,9 +52,9 @@ flowchart TB
     end
 ```
 
-Una **máquina virtual** virtualiza el hardware: el hipervisor simula un ordenador completo, y dentro se instala un sistema operativo entero con su propio arranque, sus servicios y su gestión de memoria. Aislamiento máximo, coste máximo.
+Una **máquina virtual** virtualiza el hardware: el hipervisor presenta un ordenador virtual completo y dentro se instala un sistema operativo invitado con su propio núcleo, servicios y gestión de memoria. El aislamiento es fuerte, pero también aumenta el consumo de recursos y el tiempo de arranque.
 
-Un **contenedor** virtualiza el sistema operativo: todos los contenedores comparten el mismo núcleo del anfitrión, y lo único que se empaqueta son las bibliotecas y ficheros que la aplicación necesita por encima de ese núcleo. Por eso arranca en menos de un segundo y pesa megabytes en lugar de gigabytes.
+Un **contenedor** utiliza el núcleo del sistema anfitrión y aísla procesos, red y sistema de ficheros. La imagen empaqueta las bibliotecas y ficheros que necesita la aplicación por encima de ese núcleo. Por eso un contenedor suele arrancar en segundos o menos y sus imágenes acostumbran a ocupar decenas o centenas de megabytes, no varios gigabytes.
 
 | | Máquina virtual | Contenedor |
 |---|---|---|
@@ -71,25 +73,27 @@ Un **contenedor** virtualiza el sistema operativo: todos los contenedores compar
 
 ---
 
-## 🧩 Las cuatro palabras que hay que tener claras
+## 🧩 3. Las cuatro palabras que hay que tener claras
 
-### Imagen: el paquete
+### 3.1. Imagen: el paquete
 
 Una **imagen** es un paquete de solo lectura que contiene el sistema base, el software instalado, tu aplicación y su configuración de fábrica. Es **inmutable**: una vez construida no se modifica; si algo tiene que cambiar, se construye otra.
 
 Aquí está el cambio de mentalidad de este módulo. Puede que hayas visto Docker presentado como «una forma cómoda de tener una base de datos sin instalarla». Eso es cierto y es útil, pero es lo de menos. En despliegue, **la imagen es el artefacto**: es aquello que la primera sesión llamaba «el paquete de la aplicación», el objeto que se construye una vez, se guarda con un número de versión y se ejecuta idéntico en el portátil del desarrollador, en el servidor de pruebas y en producción.
 
-### Contenedor: el paquete en marcha
+### 3.2. Contenedor: una instancia de la imagen
 
-Un **contenedor** es una imagen arrancada: un proceso en ejecución, con su propio sistema de ficheros, su propia red y su propio nombre. De una misma imagen puedes arrancar tantos contenedores como quieras, y ninguno se entera de los otros. Recuérdalo, porque más adelante vas a ejecutar varias copias de Escaparate a partir de la misma imagen y repartir tráfico entre ellas.
+Un **contenedor** es una instancia creada a partir de una imagen. Puede estar creado, en ejecución o detenido. Cuando está en ejecución mantiene uno o varios procesos aislados, con su propio sistema de ficheros, configuración y red.
 
-### Registro: dónde viaja
+De una misma imagen puedes crear tantos contenedores como quieras. Cada uno tiene su propia capa de escritura y su propio estado, aunque todos partan exactamente del mismo contenido de solo lectura. Recuérdalo, porque más adelante vas a ejecutar varias copias de Escaparate a partir de la misma imagen y repartir tráfico entre ellas.
+
+### 3.3. Registro: dónde viaja
 
 Un **registro** es un servidor donde se publican imágenes para que otras máquinas se las descarguen. Que la imagen viva en un registro es lo que permite que la máquina de producción no necesite tu código, ni Maven, ni Java para compilar: se descarga el paquete ya hecho y lo ejecuta.
 
-Docker Hub es el más conocido y es de donde vas a **descargar** casi todo, porque ahí viven las imágenes oficiales de Nginx, PostgreSQL o Java. Pero para **publicar** las tuyas este módulo usa el registro de GitHub, `ghcr.io`, por una razón práctica: es el mismo sitio donde ya vive tu repositorio, así que no necesitas una cuenta más, y en diciembre el pipeline podrá publicar ahí sin que le des ninguna credencial tuya. Existen muchos otros —el de AWS, el de Azure, registros privados montados en la propia empresa— y todos funcionan igual.
+Docker Hub es el más conocido y es de donde vas a **descargar** muchas imágenes oficiales, como Nginx o PostgreSQL. Para **publicar** las tuyas este módulo utiliza GitHub Container Registry, `ghcr.io`, porque ya trabajas con una cuenta de GitHub y más adelante los pipelines podrán publicar ahí sin utilizar una credencial personal tuya. Existen muchos otros registros, como AWS ECR, Azure Container Registry o registros privados de empresa.
 
-### Etiqueta: qué versión exactamente
+### 3.4. Etiqueta: qué versión exactamente
 
 El nombre completo de una imagen tiene cuatro partes: `registro/usuario/nombre:etiqueta`. Si no dices el registro, se asume Docker Hub —por eso `nginx` funciona sin más—; las imágenes oficiales tampoco llevan usuario, y si no indicas etiqueta se asume `latest`. Cuando publiques la tuya en el registro de GitHub tendrás que escribir el nombre entero, `ghcr.io/tu-usuario/lo-que-sea:1.0.0`, y ahí se ve bien de dónde sale cada parte.
 
@@ -109,7 +113,7 @@ flowchart LR
 
 ---
 
-## 🧱 Capas: por qué una imagen no se copia entera
+## 🧱 4. Capas: por qué una imagen no se copia entera
 
 Una imagen no es un bloque: es una **pila de capas** de solo lectura, apiladas una encima de otra. La primera suele ser un sistema base mínimo; encima se añade el runtime; encima, la aplicación; encima, la configuración.
 
@@ -122,7 +126,9 @@ Guarda esa última frase, porque es la que explica la sección de persistencia y
 
 ---
 
-## ♻️ El ciclo de vida de un contenedor
+## ♻️ 5. El ciclo de vida de un contenedor
+
+### 5.1. Estados y operaciones básicas
 
 Un contenedor pasa por unos estados muy concretos, y confundirlos es el origen de casi todas las preguntas del tipo «lo he borrado y sigue ahí» o «lo he parado y he perdido los datos».
 
@@ -158,12 +164,73 @@ Estos son los comandos que vas a usar hoy. No hace falta memorizarlos: hace falt
 | `docker rm` / `docker rmi` | Elimina contenedor / imagen | Limpiar |
 | `docker system df` | Cuánto disco ocupa todo esto | Enterarte antes de quedarte sin espacio |
 
+### 5.2. Construir un `docker run` sin memorizar una línea entera
+
+`docker run` combina varias decisiones. La forma general que utilizarás es:
+
+```text
+docker run [opciones] <imagen>
+```
+
+Por ejemplo:
+
+```bash
+docker run -d --name web-demo -p 8088:80 nginx:1.30.4-alpine
+```
+
+Se lee así:
+
+| Parte | Significado |
+|---|---|
+| `-d` | ejecuta el contenedor en segundo plano |
+| `--name web-demo` | asigna un nombre reconocible |
+| `-p 8088:80` | publica `anfitrión:contenedor` |
+| `nginx:1.30.4-alpine` | imagen y etiqueta concretas |
+
+Después puedes comprobarlo con:
+
+```bash
+docker ps
+docker logs web-demo
+```
+
+y entrar dentro con:
+
+```bash
+docker exec -it web-demo sh
+```
+
+No todas las imágenes incluyen `bash`; las variantes mínimas suelen disponer de `sh`. Una vez dentro, comandos normales de Linux como estos te permiten inspeccionar qué estás ejecutando:
+
+```bash
+cat /etc/os-release
+pwd
+ls
+```
+
+En un servidor como Nginx también puedes consultar su configuración para averiguar desde qué directorio sirve los ficheros:
+
+```bash
+nginx -T 2>/dev/null | grep -E 'root|index'
+```
+
+Puedes recorrer parte del ciclo de vida con:
+
+```bash
+docker stop web-demo
+docker start web-demo
+docker stop web-demo
+docker rm web-demo
+```
+
+Recuerda la diferencia: `stop` detiene el proceso pero conserva el contenedor; `rm` elimina el contenedor y su capa de escritura.
+
 !!! tip "El reflejo que te va a salvar el curso"
     Cuando algo no arranque, la secuencia es siempre la misma: mirar si el contenedor está vivo, leer sus logs y, si hace falta, entrar dentro. En ese orden. La inmensa mayoría de los fallos que verás este curso están escritos, con todas sus letras, en la salida del segundo comando.
 
 ---
 
-## 🔌 Puertos: aislado por defecto, expuesto a propósito
+## 🔌 6. Puertos: aislado por defecto, expuesto a propósito
 
 Un contenedor tiene su propia red y, por defecto, **nada de fuera puede entrar**. Si arrancas un servidor web dentro de un contenedor y no haces nada más, tu navegador no lo verá.
 
@@ -173,7 +240,7 @@ Lo importante no es la sintaxis, es la decisión: **publicar un puerto es abrir 
 
 ---
 
-## 💾 Qué sobrevive cuando el contenedor muere
+## 💾 7. Qué sobrevive cuando el contenedor muere
 
 Ya sabes la respuesta: la capa de escritura se va con el contenedor. Si arrancas una base de datos sin más y luego eliminas el contenedor, los datos **no están en ninguna parte**. No hay papelera.
 
@@ -191,7 +258,7 @@ La regla práctica: **volumen para los datos, montaje de carpeta para meter conf
 
 ---
 
-## 🕸️ Redes, y la deuda que dejamos abierta hoy
+## 🕸️ 8. Redes, y la deuda que dejamos abierta hoy
 
 Cuando Docker arranca, crea una red por defecto a la que se conectan todos los contenedores que no digan otra cosa. Ahí dentro se ven entre ellos por dirección IP, pero **no por nombre**: si tu aplicación busca un servidor llamado `basededatos`, no lo va a encontrar.
 
@@ -201,28 +268,177 @@ Hoy vas a ejecutar contenedores sueltos y no vas a necesitar nada de esto. Pero 
 
 ---
 
-## 🔧 La configuración entra desde fuera. Siempre
+## 🔧 9. La configuración entra desde fuera. Siempre
 
 Última pieza, y es la regla de la primera sesión puesta en práctica por primera vez: **el paquete es idéntico en todos los entornos; lo que cambia es lo que le inyectas al arrancarlo**.
 
 Las imágenes bien hechas se configuran con **variables de entorno** que se les pasan en el momento de ejecutarlas: qué usuario y contraseña debe tener la base de datos, en qué dirección está el servidor, en qué modo arrancar. La misma imagen de PostgreSQL vale para tu máquina y para producción; lo único distinto son los valores que recibe.
+
+Con `docker run` se utiliza `-e` una vez por cada variable:
+
+```bash
+docker run -d --name ejemplo-bd \
+  -e POSTGRES_USER=usuario_demo \
+  -e POSTGRES_PASSWORD=clave_demo \
+  -e POSTGRES_DB=tienda_demo \
+  postgres:18-alpine
+```
+
+La sintaxis importante es:
+
+```text
+-e NOMBRE=valor
+```
+
+En estas primeras prácticas escribirás valores de prueba directamente para entender el mecanismo. Eso no convierte la línea de comandos en un gestor de secretos: una credencial real requiere mecanismos adecuados y no debe acabar en el repositorio, en una imagen ni en una captura.
+
+Puedes comprobar qué variables recibió un contenedor con:
+
+```bash
+docker inspect ejemplo-bd
+```
 
 !!! danger "Esto se corrige en todas las actividades del curso"
     Una contraseña escrita **dentro** de la imagen viaja a todas partes donde vaya esa imagen, queda en sus capas para siempre y cualquiera que la descargue puede leerla. Aunque borres esa línea y construyas otra versión, la capa antigua sigue publicada. Las credenciales se pasan **en el momento de ejecutar**, nunca se hornean en el paquete.
 
 ---
 
+## 🧾 10. Tu primera imagen: un Dockerfile mínimo
+
+### 10.1. Las instrucciones `FROM` y `COPY`
+
+Hasta ahora has ejecutado imágenes creadas por otras personas. Para crear una propia necesitas un **Dockerfile**, un fichero de texto que describe cómo construirla.
+
+Hoy solo necesitas conocer dos instrucciones:
+
+| Instrucción | Función |
+|---|---|
+| `FROM` | indica la imagen de la que partes |
+| `COPY` | copia ficheros desde el contexto de construcción a la nueva imagen |
+
+Ejemplo genérico:
+
+```dockerfile
+FROM alpine:3.22
+COPY material/ /datos/
+```
+
+La primera línea dice "parte de esta imagen existente". La segunda añade contenido propio.
+
+### 10.2. El contexto de construcción
+
+`COPY` no puede leer cualquier ruta de tu ordenador. Solo puede acceder a ficheros incluidos en el **contexto de construcción**, que es la ruta que aparece al final de `docker build`.
+
+Imagina:
+
+```text
+repositorio/
+├── material/
+│   └── ejemplo.txt
+└── practicas/
+    └── docker/
+        └── demo/
+            └── Dockerfile
+```
+
+Si te sitúas en `repositorio/`, puedes construir con:
+
+```bash
+docker build \
+  -f practicas/docker/demo/Dockerfile \
+  -t ejemplo:1.0.0 \
+  .
+```
+
+Cada parte tiene una función:
+
+| Parte | Significado |
+|---|---|
+| `-f .../Dockerfile` | indica dónde está el Dockerfile |
+| `-t ejemplo:1.0.0` | asigna nombre y etiqueta a la imagen |
+| `.` | utiliza el directorio actual como contexto de construcción |
+
+Después puedes comprobar que existe:
+
+```bash
+docker image ls ejemplo:1.0.0
+```
+
+!!! warning "El contexto no es la carpeta del Dockerfile"
+    Son dos decisiones diferentes. El Dockerfile puede estar en `practicas/` y el contexto ser la raíz del repositorio si necesita copiar ficheros que están en otras carpetas. En la próxima sesión estudiarás este mecanismo con más detalle y aprenderás a reducir el contexto con `.dockerignore`.
+
+---
+
+## 📤 11. Etiquetar y publicar una imagen
+
+Una imagen local como:
+
+```text
+ejemplo:1.0.0
+```
+
+todavía no tiene el nombre completo que necesita GitHub Container Registry. Puedes añadir otra referencia a la misma imagen con:
+
+```bash
+docker tag ejemplo:1.0.0 ghcr.io/<usuario>/ejemplo:1.0.0
+```
+
+Para publicar necesitas que **Docker** esté autenticado contra `ghcr.io`:
+
+```bash
+docker login ghcr.io -u <usuario>
+```
+
+Cuando solicite la contraseña, utiliza la credencial que ya preparaste para el curso. En el itinerario simplificado será el PAT `DAW - Curso`; si elegiste la alternativa de mínimo privilegio, utiliza el PAT específico de GHCR.
+
+Esto es independiente de la autenticación que utiliza Git contra `github.com`.
+
+Publica:
+
+```bash
+docker push ghcr.io/<usuario>/ejemplo:1.0.0
+```
+
+Otra máquina podrá obtenerla con:
+
+```bash
+docker pull ghcr.io/<usuario>/ejemplo:1.0.0
+```
+
+Si el paquete es público, esa descarga no necesita autenticación. Para comprobarlo de forma limpia puedes cerrar antes la sesión del registro:
+
+```bash
+docker logout ghcr.io
+```
+
+El flujo completo es:
+
+```text
+Dockerfile
+   ↓ docker build
+imagen local
+   ↓ docker tag
+nombre del registro
+   ↓ docker push
+GHCR
+   ↓ docker pull
+otra máquina
+```
+
+---
+
 ## 🎯 Qué debes saber hacer al salir de esta sesión
 
 - Explicar la diferencia entre imagen y contenedor, y por qué dos contenedores de la misma imagen son independientes.
-- Arrancar un contenedor en segundo plano, ponerle nombre y publicar su puerto.
-- Diagnosticar siguiendo la rutina: comprobar si está vivo, leer sus logs, entrar dentro.
+- Construir un `docker run` combinando nombre, segundo plano, puertos y variables de entorno.
+- Diagnosticar siguiendo la rutina: comprobar si está vivo, leer sus logs y entrar dentro.
 - Saber qué desaparece al eliminar un contenedor y qué sobrevive, y por qué.
 - Pasar configuración desde fuera en lugar de escribirla dentro de la imagen.
-- Publicar una imagen en un registro y volver a descargarla en limpio.
+- Escribir un Dockerfile mínimo con `FROM` y `COPY` y construirlo eligiendo correctamente Dockerfile y contexto.
+- Etiquetar una imagen, publicarla en GHCR y volver a descargarla sin depender de la copia local.
 - Limpiar: no dejar contenedores corriendo ni imágenes que no vayas a usar.
 
-Lo que basta con reconocer: el detalle de cómo se apilan las capas, el papel del demonio, y qué cambia cuando Docker corre sobre Windows o macOS.
+Lo que basta con reconocer: el detalle de cómo se apilan las capas, el papel del demonio y qué cambia cuando Docker corre sobre Windows o macOS. La optimización de Dockerfiles, la caché y la construcción multietapa llegan en la próxima sesión.
 
 ---
 
@@ -231,20 +447,22 @@ Lo que basta con reconocer: el detalle de cómo se apilan las capas, el papel de
 ??? tip "Abrir resumen"
 
     - El repositorio guarda el código; el contenedor empaqueta el entorno donde ese código funciona. Son dos problemas distintos y hacen falta los dos.
-    - Una máquina virtual virtualiza el hardware y lleva dentro un sistema operativo completo; un contenedor virtualiza el sistema operativo y comparte el núcleo del anfitrión. Por eso uno pesa gigabytes y tarda minutos, y el otro megabytes y menos de un segundo.
+    - Una máquina virtual lleva un sistema operativo invitado con su propio núcleo; un contenedor comparte el núcleo del anfitrión y aísla procesos, red y sistema de ficheros. Por eso suele ser mucho más ligero y rápido de crear y arrancar.
     - No compiten: lo habitual es ejecutar contenedores dentro de máquinas virtuales alquiladas en la nube.
-    - **Imagen** es el paquete inmutable, **contenedor** es ese paquete en ejecución, **registro** es el servidor donde se publica y **etiqueta** es la versión concreta. En despliegue, la imagen es el artefacto que se construye una vez y se ejecuta idéntico en todas partes.
+    - **Imagen** es el paquete de solo lectura, **contenedor** es una instancia creada a partir de ella, **registro** es el servidor donde se publica y **etiqueta** identifica una referencia de esa imagen. En despliegue, la imagen es el artefacto que se construye una vez y se ejecuta de forma reproducible.
     - `latest` no significa «la última»: significa «la que alguien marcó así». Un despliegue reproducible fija siempre la versión.
     - Una imagen es una pila de capas de solo lectura que se comparten entre imágenes y entre contenedores; al arrancar se añade encima una capa de escritura que nace y muere con el contenedor.
-    - Un contenedor es un proceso, no una máquina encendida: si su proceso principal termina, el contenedor se detiene. Detenido conserva su capa de escritura; eliminado, no.
+    - Un contenedor puede estar creado, ejecutándose o detenido. Cuando se ejecuta, su proceso principal determina su ciclo de vida: si termina, el contenedor se detiene. Detenido conserva su capa de escritura; eliminado, no.
     - Ante un fallo: comprobar si está vivo, leer los logs y entrar dentro. En ese orden.
     - Por defecto un contenedor está aislado de la red; publicar un puerto es abrir una puerta deliberadamente, y la notación es `anfitrión:contenedor`.
     - Para que un dato sobreviva hay que sacarlo de la capa de escritura: volumen gestionado por Docker para los datos, montaje de una carpeta del anfitrión para meter configuración.
     - En la red por defecto los contenedores no se resuelven por nombre; para eso hacen falta redes propias.
-    - La configuración y las credenciales se pasan como variables de entorno al ejecutar. Nunca se escriben dentro de la imagen: quedarían en sus capas para siempre.
+    - La configuración se puede pasar con `-e NOMBRE=valor` al ejecutar. Las credenciales nunca se escriben dentro de la imagen: quedarían incorporadas al paquete.
+    - Un Dockerfile mínimo puede partir de una imagen con `FROM` y añadir ficheros con `COPY`. `docker build` distingue entre la ruta del Dockerfile (`-f`) y el contexto de construcción.
+    - Publicar en GHCR sigue el patrón `docker tag` → `docker login` → `docker push`. La autenticación de Docker contra `ghcr.io` es independiente de la autenticación de Git contra `github.com`.
 
 ---
 
 Con esto ya tienes las piezas para la **Actividad 2.1**. Primero vas a ejecutar imágenes ajenas hasta que el ciclo de vida te salga solo: arrancar, inspeccionar, entrar por la shell, leer los logs y limpiar lo que dejes atrás. Verás con tus ojos qué desaparece cuando eliminas un contenedor y qué no, que es la lección que más caro se paga cuando se aprende en producción.
 
-Y después darás el paso al otro lado: publicarás en un registro una imagen de base de datos que se inicializa sola con el esquema de Escaparate y sus datos de ejemplo la primera vez que arranca, con las credenciales entrando desde fuera. Esa imagen la construirás casi sin explicación, con dos instrucciones, porque hoy solo interesa el efecto. En la sesión 4 abriremos esa receta y verás por qué cada instrucción estaba donde estaba.
+Y después darás el paso al otro lado: construirás y publicarás una imagen de base de datos que se inicializa sola con el esquema de Escaparate y sus datos de ejemplo la primera vez que arranca, con las credenciales entrando desde fuera. Para hacerlo ya conoces el patrón mínimo `FROM` + `COPY`, cómo elegir el contexto de construcción y cómo etiquetar y publicar una imagen. En la sesión 4 profundizarás en esa receta: capas, caché, `.dockerignore`, construcción multietapa y usuario sin privilegios.

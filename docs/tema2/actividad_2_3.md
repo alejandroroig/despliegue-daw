@@ -1,218 +1,631 @@
 # 🧪 Actividad 2.3: El conjunto entero con un comando
 
-!!! warning "Descarga la plantilla"
-    📄 [Plantilla 2.3 — El conjunto entero con un comando](plantillas/Actividad_2_3_DAW_Plantilla.docx){target="_blank" rel="noopener"}
-
 ## Contexto
 
-Se incorpora gente nueva al equipo y el ritual de bienvenida es siempre el mismo: dos horas de «pues tienes que arrancar primero la base de datos, con estas variables, y crear una red, y luego…». Se ha acabado.
+Se incorpora una persona nueva al equipo y el procedimiento de puesta en marcha sigue siendo una lista de instrucciones: crear una red, arrancar PostgreSQL con unas variables, comprobar que está preparado y después iniciar Escaparate con otras variables.
 
-Tu encargo de hoy es dejar el despliegue de Escaparate escrito en un fichero, versionado junto al código, de forma que cualquiera que clone el repositorio tenga la aplicación entera funcionando con un comando. Y con una condición que viene de arriba: **de las tres piezas, solo una puede tener puerto abierto al exterior**.
+Tu encargo es convertir ese procedimiento en **infraestructura declarada en un fichero** y versionarla junto al resto del proyecto.
+
+Escaparate es la misma aplicación integrada que has utilizado hasta ahora:
+
+```text
+Navegador
+    │
+    ▼
+Escaparate (frontend + API)
+    │
+    ▼
+PostgreSQL
+```
+
+Por tanto, el despliegue principal tendrá **dos servicios**, `app` y `bd`. Al finalizar, únicamente la aplicación debe publicar un puerto hacia el equipo anfitrión.
 
 ## Qué vas a practicar
 
-- **Describir** un despliegue completo en un fichero declarativo en vez de en comandos sueltos.
-- **Comprobar** qué sobrevive y qué se destruye en cada forma de desmontar el conjunto.
-- **Diagnosticar** un fallo de conexión y un fallo de arranque leyendo los logs.
-- **Reducir** la superficie expuesta y demostrar que sigue funcionando.
-- **Documentar** un procedimiento de despliegue que otra persona pueda seguir sin ayuda.
+- **Describir** un despliegue completo con Docker Compose.
+- **Resolver** servicios por su nombre dentro de una red de Compose.
+- **Comprobar** qué ocurre con los datos al detener contenedores, eliminarlos o borrar volúmenes.
+- **Diagnosticar** fallos utilizando estado y logs.
+- **Reducir** los puertos publicados al mínimo necesario.
+- **Separar** configuración versionable de valores locales.
+- **Esperar** a que una dependencia esté realmente preparada.
+- **Documentar** un procedimiento reproducible.
 
 ## Requisitos previos
 
-- La actividad 2.2 terminada: tu imagen de Escaparate publicada en `ghcr.io`, y la de la base de datos de la 2.1.
-- El paquete de la actividad, que incluye el `compose.yaml` de partida, el front de Escaparate y el fichero de configuración del servidor web.
-- Tu rama de esta sesión, creada antes de empezar:
+- Actividad 2.1 terminada y la imagen:
+
+```text
+ghcr.io/<usuario>/escaparate-db:1.0.0
+```
+
+publicada.
+
+- Actividad 2.2 terminada y la imagen:
+
+```text
+ghcr.io/<usuario>/escaparate:sesion-04
+```
+
+publicada.
+
+!!! info "No necesitas iniciar sesión en GHCR"
+    Las imágenes publicadas en las actividades 2.1 y 2.2 son públicas, por lo que Compose podrá descargarlas sin autenticarse en `ghcr.io`.
+
+    El repositorio `daw-despliegue` sí continúa siendo privado. Las operaciones Git siguen utilizando el método de autenticación configurado desde la actividad 1.2.
+
+- El repositorio `daw-despliegue`.
+- Tu rama de esta sesión:
 
 ```bash
-git switch main && git pull
+git switch main
+git pull --ff-only
 git switch -c sesion-05
 ```
 
+Crea el directorio de trabajo de esta práctica:
+
+```text
+practicas/
+└── compose/
+```
+
+Durante la actividad crearás dentro de él `compose.yaml`, `.env`, `.env.example` y `00-delay.sql` cuando corresponda.
+
 !!! info "Reparto de tiempo orientativo"
-    Pasos 1 a 3, unos 30 minutos. Pasos 4 a 6, unos 40. Pasos 7 y 8, unos 20. Esta actividad **cierra el bloque de contenedores**: lo que entregues aquí es el resultado de tres sesiones.
+    - Pasos 1 a 3: unos 30 minutos.
+    - Pasos 4 a 6: unos 40 minutos.
+    - Pasos 7 y 8: unos 25 minutos.
+
+!!! info "Documenta la actividad en el repositorio"
+    Crea al comenzar la sesión:
+
+    ```text
+    entregas/
+    └── tema2/
+        └── actividad-2.3/
+            ├── actividad-2.3.md
+            └── img/
+    ```
+
+    Documenta en `actividad-2.3.md` las predicciones, resultados, respuestas y reflexiones de la actividad. Guarda las capturas en `img/` e insértalas en el Markdown mediante rutas relativas.
+
+    Los ficheros técnicos de Compose permanecen en `practicas/compose/`; no los dupliques dentro de `entregas/`.
 
 ---
 
-## Paso 1 — Dos servicios que se conocen por su nombre
+## Paso 1: Primer escenario con Compose
 
-Antes de tocar Escaparate, un conjunto pequeño para entender el ciclo de vida.
+Antes de desplegar Escaparate, vas a trabajar con un primer escenario reducido formado por PostgreSQL y Adminer. El objetivo es aislar dos conceptos de Compose antes de añadir la aplicación: la resolución por nombre de servicio y la persistencia mediante volúmenes.
 
-Escribe un `compose.yaml` con:
+Escribe temporalmente en `practicas/compose/compose.yaml` dos servicios:
 
-- Un servicio llamado `bd`, a partir de tu imagen de base de datos de la actividad 2.1, con sus credenciales y un **volumen con nombre** para sus datos. **Sin ningún puerto publicado.**
-- Un servicio llamado `gestor`, a partir de la imagen `adminer:4.8.1`, publicado en el puerto 8081 de tu equipo.
+### `bd`
 
-Levanta el conjunto y entra en `http://localhost:8081`. Cuando el gestor te pida a qué servidor quiere conectarse, tendrás que decírselo: usa **el nombre del servicio**.
+- imagen `ghcr.io/<usuario>/escaparate-db:1.0.0`;
+- variables de PostgreSQL;
+- volumen con nombre para `/var/lib/postgresql`;
+- **ningún puerto publicado**.
 
-**Comprueba**: entras en la base de datos desde el navegador y ves las tablas de Escaparate con sus productos.
-**Captura**: el gestor conectado, con el listado de tablas.
+!!! info "Ruta de persistencia en PostgreSQL 18"
+    Esta actividad utiliza `postgres:18-alpine`. A partir de PostgreSQL 18, la imagen oficial cambió `PGDATA` a una ruta específica de versión y el volumen persistente debe montarse en `/var/lib/postgresql`. No utilices `/var/lib/postgresql/data`, que corresponde al esquema anterior de la imagen y provocaría que los datos no se reutilizaran al recrear el contenedor.
 
----
+### `gestor`
 
-## Paso 2 — Deja tu marca
+- imagen `adminer:4.8.1`;
+- puerto 8081 del anfitrión publicado hacia el contenedor.
 
-Inserta desde el gestor un producto nuevo cuyo nombre incluya tu apellido, para que se identifique como tuyo.
+Levanta el conjunto y entra en:
 
-**Captura**: la fila insertada.
+```text
+http://localhost:8081
+```
 
----
+Cuando Adminer te pregunte por el servidor PostgreSQL, escribe:
 
-## Paso 3 — Las tres formas de apagar
+```text
+bd
+```
 
-Haz esta secuencia en orden. **Antes de cada comprobación, escribe qué esperas que ocurra**; después ejecútalo y compara. Lo que se valora aquí no es acertar, sino que la explicación de tu error —si lo hay— sea correcta.
+No utilices `localhost`.
 
-1. Detén el conjunto y vuelve a levantarlo. ¿Sigue tu producto?
-2. Desmóntalo con `down` y vuelve a levantarlo. ¿Sigue tu producto?
-3. Desmóntalo con `down -v` y vuelve a levantarlo. ¿Sigue tu producto?
+**Comprueba:** puedes entrar en la base de datos y ver la tabla `productos` con los datos iniciales de Escaparate.
 
-**Captura**: el estado de la tabla después de cada uno de los tres pasos.
+**Captura:** Adminer conectado y listado de tablas.
 
 !!! question "Reflexiona"
-    En dos de los tres casos los contenedores fueron **eliminados** y aun así los datos aparecieron intactos al volver. **¿Dónde estaban guardados mientras no existía ningún contenedor?** Y la pregunta que importa de verdad: si esto fuera la base de datos de una tienda real y alguien escribiera el tercer comando por costumbre, ¿qué se podría hacer para recuperarla?
+    Adminer utiliza el nombre `bd`, aunque tu equipo no conoce ninguna máquina con ese nombre. ¿Quién proporciona esa resolución dentro del conjunto?
 
 ---
 
-## Paso 4 — Escaparate completo: levanta y falla
+## Paso 2: Deja tu marca
 
-Abre ahora el `compose.yaml` que se entrega con la actividad. Describe los tres servicios de Escaparate: `front`, `api` y `bd`. **Tiene un error a propósito.** No lo busques leyendo: lo vas a encontrar como se encuentran en un proyecto real.
+Desde Adminer añade un producto cuyo nombre incluya tu apellido.
 
-Levanta el conjunto y abre el catálogo en el navegador. No va a funcionar: la página carga pero no hay productos.
+**Captura:** fila insertada.
 
-Diagnostica con el método de la sesión 3: mira si los tres servicios están vivos y lee los logs del que sospeches. **El mensaje de error dice exactamente qué nombre ha intentado resolver la aplicación.** Compáralo con los nombres de servicio declarados en el fichero, corrige y vuelve a levantar.
+---
 
-**Comprueba**: el catálogo muestra los productos.
-**Captura**: la línea del log donde se ve el fallo, y el catálogo funcionando después.
+## Paso 3: Las tres formas de apagar
+
+Haz esta secuencia en orden. **Antes de cada prueba escribe qué esperas que ocurra**.
+
+1. Detén el conjunto y vuelve a iniciarlo.
+2. Desmóntalo con `down` y vuelve a levantarlo.
+3. Desmóntalo con `down -v` y vuelve a levantarlo.
+
+Después de cada operación comprueba si sigue existiendo el producto añadido en el paso 2.
+
+**Captura:** estado de la tabla después de cada caso.
 
 !!! question "Reflexiona"
-    Una vez corregido, la aplicación resuelve `bd` como si fuera un nombre de máquina de toda la vida. Pero si tú escribes ese mismo nombre en tu navegador, no existe. **¿Por qué el nombre del servicio resuelve dentro de la red y no en tu máquina? ¿Quién responde esa consulta, y a quién no se le ha ofrecido nunca ese listado?**
+    En algunos casos los contenedores dejan de existir y, aun así, los datos vuelven a aparecer. **¿Dónde están guardados realmente?** ¿Qué diferencia introduce `-v`? Si esto fuera una base de datos real, ¿qué tendría que existir fuera de este procedimiento para poder recuperar los datos después de una pérdida del volumen?
 
 ---
 
-## Paso 5 — Cierra las puertas
+## Paso 4: Pasa al despliegue de Escaparate
 
-Revisa el fichero y quita los puertos publicados de **todo lo que no reciba visitas del exterior**. Al terminar debe quedar exactamente una puerta abierta.
+Ya has utilizado Compose para conectar dos servicios y comprobar la persistencia de un volumen. Antes de cambiar de escenario, desmonta el conjunto anterior:
 
-Ahora demuéstralo, y esta es la parte que se corrige:
+```bash
+docker compose down
+```
 
-- **Desde tu equipo**: intenta conectarte a la base de datos y a la API por sus puertos. No deben responder.
-- **Desde dentro de la red**: comprueba por separado los dos servicios:
-    - Desde el contenedor front, pide el endpoint de salud de la API usando su nombre de servicio.
-    - Para comprobar PostgreSQL, utiliza un contenedor temporal que tenga las herramientas de PostgreSQL y conéctalo a la misma red de Compose. Desde él, comprueba que `bd:5432` está disponible.
+Ahora sustituye el contenido de `practicas/compose/compose.yaml` por este punto de partida:
+
+```yaml
+services:
+  bd:
+    image: ghcr.io/<usuario>/escaparate-db:1.0.0
+    environment:
+      POSTGRES_USER: escaparate
+      POSTGRES_PASSWORD: escaparate
+      POSTGRES_DB: escaparate
+    ports:
+      - "5433:5432"
+    volumes:
+      - datos-bd:/var/lib/postgresql
+
+  app:
+    image: ghcr.io/<usuario>/escaparate:sesion-04
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: escaparate
+      DB_USER: escaparate
+      DB_PASSWORD: escaparate
+    depends_on:
+      - bd
+
+volumes:
+  datos-bd:
+```
+
+El conjunto principal tiene únicamente dos servicios:
+
+```text
+app
+bd
+```
+
+No existe un servicio `front`: el frontend está integrado dentro de la propia aplicación Spring Boot.
+
+Este punto de partida contiene **dos decisiones que tendrás que revisar durante la actividad**:
+
+- un error deliberado en la configuración de conexión de `app` a PostgreSQL;
+- un puerto de PostgreSQL publicado temporalmente en el anfitrión, que más adelante eliminarás.
+
+No lo busques comparando línea por línea. Levanta el conjunto:
+
+```bash
+docker compose up -d
+```
+
+y diagnostica qué ocurre utilizando:
+
+```bash
+docker compose ps
+docker compose logs
+```
+
+El contenedor de la aplicación debería dejar una pista clara sobre el nombre de host al que ha intentado conectarse.
+
+Compara ese nombre con el servicio definido en Compose, corrige el problema y vuelve a levantar el conjunto.
+
+**Comprueba:**
+
+```text
+http://localhost:8080/
+```
+
+muestra los productos y:
+
+```text
+http://localhost:8080/api/salud/listo
+```
+
+responde correctamente.
+
+**Captura:** línea relevante de los logs antes del arreglo y catálogo funcionando después.
+
+!!! question "Reflexiona"
+    Una vez corregido, Escaparate puede utilizar `bd` como nombre de host. Sin embargo, `bd` no funciona si lo escribes en el navegador de tu equipo. **¿Por qué ese nombre existe dentro de la red de Compose y no fuera de ella?**
+
+---
+
+## Paso 5: Publica solo lo que necesita entrar desde fuera
+
+Revisa `compose.yaml`.
+
+Al finalizar:
+
+- `app` debe publicar su puerto 8080;
+- `bd` **no debe publicar ningún puerto**.
+
+Comprueba primero desde el equipo anfitrión:
+
+```bash
+curl -fsS http://localhost:8080/api/salud/listo
+```
+
+Debe responder.
+
+Después intenta acceder a PostgreSQL mediante un puerto del anfitrión. No debe existir ningún mapeo hacia 5432.
+
+Compruébalo también con:
+
+```bash
+docker compose ps
+```
+
+### Comprueba la red desde dentro
+
+Averigua el nombre de la red creada por Compose:
+
+```bash
+docker network ls
+```
+
+Utiliza después un contenedor temporal de PostgreSQL conectado a esa red:
 
 ```bash
 docker run --rm --network <nombre-red> postgres:18-alpine \
   pg_isready -h bd -p 5432
 ```
 
-El objetivo no es instalar herramientas dentro de tus contenedores de aplicación, sino demostrar que ambos servicios son accesibles **desde su red interna y no desde el anfitrión**.
+Debe indicar que PostgreSQL acepta conexiones.
 
-**Comprueba**: el catálogo sigue funcionando con normalidad a pesar de que dos de los tres servicios son inalcanzables desde fuera.
-**Captura**: los dos intentos fallidos desde tu equipo y los dos intentos correctos desde dentro.
+Haz una comprobación equivalente de la aplicación desde dentro de la red utilizando una imagen temporal con `curl`:
 
----
+```bash
+docker run --rm --network <nombre-red> curlimages/curl:8.21.0 \
+  -fsS http://app:8080/api/salud/listo
+```
 
-## Paso 6 — Saca las credenciales del fichero
+Utilizamos una versión concreta para que la comprobación sea reproducible y no dependa de una etiqueta móvil.
 
-El `compose.yaml` va a ir al repositorio, así que las contraseñas no pueden estar escritas en él. Sustitúyelas por variables, crea el `.env` con los valores reales y un `.env.example` con las mismas claves y valores de mentira. Comprueba que el `.gitignore` que escribiste en la sesión 2 ya excluye el primero —debería— y añade el segundo al repositorio.
+**Comprueba:**
 
-Comprueba con el comando que muestra el fichero ya interpolado que Compose está leyendo bien los valores.
+```text
+Desde el anfitrión:
+app:8080     accesible
+bd:5432      no publicado
 
-**Comprueba**: el conjunto levanta igual y en el `compose.yaml` no queda ninguna credencial.
-**Captura**: el `compose.yaml`, el `.env.example` y la salida del fichero interpolado.
+Desde la red de Compose:
+app:8080     accesible
+bd:5432      accesible
+```
 
----
-
-## Paso 7 — El arranque en frío
-
-Desmonta el conjunto por completo, **borrando también los volúmenes**, y vuelve a levantarlo. El entorno de la actividad está preparado para que, durante la inicialización desde cero, PostgreSQL tarde unos segundos adicionales en empezar a aceptar conexiones.
-
-Observa los logs de la API. El contenedor de la base de datos ya existe, pero el servicio todavía no está listo. La API intenta conectarse demasiado pronto y falla.
-
-Este retraso se ha introducido deliberadamente para que todos podáis observar el mismo problema. En un sistema real la carrera puede aparecer solo algunas veces, lo que precisamente la hace más difícil de diagnosticar.
-
-Arréglalo declarando **cuándo se considera lista** la base de datos y haciendo que la API espere a esa condición, no solo a que el contenedor exista. Después repite el arranque en frío dos veces más.
-
-**Comprueba**: tres arranques en frío consecutivos, los tres correctos, con el estado de salud visible en el listado de servicios.
-**Captura**: la línea del log donde la API se queja antes del arreglo, el bloque del fichero que has añadido, y el listado mostrando la base de datos como sana.
+**Captura:** `docker compose ps`, petición correcta a la aplicación, ausencia de puerto publicado en `bd` y las dos comprobaciones internas.
 
 !!! question "Reflexiona"
-    «Que el contenedor exista» y «que el servicio esté listo» son dos cosas distintas, y acabas de ver la diferencia. **¿Quién decide, y cómo, que una pieza está lista?** Piensa qué tendría que comprobar el sistema en el caso de la base de datos, y qué comprobaría en el caso de la API.
+    Ocultar el puerto de PostgreSQL no impide que Escaparate se conecte. ¿Qué diferencia hay entre que un servicio sea accesible **dentro de una red Docker** y que tenga un puerto **publicado en el anfitrión**?
 
 ---
 
-## Paso 8 — El procedimiento
+## Paso 6: Saca las credenciales del fichero
 
-Escribe en el `README.md` del repositorio el procedimiento completo de despliegue, pensado para alguien que no ha estado en esta clase:
+`compose.yaml` va a entrar en Git. Las contraseñas utilizadas en tu equipo no.
 
-- Qué necesita tener instalado.
-- Qué tiene que rellenar antes de empezar y de dónde saca los valores.
-- Los comandos exactos, en orden.
-- Cómo comprobar que ha funcionado.
-- Cómo detenerlo, y cuál es la diferencia entre las dos formas de desmontarlo.
+Sustituye los valores locales por variables y crea:
 
-Cierra la sesión abriendo la petición de fusión de `sesion-05` hacia la rama principal.
+```text
+practicas/
+└── compose/
+    ├── compose.yaml
+    ├── .env
+    ├── .env.example
+    └── 00-delay.sql
+```
 
-**Captura**: el `README` renderizado en el repositorio.
+### `.env`
 
-!!! tip "La prueba del algodón"
-    Si un compañero puede seguir tu procedimiento sin preguntarte nada, está bien escrito. Si tiene que preguntarte una sola cosa, esa cosa es justamente la que falta.
+Contiene los valores reales utilizados en tu equipo y **no se versiona**.
+
+### `.env.example`
+
+Contiene las mismas claves, pero valores de ejemplo que otra persona pueda sustituir.
+
+Comprueba que las reglas creadas en la actividad 1.2 ignoran `.env`.
+
+Antes de continuar:
+
+```bash
+git check-ignore -v practicas/compose/.env
+```
+
+Comprueba también el resultado que Compose interpreta:
+
+```bash
+docker compose config
+```
+
+!!! warning "Cuidado con la captura"
+    `docker compose config` puede mostrar los valores ya interpolados. Si contiene tu contraseña real, no incluyas esa salida completa en una captura ni en la entrega.
+
+**Comprueba:** el conjunto levanta igual, `compose.yaml` no contiene la contraseña real y `.env` no aparece como fichero versionable.
+
+**Captura:** fragmento relevante de `compose.yaml`, `.env.example` y comprobación de que `.env` está ignorado.
+
+---
+
+## Paso 7: Contenedor iniciado no significa servicio preparado
+
+Desmonta completamente el conjunto:
+
+```bash
+docker compose down -v
+```
+
+Crea ahora el fichero:
+
+```text
+practicas/compose/00-delay.sql
+```
+
+con este contenido:
+
+```sql
+SELECT pg_sleep(20);
+```
+
+Su única función es introducir una espera reproducible durante la **primera inicialización de un volumen vacío** de PostgreSQL. No representa una migración ni forma parte funcional de Escaparate: es un recurso didáctico para poder observar la diferencia entre "contenedor iniciado" y "servicio preparado".
+
+Añade al servicio `bd` un montaje de **ese fichero concreto** en:
+
+```text
+/docker-entrypoint-initdb.d/00-delay.sql
+```
+
+De este modo se ejecutará antes de `01-schema.sql` y `02-data.sql`, que ya forman parte de tu imagen `escaparate-db:1.0.0`.
+
+!!! warning "No montes el directorio completo"
+    Si montaras una carpeta local completa sobre `/docker-entrypoint-initdb.d/`, ocultarías los scripts que ya contiene la imagen. Monta únicamente `00-delay.sql`.
+
+Vuelve a levantar:
+
+```bash
+docker compose up -d
+```
+
+Observa:
+
+```bash
+docker compose ps
+docker compose logs app
+docker compose logs bd
+```
+
+La aplicación puede intentar conectarse cuando el contenedor `bd` ya existe pero PostgreSQL todavía no acepta conexiones de red.
+
+### Haz que Compose espere a la condición correcta
+
+Añade a `bd` una comprobación de salud basada en `pg_isready`.
+
+La comprobación debe representar lo que realmente necesita `app`: que PostgreSQL acepte **conexiones TCP**. No te limites a comprobar únicamente el socket local del propio contenedor.
+
+Después configura la dependencia de `app` para que espere a que `bd` esté **healthy**, no simplemente iniciado.
+
+!!! tip "Esperar a la aplicación, no un número de segundos"
+    Aunque Compose espere a que PostgreSQL esté preparado antes de iniciar `app`, Spring Boot todavía necesita unos segundos para arrancar.
+
+    Para comprobar cuándo Escaparate está realmente preparado, no utilizaremos un `sleep` con una duración elegida a ojo. Utiliza este bucle ya preparado:
+
+    ```bash
+    for i in {1..30}; do
+        if curl -fsS http://localhost:8080/api/salud/listo; then
+            break
+        fi
+        sleep 2
+    done
+    ```
+
+    El comando intenta consultar el endpoint de readiness cada 2 segundos y termina en cuanto responde correctamente.
+
+    No necesitas memorizar ni saber construir todavía este bucle. Lo importante es entender la diferencia entre **esperar un tiempo fijo** y **comprobar una condición real**.
+
+Repite tres veces el arranque desde cero:
+
+```bash
+docker compose down -v
+docker compose up -d
+```
+
+Después de cada arranque, observa primero:
+
+```bash
+docker compose ps
+```
+
+y utiliza el bucle anterior para esperar hasta que Escaparate esté realmente preparado.
+
+**Comprueba:**
+
+- PostgreSQL pasa primero a estado `healthy`;
+- `app` comienza a arrancar después;
+- el bucle termina cuando `/api/salud/listo` responde correctamente;
+- el catálogo funciona;
+- los tres arranques en frío consecutivos terminan correctamente.
+
+**Captura:** fallo previo, bloque `healthcheck`, dependencia condicionada y `docker compose ps` después del arreglo.
+
+!!! question "Reflexiona"
+    "El contenedor se ha iniciado" y "el servicio está preparado" no significan lo mismo. ¿Qué comprueba `pg_isready` en este caso? Escaparate dispone además de `/api/salud/vivo` y `/api/salud/listo`. ¿Qué diferencia conceptual hay entre ambas comprobaciones?
+
+---
+
+## Paso 8: Completa el procedimiento del repositorio
+
+En la actividad 1.2 dejaste en el `README.md` principal un apartado:
+
+```text
+Puesta en marcha
+```
+
+que todavía estaba pendiente.
+
+Complétalo ahora para que una persona que acaba de clonar el repositorio pueda levantar Escaparate sin preguntarte nada.
+
+Debe indicar:
+
+- qué necesita tener instalado;
+- dónde está el fichero Compose;
+- cómo crear `.env` a partir de `.env.example`;
+- qué valores debe completar;
+- comando para arrancar;
+- URL para comprobar el catálogo;
+- endpoint para comprobar readiness;
+- cómo detener el conjunto sin borrar datos;
+- cómo desmontarlo eliminando también los volúmenes;
+- qué consecuencia tiene esta última operación.
+
+Antes de cerrar la sesión, revisa `actividad-2.3.md` y comprueba que contiene las predicciones, resultados, reflexiones y capturas solicitadas.
+
+Después sigue el flujo habitual:
+
+1. registra los cambios;
+2. publica `sesion-05`;
+3. abre una Pull Request hacia `main`;
+4. revisa los cambios.
+
+Antes de fusionar la Pull Request, haz una captura de la PR abierta y de la sección `Puesta en marcha` renderizada. Guarda ambas en `entregas/tema2/actividad-2.3/img/`, enlázalas desde `actividad-2.3.md` y registra y publica esos últimos cambios.
+
+Comprueba que la Pull Request se actualiza con el nuevo commit. Cuando toda la documentación esté incluida, fusiónala mediante **Create a merge commit** y actualiza tu `main` local.
+
+!!! tip "La prueba del compañero"
+    Un procedimiento es reproducible cuando otra persona puede ejecutarlo sin tener que preguntarte qué querías decir ni qué comando faltaba.
 
 ---
 
 ## Si te sobra tiempo
 
-Añade al conjunto un **límite de memoria** para el servicio de la base de datos y comprueba en el listado de contenedores que se ha aplicado. Después bájalo a un valor absurdamente pequeño y vuelve a levantar: verás qué hace el motor cuando una pieza no cabe en lo que le has dado. Devuélvelo a un valor razonable antes de entregar.
+Añade un límite de memoria al servicio `bd` y comprueba que se ha aplicado.
+
+Después reduce temporalmente el límite a un valor demasiado pequeño y observa qué ocurre al intentar arrancar PostgreSQL. Devuelve finalmente un valor razonable antes de entregar.
 
 ---
 
 ## Verificación
 
-Sobre un equipo limpio, y partiendo únicamente de tu repositorio:
+La práctica se comprobará desde un clon limpio utilizando una cuenta con acceso al repositorio privado.
 
 ```bash
-git clone <tu-repositorio> && cd <tu-repositorio>
-cp .env.example .env      # y se rellenarán los valores
+git clone https://github.com/<usuario>/daw-despliegue.git verifica
+cd verifica/practicas/compose
+
+cp .env.example .env
+```
+
+Se completarán los valores de `.env` y después:
+
+```bash
 docker compose up -d
 docker compose ps
-curl -s -o /dev/null -w "%{http_code}\n" localhost:8080
-curl -s --max-time 3 localhost:5432 ; echo "salida: $?"
-docker compose exec front wget -qO- http://api:8080/api/salud
-docker compose down -v && docker compose up -d && sleep 20 && docker compose ps
+
+curl -fsS http://localhost:8080/
+curl -fsS http://localhost:8080/api/salud/vivo
+curl -fsS http://localhost:8080/api/salud/listo
 ```
+
+Debe comprobarse que PostgreSQL no publica puerto hacia el anfitrión.
+
+Para verificar la red interna se utilizará la red creada por Compose y contenedores temporales:
+
+```bash
+docker run --rm --network <nombre-red> postgres:18-alpine \
+  pg_isready -h bd -p 5432
+```
+
+y `curlimages/curl:8.21.0` para consultar:
+
+```text
+http://app:8080/api/salud/listo
+```
+
+Finalmente se probará un arranque completamente nuevo:
+
+```bash
+docker compose down -v
+docker compose up -d
+docker compose ps
+
+for i in {1..30}; do
+    if curl -fsS http://localhost:8080/api/salud/listo; then
+        exit 0
+    fi
+    sleep 2
+done
+
+echo "Escaparate no ha alcanzado el estado ready"
+exit 1
+```
+
+La comprobación no espera un número fijo de segundos: consulta periódicamente el endpoint de readiness y termina en cuanto la aplicación está realmente preparada. Si después de 30 intentos no responde, la verificación falla.
 
 Y debe observarse:
 
-- Que el conjunto levanta **sin más instrucciones que las del `README`**.
-- Que los tres servicios aparecen en marcha y la base de datos, como sana.
-- Que el catálogo responde en el puerto publicado, con sus productos.
-- Que la base de datos **no responde** desde el equipo anfitrión.
-- Que la API **sí responde** desde dentro de la red.
-- Que tras un arranque en frío completo el conjunto vuelve a quedar sano, sin intervención.
-- Que en el repositorio no hay ninguna credencial: ni en el `compose.yaml`, ni en el historial.
-- Que la entrega llega a la rama principal **a través de una petición de fusión** desde `sesion-05`.
+- Los dos servicios están en ejecución.
+- `bd` aparece como `healthy`.
+- `app` se inicia después de que PostgreSQL alcance ese estado.
+- El catálogo integrado responde en el puerto 8080.
+- `/api/salud/vivo` y `/api/salud/listo` responden correctamente.
+- La verificación espera a una condición real de readiness y no depende de un `sleep` fijo.
+- PostgreSQL no tiene puerto publicado en el anfitrión.
+- Tanto `app` como `bd` son accesibles por nombre desde la red de Compose.
+- `compose.yaml` no contiene credenciales reales.
+- `.env` no está registrado en Git.
+- `.env.example` sí está versionado.
+- La sección `Puesta en marcha` del `README.md` permite reproducir el despliegue.
+- Los cambios han llegado a `main` mediante la Pull Request de `sesion-05`.
 
 ---
 
 ## Qué se entrega
 
-- [ ] El conjunto de calentamiento: dos servicios, volumen con nombre y conexión por nombre de servicio.
-- [ ] Las tres formas de apagar, con las predicciones, los resultados y la explicación de las diferencias.
-- [ ] El diagnóstico del fallo de conexión a partir de los logs, con la corrección justificada.
-- [ ] La reflexión sobre la resolución de nombres dentro y fuera de la red.
-- [ ] Las cuatro comprobaciones de puertos: dos fallidas desde fuera y dos correctas desde dentro.
-- [ ] El `compose.yaml` sin credenciales, el `.env.example` y la salida del fichero interpolado.
-- [ ] La comprobación de salud, con el log del fallo previo y los tres arranques en frío correctos.
-- [ ] El `README` con el procedimiento de despliegue completo y reproducible.
-- [ ] La petición de fusión de `sesion-05`, fusionada.
+- [ ] Prueba inicial con `bd` y Adminer, incluyendo conexión por nombre de servicio.
+- [ ] Experimento de persistencia con `stop`, `down` y `down -v`.
+- [ ] Diagnóstico del fallo deliberado de conexión de `app`.
+- [ ] `practicas/compose/compose.yaml` final con `app` y `bd`.
+- [ ] Comprobaciones de accesibilidad desde el anfitrión y desde la red interna.
+- [ ] `.env.example` versionado y `.env` correctamente ignorado.
+- [ ] `healthcheck` de PostgreSQL y dependencia de `app` condicionada a `service_healthy`.
+- [ ] Tres arranques en frío consecutivos correctos.
+- [ ] Sección `Puesta en marcha` completa en el `README.md`.
+- [ ] `entregas/tema2/actividad-2.3/actividad-2.3.md` con predicciones, resultados y reflexiones.
+- [ ] `entregas/tema2/actividad-2.3/img/` con las capturas enlazadas mediante rutas relativas.
+- [ ] Pull Request `sesion-05 → main` fusionada.
+
+!!! info "Dónde queda la entrega"
+    La evidencia de la actividad queda versionada en el repositorio privado. Los ficheros técnicos permanecen en `practicas/compose/`.
 
 ---
 
 ## ✅ Cierre
 
-Con esto se cierra el bloque de contenedores. Repasa lo que tienes ahora y compáralo con el primer día: una aplicación que solo funcionaba en el ordenador donde se escribió es hoy un conjunto de tres piezas empaquetadas, publicadas en un registro, descritas en un fichero versionado y levantables en cualquier máquina con Docker escribiendo un comando. Y de propina has cerrado dos de las tres puertas que estaban abiertas por descuido.
+Con esta sesión ya no necesitas recordar una secuencia de comandos para poner en marcha Escaparate. La aplicación, PostgreSQL, su red, la persistencia, la configuración y el orden de arranque están descritos en un fichero que forma parte del repositorio.
 
-Queda lo que Compose no puede hacer. Tu aplicación responde en el puerto 8080 de una máquina concreta, no en el 80 ni en el 443 de un nombre que alguien pueda teclear; sirve los ficheros estáticos de cualquier manera y no sabe nada de compresión, de caché ni de tipos de contenido; y ese fichero de configuración del servidor web que hoy has usado sin abrir sigue siendo una caja negra.
+También has separado dos conceptos que suelen confundirse al empezar con Docker. Que un servicio sea accesible para otros contenedores no obliga a publicarlo en el equipo anfitrión, y que un contenedor se haya iniciado no significa necesariamente que la aplicación que contiene esté preparada para trabajar.
 
-En la próxima sesión empezamos por arriba: qué hace exactamente un servidor web, cómo sirve dos sitios distintos desde la misma máquina y cómo se llega hasta él escribiendo un nombre en lugar de una dirección. Y de paso publicarás los informes de pruebas y la documentación de Escaparate, que hasta ahora no han tenido dónde vivir.
-
-La caja negra se abre una semana después, cuando ese mismo servidor deje de servir una aplicación para colocarse delante de varias y repartir el tráfico entre ellas. Entonces esas cuatro líneas que hoy has usado a ciegas serán lo más interesante del fichero.
+A partir de ahora podrás entregar el repositorio a otra persona y pedirle que levante el sistema siguiendo la sección `Puesta en marcha`. En el siguiente bloque empezarás a estudiar qué ocurre por delante de la aplicación: cómo un servidor web sirve contenido, responde a distintos nombres y, más adelante, se coloca como punto de entrada antes de Escaparate.

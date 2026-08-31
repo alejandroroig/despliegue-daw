@@ -1,305 +1,1390 @@
-# 🧩 2. Control de versiones y documentación
+# 🧩 Control de versiones y documentación
 
-!!!info "Descarga de diapositivas"
+!!! info "Descarga de diapositivas"
     [Descarga las diapositivas](diapositivas/control-versiones-documentacion.pptx){target="_blank" rel="noopener"}
 
 ---
 
-La semana pasada abriste tres sitios reales con las herramientas del navegador y terminaste con una lista incómoda: para replicar cualquiera de ellos hace falta el código, sí, pero también la configuración, los ficheros estáticos, las credenciales de la base de datos y un procedimiento que ahora mismo solo está en la cabeza de alguien. Quedó una pregunta abierta: **¿dónde vive todo eso mientras no está desplegado, y cómo llega al servidor sin que se pierda nada por el camino?**
+La sesión anterior terminó con una idea importante: un despliegue profesional no puede depender de "los ficheros que tengo ahora mismo en mi portátil" ni de una lista de pasos que solo recuerda una persona.
 
-La respuesta empieza hoy. Ya usaste Git el curso pasado, así que buena parte de lo que viene te sonará. Pero conviene que sepas desde el primer minuto que aquí significa otra cosa. En programación, el repositorio es la red de seguridad del que escribe código: guarda tu trabajo y te deja volver atrás. En despliegue, el repositorio es **el origen de todo lo que se pone en marcha**: lo que está en la rama principal es lo que debería estar funcionando en el servidor, y todo lo que llegue a producción tiene que haber pasado por ahí. Un repositorio bien montado es media infraestructura; uno mal montado es un incidente esperando su turno.
+Antes de automatizar, contenerizar o desplegar nada necesitamos una **fuente de verdad**: un lugar donde queden registrados el código, la configuración que sí puede compartirse, la documentación y el procedimiento de trabajo.
+
+Ese lugar será el repositorio Git.
+
+En programación, Git suele presentarse como una forma de guardar versiones del código. En despliegue necesitamos verlo de una forma más amplia:
+
+> **el repositorio contiene la información necesaria para reconstruir y explicar un estado desplegable del sistema.**
+
+Eso no significa que todo deba guardarse en Git. Los secretos, los datos generados y los artefactos reconstruibles deben quedarse fuera. Aprender a distinguir qué entra, qué no entra y cómo evoluciona el historial es el objetivo de esta sesión.
 
 ---
 
-## 🧠 Repaso exprés: las tres áreas
+## 🗺️ El flujo que vas a utilizar durante el módulo
 
-Git no funciona como el «guardar» de un editor de texto. Entre lo que editas y lo que queda registrado hay un paso intermedio, y esa es la pieza que más cuesta.
+El trabajo de cada sesión seguirá, con pequeñas variaciones, este recorrido:
 
 ```mermaid
 flowchart LR
-  W["Directorio de trabajo<br/>(editas y rompes cosas)"] -->|git add| S["Área de preparación<br/>(eliges qué guardar)"]
-  S -->|git commit| H["Historial<br/>(versiones registradas)"]
+    B["Rama<br/>sesion-XX"] --> W["Trabajar"]
+    W --> C["Commit"]
+    C --> P["Push + PR"]
+    P --> M["Merge<br/>main"]
 ```
 
-| Área | Qué contiene | Cómo se entra |
+Este será el flujo habitual del módulo:
+
+- Antes de empezar una actividad, parte de `main` actualizado y crea la rama de la sesión. 
+- Los cambios y commits se realizan en esa rama. 
+- Después, la rama se publica y se integra en `main` mediante una Pull Request.
+
+---
+
+## 🧠 1. Qué guarda realmente Git
+
+### 1.1. Git versiona ficheros, no directorios vacíos
+
+Git no guarda carpetas como si fuera una copia de seguridad. Guarda **estados de ficheros** y las relaciones entre esos estados.
+
+Esto tiene una consecuencia que suele sorprender al principio:
+
+> **Git no versiona directorios vacíos.**
+
+Si creas:
+
+```text
+entregas/
+└── tema1/
+```
+
+pero dentro no existe ningún fichero, Git no tiene nada que registrar.
+
+Por eso algunos proyectos añaden un fichero vacío como `.gitkeep` cuando necesitan conservar una estructura de directorios. `.gitkeep` no es una función especial de Git: es simplemente un nombre convencional.
+
+---
+
+### 1.2. Las tres áreas
+
+Entre lo que editas y lo que termina en el historial existe un paso intermedio.
+
+```mermaid
+flowchart LR
+    W["Directorio de trabajo<br/>working tree"] -->|"git add"| S["Área de preparación<br/>staging area"]
+    S -->|"git commit"| H["Historial<br/>commits"]
+```
+
+| Área | Qué contiene | Operación habitual |
 |---|---|---|
-| Directorio de trabajo | Los ficheros tal como están ahora mismo en tu disco | Editando |
-| Área de preparación (*staging*) | Los cambios que entrarán en el próximo commit | `git add` |
-| Historial | Los commits ya registrados, con autor, fecha y mensaje | `git commit` |
+| **Directorio de trabajo** | El estado actual de tus ficheros | editar |
+| **Área de preparación** | Los cambios elegidos para el próximo commit | `git add` |
+| **Historial** | Los cambios ya registrados | `git commit` |
 
-La razón de que exista el paso intermedio es práctica: mientras arreglas una cosa acabas tocando otras dos. Si lo guardas todo junto, el historial deja de servir para lo único que importa —saber qué cambió y poder deshacerlo por separado—. El área de preparación te deja partir un revoltijo de cambios en commits con sentido.
+La preparación existe porque un mismo rato de trabajo puede contener cambios distintos. No siempre quieres meterlos todos en el mismo commit.
 
-`git status` te dice en qué área está cada fichero, y es el comando que más vas a escribir:
+#### Ejemplo
+
+Imagina que has modificado:
+
+```text
+README.md
+config/app.properties
+docs/instalacion.md
+```
+
+pero solo quieres registrar la documentación.
+
+Puedes preparar únicamente:
 
 ```bash
-git init
+git add README.md docs/instalacion.md
+```
+
+y comprobar:
+
+```bash
+git status
+```
+
+El fichero `config/app.properties` seguirá modificado, pero no entrará en el siguiente commit.
+
+!!! tip "Usa `git status` constantemente"
+    Antes de cada `commit`, comprueba qué estás a punto de registrar. Git confirma lo que has preparado, no lo que tú crees haber preparado.
+
+---
+
+## 🏗️ 2. Crear un repositorio correctamente
+
+### 2.1. Inicializar el repositorio
+
+En proyectos nuevos puedes indicar desde el principio el nombre de la rama principal:
+
+```bash
+mkdir ejemplo-despliegue
+cd ejemplo-despliegue
+
+git init -b main
+```
+
+Comprueba:
+
+```bash
+git branch --show-current
+```
+
+Debería mostrar:
+
+```text
+main
+```
+
+Crea un primer fichero, por ejemplo:
+
+```markdown
+# Ejemplo de despliegue
+
+Repositorio utilizado para practicar el flujo de trabajo.
+```
+
+Después:
+
+```bash
 git status
 git add README.md
-git commit -m "Añade el README inicial del repositorio"
+git status
+git commit -m "Crea la documentación inicial"
 git log --oneline
 ```
 
-- `git init` crea el repositorio: aparece una carpeta oculta `.git/` y a partir de ese momento Git vigila el directorio.
-- `git status` muestra tres bloques: lo preparado, lo modificado sin preparar y lo que Git ni siquiera sigue todavía (*untracked*).
-- `git add` mueve un fichero al área de preparación. Con un nombre concreto, no con `.`, mientras estés aprendiendo a separar commits.
-- `git commit -m` registra **solo lo preparado**, con un mensaje que debe decir qué cambia y para qué.
-- `git log --oneline` lista el historial en una línea por commit. Los siete caracteres del principio son el identificador abreviado del commit, y los vas a necesitar para todo lo que viene después.
+Observa la secuencia:
 
-!!! tip "Mensajes que sirven de algo"
-    Dentro de tres meses vas a leer tu propio historial buscando en qué momento se rompió el despliegue. «Cambios» y «arreglos» no te van a servir. «Corrige la ruta de las imágenes en la configuración de producción», sí.
+```text
+untracked
+   ↓ git add
+staged
+   ↓ git commit
+tracked en el historial
+```
 
 ---
 
-## 🧯 Deshacer sin romper nada
+### 2.2. Un commit debe representar una idea
 
-Aquí es donde se separa quien ha usado Git de quien lo entiende. La pregunta no es «cómo deshago», sino **qué área quiero tocar y si el error ya lo ha visto alguien más**.
+Un commit útil no significa "todo lo que hice desde el último recreo". Intenta que cada commit responda a una intención concreta. Además, en este módulo utilizaremos una convención sencilla basada en *Conventional Commits* para que el historial sea más fácil de leer:
 
-Con cambios que todavía no has registrado:
+- feat: añade una funcionalidad
+- fix: corrige un error
+- docs: modifica documentación
+- test: añade o modifica pruebas
+- chore: tareas de mantenimiento o configuración
+
+Ejemplos:
+
+```text
+docs: añade instrucciones de arranque
+fix: corrige la ruta de almacenamiento
+chore: configura variables de desarrollo
+docs: documenta la actividad 1.2
+```
+
+!!! warning "Uso de Conventional Commits"
+    No todos los equipos usan *Conventional Commits*, pero sí es habitual utilizar alguna convención consistente para que el historial sea legible y automatizable.
+
+Por el contrario, mensajes como:
+
+```text
+cambios
+cosas
+arreglo
+final
+final2
+```
+
+hacen que el historial pierda gran parte de su valor. Puedes inspeccionarlo con:
+
+```bash
+git log --oneline
+```
+
+y obtener más información de un commit concreto con:
+
+```bash
+git show <commit>
+```
+
+---
+
+## 🚫 3. Decidir qué NO debe entrar
+
+Un repositorio útil contiene aquello que necesitamos **conservar, revisar y reconstruir**.
+
+No debe convertirse en un vertedero de todo lo que aparece en el directorio del proyecto.
+
+Las exclusiones suelen pertenecer a tres grupos:
+
+| Tipo | Ejemplos | Motivo |
+|---|---|---|
+| **Artefactos reconstruibles** | `target/`, `.class` | Se pueden volver a generar |
+| **Configuración local** | `.idea/`, `.vscode/`, `*.iml` | Depende del equipo |
+| **Secretos o datos locales** | `.env`, claves, `uploads/` | No deben publicarse o no forman parte del código |
+
+---
+
+### 3.1. `.gitignore`
+
+Las reglas se escriben en un fichero `.gitignore`.
+
+Ejemplo:
+
+```gitignore
+# Maven / Java
+target/
+*.class
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Variables locales y secretos
+.env
+.env.*
+!.env.example
+
+# Datos generados
+uploads/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+```
+
+Algunas reglas importantes:
+
+| Patrón | Significado |
+|---|---|
+| `target/` | ignora cualquier directorio `target` afectado por esa regla |
+| `*.class` | ignora ficheros que terminen en `.class` |
+| `.env.*` | ignora `.env.dev`, `.env.local`, etc. |
+| `!.env.example` | vuelve a permitir el fichero de ejemplo |
+| `uploads/` | ignora datos generados dentro de esa carpeta |
+
+!!! warning "No ignores por extensión sin pensar"
+    `*.jar` sería demasiado general para muchos proyectos Maven porque podría ocultar también ficheros necesarios, como el JAR del Maven Wrapper. Ignora lo que sabes que es generado, no todo lo que se parece a un artefacto.
+
+---
+
+### 3.2. Puede haber varios `.gitignore`
+
+Un repositorio puede tener más de un `.gitignore`.
+
+Por ejemplo:
+
+```text
+proyecto/
+├── .gitignore
+└── aplicacion/
+    ├── .gitignore
+    └── ...
+```
+
+El de la raíz establece reglas generales para el repositorio. El de `aplicacion/` puede añadir reglas específicas para esa parte del proyecto.
+
+Para saber **qué regla concreta** está ignorando una ruta:
+
+```bash
+git check-ignore -v ruta/al/fichero
+```
+
+Ejemplo:
+
+```bash
+git check-ignore -v aplicacion/target/prueba.class
+```
+
+Una salida posible:
+
+```text
+.gitignore:2:target/    aplicacion/target/prueba.class
+```
+
+Eso indica:
+
+```text
+fichero .gitignore
+línea/regla
+ruta afectada
+```
+
+Es mucho mejor que adivinar por qué un fichero no aparece en `git status`.
+
+---
+
+### 3.3. `.gitignore` no borra el pasado
+
+Supón que registras por error:
+
+```text
+.env
+```
+
+y después añades `.env` a `.gitignore`.
+
+El fichero **no desaparece del historial**. Git ya lo conoce.
+
+Si solo quieres dejar de versionarlo a partir de ahora:
+
+```bash
+git rm --cached .env
+git commit -m "Deja de versionar la configuración local"
+```
+
+Pero si `.env` contenía una contraseña real, eso no resuelve el problema de seguridad.
+
+> **Un secreto publicado debe considerarse comprometido y debe revocarse o cambiarse.**
+
+Borrarlo en un commit posterior no impide que siga existiendo en commits anteriores o en clones realizados antes.
+
+---
+
+### 3.4. Repositorios dentro de repositorios
+
+Evita copiar dentro de tu repositorio una carpeta que conserve su propio directorio:
+
+```text
+.git/
+```
+
+Tendrías un repositorio Git dentro de otro, con un comportamiento que no corresponde a lo que queremos en este módulo.
+
+Puedes localizar repositorios anidados en Linux con:
+
+```bash
+find . -name .git -type d -print
+```
+
+Un proyecto que recibes para incorporarlo como una carpeta normal debe contener sus ficheros, pero no un historial Git independiente, salvo que deliberadamente estés utilizando mecanismos como submódulos.
+
+---
+
+## 🧯 4. Deshacer: primero identifica dónde está el error
+
+No existe un único comando "deshacer".
+
+Antes de tocar nada responde dos preguntas:
+
+1. ¿El cambio está en el directorio de trabajo, en staging o en un commit?
+2. Si está en un commit, ¿ese commit ya se ha publicado?
+
+```mermaid
+flowchart TD
+    A["Hay un error"] --> B{"¿Está en un commit?"}
+    B -->|"No"| C{"¿Está preparado?"}
+    C -->|"No"| D["restore"]
+    C -->|"Sí"| E["restore --staged"]
+    B -->|"Sí"| F{"¿Ya se publicó?"}
+    F -->|"No"| G["reset, si necesitas rehacer el commit"]
+    F -->|"Sí"| H["revert"]
+```
+
+---
+
+### 4.1. Cambio no preparado que quieres tirar
+
+Has escrito algo en `README.md`, no lo has preparado y quieres recuperar exactamente la versión del último commit:
 
 ```bash
 git restore README.md
+```
+
+Antes:
+
+```text
+working tree: modificado
+staging:      sin cambios
+```
+
+Después:
+
+```text
+working tree: limpio
+staging:      sin cambios
+```
+
+!!! danger "El cambio sin registrar se pierde"
+    `git restore README.md` descarta esas modificaciones. Git no puede recuperar algo que nunca llegó a registrarse.
+
+---
+
+### 4.2. Cambio preparado que quieres conservar
+
+Has hecho:
+
+```bash
+git add README.md
+```
+
+pero decides que no quieres incluirlo todavía en el próximo commit.
+
+No quieres perder el contenido, solo sacarlo de staging:
+
+```bash
 git restore --staged README.md
+```
+
+Resultado:
+
+```text
+working tree: sigue modificado
+staging:      ya no contiene README.md
+```
+
+El contenido sigue en tu fichero.
+
+---
+
+### 4.3. Recuperar un fichero desde un commit anterior
+
+Puedes traer únicamente un fichero desde otro punto del historial:
+
+```bash
+git restore --source=<commit> README.md
+```
+
+Por ejemplo:
+
+```bash
 git restore --source=8f3c1a2 README.md
 ```
 
-- La primera forma descarta lo que hayas escrito y devuelve el fichero al estado del último commit. No hay papelera: lo descartado se pierde.
-- La segunda saca el fichero del área de preparación **sin tocar tus cambios**: siguen ahí, solo que ya no entrarían en el próximo commit.
-- La tercera trae ese fichero tal como estaba en un commit concreto. Aparece como modificado en tu directorio de trabajo; si quieres conservarlo, tienes que preparar y confirmar.
+Eso no mueve el historial. Simplemente coloca aquella versión del fichero en tu directorio de trabajo.
 
-Con commits que ya existen, hay dos caminos y no son intercambiables:
+---
+
+### 4.4. Commit local que quieres rehacer
+
+Si el commit todavía **no se ha publicado**, puedes mover tu rama hacia atrás.
 
 ```bash
-git revert 8f3c1a2
 git reset --soft HEAD~1
 ```
 
-- `git revert` crea **un commit nuevo** que deshace exactamente lo que hizo el commit indicado. El historial crece y no se reescribe.
-- `git reset` mueve el puntero hacia atrás y **hace desaparecer commits**. Lo que ocurre con sus cambios depende de la variante:
+Las variantes principales son:
 
-| Variante | ¿Adónde van los cambios del commit eliminado? | ¿Recuperable? |
-|---|---|---|
-| `--soft` | Al área de preparación, listos para volver a confirmar | Sí |
-| `--mixed` (por defecto) | Al directorio de trabajo, sin preparar | Sí |
-| `--hard` | Se borran | No |
+| Variante | Qué ocurre con los cambios del commit eliminado |
+|---|---|
+| `--soft` | quedan preparados |
+| `--mixed` | quedan modificados pero sin preparar |
+| `--hard` | se descartan |
 
-El criterio para elegir entre uno y otro no es técnico, es social:
-
-| Situación | Qué usar | Por qué |
-|---|---|---|
-| El commit está solo en tu máquina y el mensaje está mal | `git reset --soft HEAD~1` | Rehaces el commit y nadie se entera |
-| El commit ya está publicado en el remoto | `git revert` | Reescribir historial publicado rompe el de los demás |
-| Quieres recuperar un fichero suelto a como estaba | `git restore --source=<commit>` | No toca el historial |
-| Quieres ver qué hizo un commit antes de decidir | `git show <commit>` | No modifica nada |
-
-!!! danger "Reescribir historial publicado"
-    Si haces `reset` sobre commits que ya están en el remoto, la única forma de subirlos es forzando el push. Eso borra en el servidor un trabajo que otra persona puede haberse descargado ya. En un repositorio de despliegue es todavía peor: el historial es la trazabilidad de qué versión se puso en marcha y cuándo. Cuando el error ya está publicado, se corrige hacia delante, con `revert`.
+!!! danger "`--hard` borra trabajo"
+    Utilízalo solo cuando sabes exactamente qué estado quieres recuperar.
 
 ---
 
-## ☁️ El remoto y la credencial
+### 4.5. Commit ya publicado
 
-Un repositorio local no sirve para desplegar nada: el servidor tiene que poder descargarlo, y tú tienes que poder trabajar desde cualquier equipo del aula. Para eso está el repositorio remoto, que en este módulo vive en GitHub.
+Si el commit ya está en el remoto, no conviene hacerlo desaparecer reescribiendo el historial.
 
-Lo primero es la credencial, y conviene resolverlo hoy porque no se puede aplazar: **GitHub no acepta tu contraseña de la web para subir código.** Tienes dos opciones.
+Supón:
 
-```bash
-ssh-keygen -t ed25519 -C "tu.correo@ejemplo.com"
-cat ~/.ssh/id_ed25519.pub
-ssh -T git@github.com
+```text
+A --- B --- C
+          error
 ```
 
-- El primer comando genera un par de claves: una privada que se queda en tu equipo y no sale de ahí nunca, y una pública que sí se puede repartir.
-- El segundo muestra la pública, que es la que pegas en GitHub, en *Settings → SSH and GPG keys → New SSH key*.
-- El tercero comprueba la conexión. Si responde saludándote por tu nombre de usuario, ya está.
-
-La alternativa es un **token de acceso personal**: una cadena que se genera en *Settings → Developer settings → Personal access tokens*, se usa en lugar de la contraseña y se puede revocar sin cambiar nada más. Funciona igual de bien, pero hay que guardarlo en algún sitio y ese sitio nunca es el repositorio.
-
-!!! warning "El `home` del aula"
-    Si los equipos del aula borran tu carpeta personal entre sesiones, la clave privada desaparece cada viernes y tendrás que registrar una nueva. Compruébalo hoy: si es el caso, usa token, que se guarda donde tú quieras.
-
-Con la credencial resuelta, el resto es rutina:
+Ejecutas:
 
 ```bash
-git remote add origin git@github.com:tu-usuario/daw-despliegue.git
+git revert C
+```
+
+y obtienes:
+
+```text
+A --- B --- C --- D
+                  revierte C
+```
+
+El commit erróneo sigue existiendo y queda registrada también su corrección.
+
+Eso es justamente lo que interesa cuando otras personas pueden haber descargado el historial.
+
+> **Error privado y local: puedes rehacer.  
+> Error publicado y compartido: corrige hacia delante.**
+
+---
+
+### 4.6. Tabla rápida de decisión
+
+| Situación | Operación |
+|---|---|
+| He escrito algo que no quiero y no lo he preparado | `git restore <fichero>` |
+| He preparado un fichero de más y quiero conservar sus cambios | `git restore --staged <fichero>` |
+| Quiero recuperar un fichero tal como estaba antes | `git restore --source=<commit> <fichero>` |
+| Quiero rehacer mi último commit y todavía es solo local | `git reset --soft HEAD~1` |
+| El commit erróneo ya está publicado | `git revert <commit>` |
+| Solo quiero inspeccionar un commit | `git show <commit>` |
+
+---
+
+## ☁️ 5. Del repositorio local a GitHub
+
+Hasta ahora todo existe solo en tu ordenador.
+
+El repositorio remoto permite compartirlo y será, durante el curso, el punto común desde el que se revisará el trabajo.
+
+---
+
+### 5.1. Autenticación
+
+GitHub no utiliza la contraseña normal de la web para autenticar operaciones Git desde la línea de comandos.
+
+Dos posibilidades habituales son:
+
+- **SSH**, mediante un par de claves;
+- **HTTPS**, mediante una credencial válida como un token.
+
+En este módulo utilizaremos **HTTPS**.
+
+Una URL remota tendrá este aspecto:
+
+```text
+https://github.com/usuario/ejemplo-despliegue.git
+```
+
+Cuando Git necesita autenticarte contra GitHub por HTTPS, puede solicitar un usuario y una contraseña. El usuario es tu nombre de usuario de GitHub, pero en el campo de contraseña **no se introduce la contraseña normal de la cuenta**. Se utiliza un **Personal Access Token (PAT)**.
+
+#### 5.1.1. El PAT como credencial
+
+Un PAT es una credencial que GitHub genera para que una aplicación o una herramienta pueda actuar en tu nombre. A diferencia de la contraseña de la cuenta, puede:
+
+- tener una fecha de caducidad;
+- conceder solo determinados permisos;
+- revocarse sin cambiar tu contraseña;
+- utilizarse desde herramientas como Git o Docker.
+
+Por ejemplo, un PAT puede permitir escribir en repositorios, publicar paquetes o realizar ambas cosas. Los permisos que recibe determinan qué podrá hacer quien consiga utilizarlo.
+
+!!! danger "Un PAT es un secreto"
+    Trátalo como una contraseña: no lo escribas en el repositorio, no lo incluyas en capturas, no lo envíes por mensajería y no lo guardes en un fichero que vayas a versionar. Si se publica accidentalmente, **revócalo y crea uno nuevo**.
+
+#### 5.1.2. La simplificación que utilizaremos en el aula
+
+En la Actividad 1.2 crearás un único **Personal Access Token (classic)** para el módulo con dos ámbitos:
+
+```text
+repo
+write:packages
+```
+
+`repo` permitirá trabajar por HTTPS con tu repositorio privado. `write:packages` se utilizará en la sesión siguiente para publicar imágenes en GitHub Container Registry (`ghcr.io`). De esta forma tendrás que gestionar **una sola credencial durante estas primeras actividades**.
+
+La simplificación tiene un coste: un PAT classic con `repo` es una credencial amplia, porque puede acceder a los repositorios a los que tu cuenta tenga acceso.
+
+!!! info "La práctica recomendada: mínimo privilegio"
+    En un entorno profesional es preferible **separar credenciales por finalidad** y conceder a cada una únicamente los permisos imprescindibles.
+
+    Para este curso, la alternativa más estricta sería:
+
+    ```text
+    Git por HTTPS
+    → PAT fine-grained
+    → limitado solo a daw-despliegue
+    → Contents: Read and write
+
+    GHCR
+    → PAT classic independiente
+    → write:packages
+    ```
+
+    GitHub recomienda los tokens *fine-grained* para limitar el acceso a repositorios concretos. Sin embargo, GitHub Packages requiere actualmente un PAT classic para la autenticación manual. En la Actividad 1.2 podrás elegir esta alternativa si prefieres trabajar desde el principio con mínimo privilegio.
+
+Aunque reutilicemos el mismo PAT en la opción simplificada, **Git y Docker no comparten una sesión**. Git se autentica contra `github.com`; Docker se autenticará más adelante contra `ghcr.io`. Cada herramienta guarda y utiliza sus propias credenciales.
+
+---
+
+### 5.2. Crear el remoto
+
+Si ya tienes un proyecto local, crea en GitHub un repositorio **vacío**. No marques opciones que generen un README, `.gitignore` o licencia si esos ficheros ya existen localmente.
+
+En este módulo configuraremos el remoto mediante HTTPS:
+
+```bash
+git remote add origin https://github.com/usuario/ejemplo-despliegue.git
+```
+
+Comprueba qué remoto has configurado:
+
+```bash
+git remote -v
+```
+
+Y publica `main`:
+
+```bash
 git push -u origin main
+```
+
+`-u` deja asociada tu rama local con la rama remota correspondiente. Después normalmente bastará con:
+
+```bash
+git push
+```
+
+---
+
+### 5.3. `fetch` y `pull` no son lo mismo
+
+```bash
 git fetch
+```
+
+descarga información nueva del remoto, pero **no modifica tu rama actual**.
+
+```bash
 git pull
 ```
 
-- `git remote add origin` guarda la dirección del repositorio remoto bajo un nombre corto. `origin` es el convenio.
-- `git push -u origin main` sube tu rama por primera vez y deja anotada la correspondencia, de modo que a partir de ahí basta con `git push`.
-- `git fetch` descarga lo que hay en el remoto **sin tocar tus ficheros**. Te deja mirar antes de decidir.
-- `git pull` hace lo mismo y además lo integra en tu rama actual.
+descarga y además intenta integrar los cambios en tu rama.
+
+Cuando esperas que tu rama local simplemente avance hasta el mismo punto que el remoto, puedes utilizar:
+
+```bash
+git pull --ff-only
+```
+
+Así Git solo actualizará si puede hacerlo sin crear una fusión inesperada.
 
 ---
 
-## 🌿 La rama deja de ser trabajo paralelo
+### 5.4. Repositorio privado y colaboradores
 
-El curso pasado una rama era una línea de trabajo: te la creabas para una funcionalidad, la fusionabas y la borrabas. Aquí eso sigue siendo cierto, pero se le añade un significado nuevo: **la rama es un estado del sistema**. Y la rama principal tiene un significado muy concreto que conviene decir en voz alta desde hoy:
+Durante el curso un repositorio privado permite que el trabajo no quede visible para el resto de la clase.
 
-!!! info "El convenio de este módulo"
-    **En este módulo adoptamos el convenio de que `main` representa el estado desplegable**: no lo que funciona en tu portátil ni lo que casi está listo, sino lo que podría ponerse en producción ahora mismo. En muchos equipos reales se trabaja así, pero no es una ley de Git: hay proyectos con una rama por entorno, con ramas de publicación por versión o con esquemas más elaborados. Lo que sí es universal es que **alguna** rama tiene ese papel y que todo el mundo sabe cuál es.
+Para que otra persona pueda revisarlo hay que concederle acceso como colaboradora desde la configuración del repositorio en GitHub.
 
-Hay tres formas habituales de organizar esto, y te las nombro para que las reconozcas cuando te las encuentres, no para que las memorices:
+El modelo será:
 
-| Modelo | Cómo funciona | Cuándo tiene sentido |
-|---|---|---|
-| Rama por entorno | Una rama permanente por entorno (`desarrollo`, `preproduccion`, `main`), y el cambio va ascendiendo | Entregas espaciadas y entornos muy distintos entre sí |
-| Git-flow | Ramas permanentes de desarrollo y publicación, más ramas de funcionalidad, corrección y versión | Producto con versiones que se mantienen a la vez |
-| Tronco con ramas cortas | Una sola rama permanente; el trabajo entra en ramas que viven horas o días | Entrega frecuente y automatizada |
+```text
+repositorio privado
+        ↓
+alumno + profesor con acceso
+        ↓
+trabajo protegido durante el curso
+        ↓
+revisión final de secretos y datos
+        ↓
+opcionalmente público como portfolio
+```
 
-**Este módulo usa el tercero**, que es el que domina hoy en despliegue continuo, por una razón que entenderás mejor en diciembre: cuantas más ramas permanentes tienes, más tiempo pasa entre que alguien escribe algo y ese algo se prueba junto a lo demás; y cuanto más tarda esa integración, más caro sale el conflicto.
+Antes de hacer público cualquier repositorio revisa siempre:
 
-**Este módulo trabaja así, con una rama por sesión.** El convenio es `sesion-NN`:
+- historial;
+- `.env`;
+- tokens;
+- claves privadas;
+- datos personales;
+- capturas que puedan contener información sensible.
+
+---
+
+## 🌿 6. Ramas: referencias que se mueven
+
+Un **commit** identifica un estado concreto del repositorio.
+
+Una **rama** es una referencia móvil que apunta a un commit.
+
+```text
+A --- B --- C
+          ↑
+         main
+```
+
+Si haces otro commit:
+
+```text
+A --- B --- C --- D
+                ↑
+               main
+```
+
+`main` se ha movido. Los commits anteriores no.
+
+---
+
+### 6.1. Convenio del módulo
+
+En este módulo utilizaremos esta regla:
+
+> **`main` representa el último estado integrado que consideramos desplegable.**
+
+No significa necesariamente que ese estado esté desplegado en producción en ese momento. Significa que no deberíamos integrar en `main` trabajo incompleto o deliberadamente roto.
+
+Para trabajar utilizaremos ramas cortas:
+
+```text
+sesion-02
+sesion-03
+sesion-04
+...
+```
+
+Crear una:
 
 ```bash
 git switch -c sesion-02
-git add entregas/tema1/
-git commit -m "Documenta la actividad 1.2"
-git push -u origin sesion-02
 ```
 
-Cada viernes te creas la rama de la sesión, trabajas en ella, la publicas y la integras en `main` cuando la actividad está terminada. Al final del curso el historial de `main` es, literalmente, la lista ordenada de todo lo que has sido capaz de desplegar.
-
----
-
-## 🔀 La pull request como punto de control
-
-Podrías fusionar tu rama en `main` con un comando y ahorrarte todo lo que viene. La razón para no hacerlo es que la **pull request** —la petición de fusión— no es un trámite de cortesía, sino el sitio donde se decide si un cambio entra o no.
-
-Una pull request es una propuesta: *estos commits de esta rama quieren entrar en `main`; que alguien lo mire antes*. Y a diferencia de un merge silencioso, deja constancia de cuatro cosas que un commit suelto no guarda: qué se propuso, quién lo revisó, qué se discutió y qué comprobaciones pasó.
-
-Ese último punto es la clave del tema. Hoy, en tu repositorio, no hay nadie revisando y ninguna comprobación que pasar: eres tú abriendo una petición y tú aceptándola. Parece ceremonia vacía y en cierto modo lo es. Pero estás montando el sitio donde en diciembre se instalará un guardián.
-
-!!! info "Para saber más: la puerta que falta"
-    GitHub permite exigir, antes de que el botón de fusionar se active, que nadie pueda subir directamente a `main`, que alguien haya revisado y que **las comprobaciones automáticas estén en verde**. Esa tercera condición es la que convierte la pull request en una puerta de verdad. No la vas a configurar hoy: es la sesión 12, y para entonces habrás abierto una petición de fusión cada viernes durante tres meses. Hoy solo colocas el marco.
-
-Dos detalles prácticos que vas a usar desde ya. En la descripción de la propuesta escribe qué cambia y por qué, no qué comandos ejecutaste: dentro de dos meses eso será tu documentación. Y si tienes tareas apuntadas como *issues*, escribir `Closes #4` en la descripción cierra la tarea número 4 automáticamente al fusionar.
-
----
-
-## 🏷️ La etiqueta: la versión que se despliega
-
-Una rama se mueve. Cada commit que haces desplaza su punta, así que decir «despliega la rama `main`» es decir «despliega lo que haya ahí cuando te toque mirar». Sirve para trabajar, no para desplegar.
-
-Una **etiqueta de versión se trata como inmutable**: se crea para identificar un commit concreto y no debería reutilizarse después para señalar otro. Esa estabilidad es precisamente lo que interesa en un despliegue.
+Comprobar la rama actual:
 
 ```bash
-git tag -a v0.1.0 -m "Repositorio del curso montado y documentado"
+git branch --show-current
+```
+
+---
+
+### 6.2. Un flujo completo de rama
+
+Ejemplo genérico:
+
+```bash
+git switch main
+git pull --ff-only
+
+git switch -c sesion-XX
+```
+
+Trabajas y registras cambios:
+
+```bash
+git status
+git add README.md
+git commit -m "Actualiza la documentación de despliegue"
+```
+
+Publicas la rama:
+
+```bash
+git push -u origin sesion-XX
+```
+
+A partir de ahí, nuevos commits pueden publicarse con:
+
+```bash
+git push
+```
+
+---
+
+## 🔀 7. Pull Request: revisar antes de integrar
+
+Una Pull Request (PR) propone incorporar el trabajo de una rama en otra.
+
+Conceptualmente:
+
+```text
+main        A --- B ---------------- M
+                  \                /
+sesion-XX          C --- D --------
+```
+
+La PR crea un espacio para revisar:
+
+- qué commits entrarán;
+- qué ficheros cambian;
+- qué líneas cambian;
+- por qué se hizo el cambio;
+- qué comprobaciones se han realizado;
+- más adelante, qué pruebas automáticas han pasado.
+
+---
+
+### 7.1. Flujo completo de una PR
+
+Después de publicar `sesion-XX`:
+
+1. abre GitHub;
+2. crea una Pull Request;
+3. selecciona como destino `main`;
+4. selecciona como origen `sesion-XX`;
+5. revisa los cambios;
+6. escribe una descripción útil;
+7. crea la PR.
+
+Una descripción mínima puede seguir este esquema:
+
+```markdown
+## Qué cambia
+Se añade la documentación de la sesión.
+
+## Por qué
+El repositorio debe permitir reproducir el procedimiento.
+
+## Cómo se ha comprobado
+Se ha revisado el historial y los enlaces del README.
+```
+
+!!! tip "Documenta el propósito, no la pulsación de teclas"
+    En una PR interesa saber qué cambia, por qué y cómo se validó. No hace falta narrar `git add`, `git commit`, `git push`.
+
+---
+
+### 7.2. Una PR abierta sigue recibiendo commits
+
+La PR no es una fotografía congelada de la rama.
+
+Si después de abrirla haces:
+
+```bash
+git add .
+git commit -m "Añade las evidencias finales"
+git push
+```
+
+GitHub actualiza automáticamente la PR porque sigue comparando:
+
+```text
+sesion-XX -> main
+```
+
+Esto permite:
+
+```text
+abrir PR
+   ↓
+revisar
+   ↓
+detectar algo que falta
+   ↓
+hacer otro commit
+   ↓
+push
+   ↓
+la misma PR se actualiza
+```
+
+No necesitas crear otra PR.
+
+---
+
+### 7.3. Fusionar y volver a `main`
+
+En este módulo utilizaremos **Create a merge commit** cuando queramos conservar claramente en el grafo la bifurcación y la integración de la rama.
+
+Después de fusionar en GitHub:
+
+```bash
+git switch main
+git pull --ff-only
+```
+
+Tu `main` local quedará actualizado con el estado ya integrado.
+
+Puedes observar el historial con:
+
+```bash
+git log --graph --oneline --all --decorate
+```
+
+Una salida simplificada podría ser:
+
+```text
+*   81d5c2a (HEAD -> main, origin/main) Merge pull request ...
+|\
+| * 36f0c22 Documenta la sesión
+| * 3a8be17 Añade las evidencias
+|/
+* 12ab456 Estado anterior
+```
+
+---
+
+## 🧭 8. `main`, `origin/main`, `HEAD` y una etiqueta no son lo mismo
+
+### 8.1. Qué representa cada referencia
+
+Esta distinción será importante durante todo el módulo.
+
+Supón este estado:
+
+```text
+A --- B --- C
+          ↑
+ main, origin/main, v0.1.0
+          ↑
+         HEAD
+```
+
+Significa:
+
+- `HEAD` indica dónde estás trabajando;
+- `main` es tu rama local;
+- `origin/main` es tu referencia local del estado conocido de la rama `main` del remoto;
+- `v0.1.0` señala un commit concreto.
+
+Ahora haces un commit **sin publicarlo**:
+
+```text
+A --- B --- C --- D
+          ↑       ↑
+   origin/main   main
+   v0.1.0        HEAD
+```
+
+Solo se mueve `main`.
+
+`origin/main` no cambia porque no has hecho `push`.
+
+La etiqueta tampoco cambia porque sigue señalando el commit para el que fue creada.
+
+Esta es una forma muy útil de entender por qué una rama y una versión no representan lo mismo.
+
+---
+
+### 8.2. Commit vacío para observar referencias
+
+A veces interesa crear un commit sin modificar ficheros para estudiar cómo se mueven las referencias:
+
+```bash
+git commit --allow-empty -m "Prueba temporal de referencias"
+```
+
+Después:
+
+```bash
+git log --graph --oneline --all --decorate
+```
+
+Si ese commit era únicamente una prueba local y quieres volver **exactamente** al estado conocido del remoto:
+
+```bash
+git reset --hard origin/main
+```
+
+!!! danger "Solo en una prueba local controlada"
+    `reset --hard` descarta cambios. No utilices esta operación sobre trabajo que necesites conservar ni para reescribir commits que ya hayas publicado.
+
+---
+
+## 🏷️ 9. Etiquetas: identificar un estado concreto
+
+Una rama se mueve. Una etiqueta creada para una versión debe permanecer asociada al mismo commit.
+
+```bash
+git tag -a v0.1.0 -m "Primer estado identificable del repositorio"
 git push origin v0.1.0
 ```
 
-- `git tag -a` crea una etiqueta anotada, con autor, fecha y mensaje. Es la que se usa para marcar versiones.
-- Las etiquetas **no viajan con `git push` normal**: hay que subirlas aparte. Es el olvido más frecuente.
+`-a` crea una etiqueta anotada, que incluye metadatos y mensaje.
 
-El nombre no es libre. El **versionado semántico** propone tres números con significado, `MAYOR.MENOR.PARCHE`:
+Comprueba:
 
-| Número | Se incrementa cuando | Ejemplo |
-|---|---|---|
-| MAYOR | El cambio rompe la compatibilidad con la versión anterior | `1.4.2` → `2.0.0` |
-| MENOR | Se añade funcionalidad sin romper nada | `1.4.2` → `1.5.0` |
-| PARCHE | Se corrige un error sin cambiar el comportamiento esperado | `1.4.2` → `1.4.3` |
-
-Con eso, quien lee `2.0.0` en un registro de cambios sabe que actualizar le va a costar trabajo, y quien lee `1.4.3` sabe que puede hacerlo sin mirar. Es información, no burocracia.
-
-De aquí sale una distinción que vas a reencontrar en dos semanas y que decide despliegues:
-
-| Tipo de referencia | Ejemplo | Qué garantiza |
-|---|---|---|
-| Inmutable | `v1.4.2` | Siempre apunta al mismo contenido. Reproducible |
-| Móvil | `main`, `latest`, `estable` | Apunta a lo último. Cómoda y no reproducible |
-
-!!! warning "«Funcionaba ayer»"
-    Si despliegas una referencia móvil, dos despliegues consecutivos con el mismo comando pueden poner en marcha cosas distintas, y no tienes forma de saber cuál está corriendo. Toda la trazabilidad del despliegue descansa en usar referencias inmutables para lo que se pone en producción y móviles solo para lo que se está probando.
-
----
-
-## 🚫 Lo que no entra en el repositorio
-
-Hay dos familias de ficheros que no deben estar nunca en el historial, y las dos por motivos de despliegue.
-
-**Los artefactos generados.** El `.war`, la carpeta `target/`, los `.class`, la documentación compilada. No se versionan porque **se reconstruyen**: si el código está en el repositorio, el artefacto se puede volver a producir a partir de él. Versionarlo duplica información que puede quedar desincronizada, hincha el repositorio y, sobre todo, invita al peor hábito de todos, que es desplegar un fichero que alguien compiló en su portátil sin que nadie sepa a partir de qué.
-
-**Los secretos.** Contraseñas de base de datos, claves de API, tokens, certificados privados. Estos no es que sea mala práctica: es que una vez dentro del historial, están comprometidos.
-
-El mecanismo para dejarlos fuera es un fichero `.gitignore` en la raíz:
-
-```gitignore
-# Artefactos de construcción
-target/
-*.war
-*.class
-
-# Configuración local y secretos
-.env
-*.pem
-credenciales.properties
-
-# Ruido del entorno
-.idea/
-.vscode/
+```bash
+git tag -n
+git show v0.1.0 --no-patch
 ```
 
-Cada línea es un patrón: un nombre de carpeta ignora la carpeta entera, un asterisco sustituye a cualquier cosa y las líneas que empiezan por almohadilla son comentarios. Git actuará como si esos ficheros no existieran.
+---
 
-!!! danger "El `.gitignore` no borra el pasado"
-    Solo afecta a lo que todavía no está en el historial. Si ya has confirmado un fichero, añadirlo al `.gitignore` no lo saca: hace falta `git rm --cached <fichero>` y un commit. Y si lo que se coló era una credencial, sacarla del historial **no la protege**: cualquiera que clonase el repositorio antes ya la tiene. La única respuesta correcta es cambiar la credencial comprometida, y después limpiar.
+### 9.1. Referencias móviles e inmutables
 
-Si los secretos no van al repositorio, ¿de dónde los saca la aplicación? De **fuera**: variables de entorno que se le pasan al arrancar, ficheros de configuración que viven solo en el servidor, o almacenes de secretos de la plataforma. En el repositorio sí puede haber un fichero de ejemplo, con los nombres de las variables y valores falsos, para que quien despliegue sepa qué tiene que rellenar.
+| Referencia | Ejemplo | Comportamiento |
+|---|---|---|
+| **Móvil** | `main`, `sesion-04`, `latest` | puede terminar señalando otro contenido |
+| **Estable** | `v1.4.2`, un commit concreto | identifica un contenido concreto |
+
+Por eso un procedimiento reproducible no debería decir únicamente:
+
+```text
+despliega lo que haya en main
+```
+
+si necesitamos saber exactamente qué versión se puso en marcha.
+
+Más adelante la misma idea aparecerá con imágenes de contenedor:
+
+```text
+miapp:latest       móvil
+miapp:1.4.2        versión concreta
+```
 
 ---
 
-## 📖 La documentación también se versiona
+### 9.2. Versionado semántico
 
-El `README.md` es lo primero que se ve al abrir un repositorio y lo primero que se ignora al escribirlo. En un módulo de despliegue tiene un cometido concreto: **que alguien que no eres tú sea capaz de poner esto en marcha**. Ese alguien puede ser un compañero, un profesor corrigiendo, o tú mismo en enero.
+El formato habitual:
 
-Un esqueleto que funciona:
+```text
+MAYOR.MENOR.PARCHE
+```
+
+Ejemplo:
+
+```text
+1.4.2
+```
+
+| Parte | Cuándo cambia |
+|---|---|
+| **MAYOR** | cambios incompatibles |
+| **MENOR** | nueva funcionalidad compatible |
+| **PARCHE** | corrección compatible |
+
+Ejemplos:
+
+```text
+1.4.2 -> 1.4.3   corrección
+1.4.2 -> 1.5.0   nueva funcionalidad
+1.4.2 -> 2.0.0   cambio incompatible
+```
+
+!!! note "La etiqueta del repositorio del curso"
+    Una etiqueta como `v0.1.0` puede utilizarse para identificar un primer estado del repositorio del módulo. Eso no obliga a que coincida con la versión interna de una aplicación que esté contenida dentro del repositorio.
+
+---
+
+## 📝 10. Markdown para documentar el trabajo
+
+La documentación del módulo se escribirá principalmente en Markdown porque es texto plano:
+
+- Git puede mostrar sus cambios línea a línea;
+- GitHub lo renderiza;
+- se puede editar con cualquier editor;
+- los enlaces relativos siguen funcionando dentro del repositorio.
+
+No necesitas memorizar una sintaxis extensa. Con unas pocas construcciones basta.
+
+---
+
+### 10.1. Títulos
+
+```markdown
+# Actividad 1.2
+
+## Recuperación de errores
+
+### Situación 1
+```
+
+---
+
+### 10.2. Listas
+
+```markdown
+- Primer elemento
+- Segundo elemento
+- Tercer elemento
+```
+
+Lista numerada:
+
+```markdown
+1. Crear la rama.
+2. Registrar los cambios.
+3. Publicarla.
+```
+
+---
+
+### 10.3. Código en línea y bloques
+
+Código dentro de una frase:
+
+```markdown
+Ejecuta `git status` antes del commit.
+```
+
+Bloque:
+
+````markdown
+```bash
+git status
+git add README.md
+git commit -m "Actualiza la documentación"
+```
+````
+
+---
+
+### 10.4. Enlaces
+
+```markdown
+[Actividad 1.1](../actividad-1.1/actividad-1.1.md)
+```
+
+Conviene utilizar **rutas relativas** cuando enlazas contenido del propio repositorio.
+
+Así el enlace seguirá funcionando si otra persona clona el proyecto en otra carpeta.
+
+---
+
+### 10.5. Imágenes con rutas relativas
+
+Si tienes:
+
+```text
+actividad-1.2/
+├── actividad-1.2.md
+└── img/
+    └── pr-abierta.png
+```
+
+desde `actividad-1.2.md` puedes insertar:
+
+```markdown
+![Pull Request abierta](img/pr-abierta.png)
+```
+
+No uses una ruta de tu ordenador como:
+
+```text
+C:\Users\Ana\Desktop\captura.png
+```
+
+porque solo funcionaría en tu equipo.
+
+---
+
+## 📖 11. Qué debe contener un README útil
+
+### 11.1. Estructura mínima del README
+
+El README no es un diario de clase. Es la puerta de entrada al repositorio.
+
+Una estructura inicial razonable:
 
 ```markdown
 # Nombre del proyecto
-Una frase: qué es y para quién.
+
+Breve explicación.
 
 ## Requisitos
-Qué hay que tener instalado y en qué versión.
 
-## Configuración
-Variables de entorno y qué significa cada una.
+Herramientas necesarias.
+
+## Estructura del repositorio
+
+Qué contiene cada carpeta.
+
+## Flujo de trabajo
+
+Cómo se utilizan las ramas y las Pull Requests.
 
 ## Puesta en marcha
-Los comandos exactos, en orden.
+
+Comandos para ejecutar o desplegar el proyecto.
 
 ## Comprobación
-Cómo saber que ha funcionado.
+
+Cómo saber que está funcionando.
+
+## Entregas
+
+Enlaces a la documentación de las actividades.
 ```
 
-Ese último apartado es el que separa un README útil de uno decorativo: si no dice cómo comprobar que el despliegue ha ido bien, quien lo siga no sabrá si ha terminado.
+Al principio algunos apartados pueden estar incompletos.
 
-Todo esto se escribe en **Markdown**, que es texto plano con marcas mínimas —almohadillas para los títulos, asteriscos para las listas, acentos graves para el código—. Su ventaja aquí no es la comodidad: al ser texto plano, Git puede mostrarte qué línea de la documentación cambió en cada commit, igual que con el código. Un documento de ofimática, no.
+Eso es normal: el README evolucionará junto con el despliegue.
 
-Hay un segundo tipo de documentación que no se escribe a mano: la que **se genera a partir del código**. En un proyecto Java, los comentarios estructurados de las clases producen un sitio web navegable con todas las clases, sus métodos y sus parámetros. Se genera con una orden y su ventaja es que no puede quedarse anticuada por olvido, porque nace del código que documenta.
+---
 
-Y aquí aparece una contradicción que conviene ver ahora: esa documentación es un **artefacto generado**, así que no se versiona. Pero si no está en el repositorio, ¿dónde se consulta?
+### 11.2. Documentación frente a ficheros técnicos
 
-La respuesta honesta es que a mano no hay buena solución. O la versionas —y entonces cada cambio en el código deja el sitio desactualizado hasta que alguien se acuerde de regenerarla— o la generas cada uno en su equipo, y entonces no la puede consultar nadie más. La salida buena es que **la genere y la publique una máquina en cada cambio**, y eso es exactamente lo que montarás en diciembre.
+Evita duplicar información.
 
-Hoy te basta con generarla, abrirla en tu navegador y **anotar en el `README` el comando exacto que la produce**. Esa línea es la que en la sesión 12 dejará de hacer falta.
+Por ejemplo:
 
-!!! info "Para saber más: documentación colaborativa"
-    Para lo que no encaja en el README ni en la documentación del código —decisiones de arquitectura, guías largas, actas de reunión— cada repositorio de GitHub tiene una **wiki**, editable por varias personas y con su propio historial. La regla práctica: en el README lo que hay que leer para desplegar; en la wiki lo que hay que leer para entender por qué está así.
+```text
+practicas/
+└── compose/
+    └── compose.yaml
+```
+
+es un fichero técnico real.
+
+La documentación puede explicar:
+
+```markdown
+El despliegue Compose se encuentra en `practicas/compose/compose.yaml`.
+```
+
+pero no hace falta copiar el mismo YAML a varios lugares del repositorio.
+
+Durante el módulo utilizaremos una separación parecida a:
+
+```text
+escaparate/
+    código de la aplicación
+
+practicas/
+    Dockerfiles, Compose, configuración de servidores...
+
+entregas/
+    respuestas, razonamientos, mediciones y capturas
+
+docs/
+    documentación general del proyecto
+```
+
+---
+
+## 🔐 12. El repositorio como fuente de verdad, no como almacén de secretos
+
+Al terminar esta sesión debe quedar clara una aparente contradicción:
+
+```text
+Git debe contener todo lo necesario
+para reconstruir el despliegue
+
+PERO
+
+Git no debe contener secretos
+ni datos privados
+```
+
+La solución es versionar **la estructura y el procedimiento**, no los valores secretos.
+
+Por ejemplo:
+
+```text
+.env           no se versiona
+.env.example   sí se versiona
+```
+
+`.env.example` podría contener:
+
+```dotenv
+DB_HOST=bd
+DB_NAME=escaparate
+DB_USER=cambia-este-valor
+DB_PASSWORD=cambia-este-valor
+```
+
+Así quien clona el proyecto sabe qué configuración necesita sin recibir las credenciales reales.
+
+---
+
+## 🧪 13. Ejemplo completo de flujo
+
+Este ejemplo no corresponde a ninguna actividad concreta. Sirve para ver juntas las piezas anteriores.
+
+Partimos de `main` actualizado:
+
+```bash
+git switch main
+git pull --ff-only
+```
+
+Creamos una rama:
+
+```bash
+git switch -c sesion-ejemplo
+```
+
+Editamos y comprobamos:
+
+```bash
+git status
+```
+
+Preparamos únicamente lo que queremos registrar:
+
+```bash
+git add README.md
+```
+
+Comprobamos otra vez:
+
+```bash
+git status
+```
+
+Registramos:
+
+```bash
+git commit -m "Documenta el procedimiento de prueba"
+```
+
+Publicamos:
+
+```bash
+git push -u origin sesion-ejemplo
+```
+
+Abrimos una PR:
+
+```text
+sesion-ejemplo -> main
+```
+
+Durante la revisión detectamos que falta una captura. La añadimos:
+
+```bash
+git add docs/img/prueba.png README.md
+git commit -m "Añade evidencia de la comprobación"
+git push
+```
+
+La PR existente se actualiza.
+
+Después de revisarla, la fusionamos y volvemos a nuestro equipo:
+
+```bash
+git switch main
+git pull --ff-only
+```
+
+Finalmente identificamos ese estado:
+
+```bash
+git tag -a v0.1.0 -m "Primer estado documentado"
+git push origin v0.1.0
+```
+
+El flujo completo ha sido:
+
+```text
+editar
+  ↓
+status
+  ↓
+add
+  ↓
+commit
+  ↓
+push de rama
+  ↓
+Pull Request
+  ↓
+merge
+  ↓
+actualizar main
+  ↓
+tag
+```
 
 ---
 
 ## 🎯 Qué debes saber hacer al salir de esta sesión
 
-- Registrar cambios en un repositorio y leer su historial: `status`, `add`, `commit`, `log`.
-- Descartar cambios del directorio de trabajo y sacar un fichero de la preparación sin perderlo.
-- Deshacer con `revert` un commit que ya está publicado, y saber por qué ahí no se usa `reset`.
-- Dejar fuera del repositorio, desde el primer commit, los artefactos generados y cualquier credencial.
-- Trabajar en una rama corta, publicarla e integrarla mediante una petición de fusión.
-- Marcar una versión con una etiqueta y explicar por qué se despliega una etiqueta y no una rama.
-- Escribir un `README` que permita a otra persona trabajar en el repositorio sin preguntarte.
+Al terminar deberías poder:
 
-De lo demás basta con que sepas que existe y dónde buscarlo: las tres variantes de `reset`, los modelos de ramificación con nombre propio, la protección de rama y la wiki.
+- explicar la diferencia entre directorio de trabajo, staging e historial;
+- inicializar un repositorio con `main` como rama principal;
+- entender por qué Git no registra directorios vacíos;
+- preparar solo una parte de los cambios;
+- interpretar y comprobar reglas de `.gitignore`;
+- explicar por qué un secreto no se arregla simplemente borrándolo;
+- distinguir `restore`, `restore --staged`, `reset` y `revert`;
+- autenticar Git contra GitHub por HTTPS utilizando un PAT y explicar por qué debe tratarse como un secreto;
+- enlazar un repositorio local con GitHub;
+- trabajar en una rama corta y publicarla;
+- abrir una Pull Request y entender por qué nuevos commits actualizan la misma PR;
+- actualizar `main` después de una fusión;
+- distinguir `main`, `origin/main`, `HEAD` y una etiqueta;
+- crear y publicar una etiqueta anotada;
+- utilizar Markdown para crear títulos, listas, bloques de código, enlaces e imágenes relativas;
+- escribir un README que permita entender el repositorio y, progresivamente, reproducir el despliegue.
 
 ---
 
@@ -307,24 +1392,28 @@ De lo demás basta con que sepas que existe y dónde buscarlo: las tres variante
 
 ??? tip "Abrir resumen"
 
-    - Git tiene tres áreas: directorio de trabajo, área de preparación e historial. `git add` mueve de la primera a la segunda; `git commit` de la segunda a la tercera.
-    - `git status` antes de cada commit: confirma qué vas a guardar, no lo que crees que vas a guardar.
-    - Para deshacer, la pregunta es si el error está publicado: si no lo está, `reset`; si lo está, `revert`. Nunca se reescribe historial que otros ya tienen.
-    - `--soft` deja los cambios preparados, `--mixed` los deja en el directorio de trabajo, `--hard` los borra sin vuelta atrás.
-    - GitHub no acepta contraseñas: se accede con clave SSH o con token de acceso personal, y ninguno de los dos se guarda en el repositorio.
-    - Convenio del módulo: `main` es el estado desplegable. Todo lo demás entra a través de una rama de vida corta.
-    - Este módulo usa una rama por sesión, `sesion-NN`, integrada mediante pull request.
-    - La pull request deja constancia de qué se propuso, quién lo revisó y qué comprobaciones pasó. A partir de diciembre, además, podrá bloquear la fusión.
-    - Una rama es una referencia móvil. Para un despliegue reproducible se utiliza una **versión identificable e inmutable**, como una etiqueta de versión, un commit concreto o, más adelante, una imagen con versión exacta.
-    - Versionado semántico `MAYOR.MENOR.PARCHE`: el número dice cuánto duele actualizar.
-    - Referencia inmutable para lo que va a producción; referencia móvil solo para lo que se está probando.
-    - Los artefactos no se versionan porque se reconstruyen; los secretos no se versionan porque una vez dentro del historial están comprometidos.
-    - Un secreto filtrado se cambia, no se borra: limpiar el historial no lo recupera.
-    - Un README útil termina explicando cómo comprobar que el despliegue ha funcionado.
-    - La documentación generada del código es un artefacto: no se versiona. Lo que se guarda es el comando que la regenera.
+    - Git versiona ficheros y sus estados, no directorios vacíos.
+    - El flujo básico es directorio de trabajo -> staging -> commit.
+    - `git status` es la comprobación que debes hacer antes y después de preparar cambios.
+    - Un commit debe representar una idea comprensible.
+    - `.gitignore` evita que determinados ficheros entren en el seguimiento, pero no borra lo que ya está en el historial.
+    - `git check-ignore -v` permite descubrir qué regla está ignorando una ruta.
+    - No ignores extensiones completas sin entender qué ficheros necesarios podrías ocultar.
+    - Un secreto publicado se revoca o cambia. Borrarlo del último estado no elimina la exposición anterior.
+    - Para descartar un cambio no preparado se usa `git restore`.
+    - Para sacar un fichero de staging conservando el contenido se usa `git restore --staged`.
+    - Para un error ya publicado se utiliza `git revert` en lugar de reescribir el historial compartido.
+    - En GitHub por HTTPS, el PAT sustituye a la contraseña de la cuenta. Debe tener caducidad y los permisos estrictamente necesarios.
+    - En el aula reutilizaremos un PAT classic para Git y GHCR como simplificación; separar credenciales por finalidad es la opción de menor privilegio.
+    - `main` es el último estado integrado que en este módulo consideramos desplegable.
+    - Una rama es una referencia móvil; un commit identifica un estado concreto.
+    - `origin/main` representa el último estado conocido de la rama remota y no avanza por hacer un commit local.
+    - Una Pull Request es el punto de revisión antes de integrar en `main`.
+    - Los commits nuevos publicados en una rama actualizan automáticamente la PR abierta.
+    - Una etiqueta permite identificar un commit concreto aunque `main` siga avanzando.
+    - Los enlaces e imágenes de la documentación deben utilizar rutas relativas.
+    - El README explica qué contiene el repositorio, qué necesita y cómo comprobar progresivamente que el despliegue funciona.
 
 ---
 
-Con esto ya tienes las piezas para la **Actividad 1.2**, en la que montarás `daw-despliegue`, el repositorio que te va a acompañar los dieciséis viernes del curso. Lo dejarás con su `README`, su índice de entregas y sus exclusiones puestas antes del primer commit, incorporarás la entrega de la semana pasada y te sacarás de encima tres errores distintos eligiendo tú la forma correcta de deshacer cada uno. Después abrirás tu primera rama de sesión, la integrarás mediante una petición de fusión y marcarás la etiqueta `v0.1.0`.
-
-Esa etiqueta parecerá inútil durante tres meses. En diciembre será la que te permita deshacer un despliegue roto en treinta segundos.
+Con esto tienes toda la base necesaria para la **Actividad 1.2**. El enunciado no te dirá qué comando utilizar en cada problema de recuperación porque la decisión forma parte de la actividad. La información necesaria para tomarla está en este tema: primero identifica **dónde se encuentra el cambio** y después decide si el historial **ya se ha compartido**.

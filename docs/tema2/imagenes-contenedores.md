@@ -1,224 +1,494 @@
-# 🏗️ 2. Imágenes de contenedores
+# 🏗️ Imágenes de contenedores
 
 !!!info "Descarga de diapositivas"
     [Descarga las diapositivas](diapositivas/imagenes-contenedores.pptx){target="_blank" rel="noopener"}
 
 ---
 
-En la sesión anterior construiste tu primera imagen con dos instrucciones y te pedimos expresamente que no te preguntaras qué eran. Funcionó porque partías de una imagen que ya lo traía todo hecho: PostgreSQL estaba instalado, configurado y listo, y tú solo dejaste caer un fichero dentro.
+En la sesión anterior construiste tu primera imagen con un `Dockerfile` mínimo: `FROM` para elegir una base y `COPY` para añadir los scripts de Escaparate. Funcionó porque partías de una imagen que ya traía PostgreSQL instalado y preparado para arrancar.
 
-Empaquetar Escaparate es otra historia. Aquí no hay nadie que haya preparado la imagen por ti: hay que traer Java, compilar el proyecto, quedarse con el artefacto y dejar el resultado listo para arrancar. Hoy abrimos la receta, y vas a descubrir que escribirla es fácil y escribirla **bien** tiene bastante más miga: la diferencia entre una imagen ingenua y una imagen decente son cientos de megabytes, varios minutos en cada construcción y unos cuantos agujeros de seguridad.
+Empaquetar Escaparate es otra historia. Ahora hay que compilar una aplicación Java, quedarse con el artefacto y construir una imagen preparada para ejecutarlo. Hoy vas a profundizar en la receta y comprobarás que conseguir que una imagen funcione es fácil; conseguir que sea **reproducible, rápida de reconstruir, pequeña y razonablemente segura** exige tomar varias decisiones.
 
 ---
 
-## 🧾 El Dockerfile es la receta
+## 🧾 1. El Dockerfile es la receta
 
-Un **Dockerfile** es un fichero de texto con las instrucciones para construir una imagen, en orden. Cada instrucción produce **una capa** de las que viste la sesión pasada, apilada sobre la anterior.
+Un **Dockerfile** es un fichero de texto que describe cómo construir una imagen. Algunas instrucciones modifican el sistema de ficheros y generan capas reutilizables; otras añaden metadatos sobre cómo debe ejecutarse la imagen.
 
 | Instrucción | Qué hace | Lo que conviene saber |
 |---|---|---|
-| `FROM` | Fija la imagen base de la que partes | Siempre con etiqueta concreta, nunca `latest` |
-| `WORKDIR` | Establece el directorio de trabajo | Lo crea si no existe; mejor que ir encadenando rutas |
-| `COPY` | Copia ficheros desde tu proyecto a la imagen | Prefiérela a `ADD`, que además descarga URL y descomprime: más magia de la que quieres |
-| `RUN` | Ejecuta un comando **durante la construcción** | Cada `RUN` es una capa; lo que borres en una capa posterior sigue ocupando en la anterior |
-| `ENV` | Define variables de entorno dentro de la imagen | Para valores por defecto inocuos, **nunca** para credenciales |
-| `ARG` | Variable disponible solo mientras se construye | Tampoco sirve para secretos: queda en el historial |
-| `USER` | Cambia el usuario para todo lo que venga después | Si no la pones, tu aplicación corre como administrador |
-| `EXPOSE` | Documenta qué puerto usa la aplicación | **No publica nada**: es informativa |
-| `CMD` | Comando por defecto al arrancar el contenedor | Se puede sustituir entero al ejecutar |
-| `ENTRYPOINT` | Proceso que se ejecuta siempre | Lo que pases al ejecutar se le añade como argumentos |
-| `LABEL` | Metadatos en forma de clave y valor | Útil para dejar autoría, versión y enlace al repositorio |
+| `FROM` | Fija la imagen base | Usa una referencia concreta, no `latest` |
+| `WORKDIR` | Establece el directorio de trabajo | Lo crea si no existe |
+| `COPY` | Copia ficheros desde el contexto de construcción | Solo puede ver rutas incluidas en ese contexto |
+| `RUN` | Ejecuta un comando **durante la construcción** | Su resultado queda incorporado a la imagen |
+| `ENV` | Define variables disponibles al ejecutar | Útil para valores por defecto no sensibles |
+| `ARG` | Define valores disponibles durante la construcción | No debe utilizarse para secretos |
+| `USER` | Define el usuario del proceso | Evita ejecutar la aplicación como `root` |
+| `EXPOSE` | Documenta el puerto esperado | No publica ningún puerto |
+| `CMD` | Define el comando o argumentos por defecto | Puede sustituirse al ejecutar |
+| `ENTRYPOINT` | Define el proceso principal por defecto | Suele fijar el ejecutable de la aplicación |
+| `LABEL` | Añade metadatos | Puede indicar versión, autoría o repositorio |
 
-Con eso, un primer intento de empaquetar Escaparate podría ser este:
+Un primer intento de empaquetar Escaparate podría ser:
 
 ```dockerfile
-FROM maven:3.9-eclipse-temurin-21
+FROM maven:3.9.16-eclipse-temurin-21-alpine
 WORKDIR /app
 COPY . .
-RUN mvn package -DskipTests
-CMD ["java", "-jar", "target/escaparate.war"]
+RUN mvn -B package -DskipTests
+CMD ["java", "-jar", "target/<artefacto>.war"]
 ```
 
-Funciona. Parte de una imagen que trae Maven y el JDK de Java 21, copia el proyecto entero, lo compila y deja dicho que al arrancar se ejecute el artefacto resultante. Si lo construyes y lo ejecutas, Escaparate responde.
+Sustituye `<artefacto>` por el nombre real generado por Maven, que puedes identificar en el proyecto.
 
-Y sin embargo tiene **cuatro problemas graves**, uno por sección de las que vienen.
-
----
-
-## 📤 El contexto de construcción
-
-Cuando lanzas la construcción, el último argumento del comando no significa «aquí»: significa **«empaqueta esta carpeta entera y mándasela al motor de Docker»**. Eso es el *contexto de construcción*, y es lo único que las instrucciones `COPY` pueden ver.
-
-```bash
-docker build -t escaparate:1.0.0 .
-```
-
-Ese punto final está diciendo «el contexto es el directorio actual». Si tu proyecto arrastra la carpeta de compilaciones anteriores, el historial de Git, dependencias descargadas y un fichero de configuración con contraseñas, **todo eso se empaqueta y se envía**, aunque el Dockerfile no lo use. Las consecuencias son tres:
-
-- **Lentitud.** Cada construcción empieza copiando cientos de megabytes que no hacen falta.
-- **Filtraciones.** Un `COPY . .` mete dentro de la imagen todo lo que haya, incluidos ficheros de credenciales que creías que no estaban ahí. Y una vez publicada la imagen, ese fichero está publicado.
-- **Caché rota.** Como verás en un momento, si el contexto cambia, la caché deja de servir. Y el historial de Git cambia con cada commit.
-
-La solución es un fichero `.dockerignore` en la raíz del proyecto, con la misma lógica que el `.gitignore` de la sesión 2:
+La idea es sencilla:
 
 ```text
-.git
-target/
-*.md
-.env
+imagen con Maven + JDK
+        ↓
+copiar proyecto
+        ↓
+compilar
+        ↓
+arrancar el WAR
 ```
 
-Se lee así: fuera el historial de versiones, fuera los resultados de compilaciones anteriores hechas en tu máquina —el proyecto se compila **dentro** de la imagen, no fuera—, fuera la documentación que no se despliega y fuera cualquier fichero de variables locales.
+Este enfoque puede funcionar, pero tiene varios problemas: envía demasiado contenido al motor, invalida la caché con facilidad y deja dentro de la imagen final herramientas que solo eran necesarias para compilar.
 
-!!! warning "Los dos ficheros no son el mismo"
-    `.gitignore` decide qué no se versiona; `.dockerignore` decide qué no se empaqueta. Se parecen y comparten muchas líneas, pero hay cosas que quieres versionar y no meter en la imagen (la documentación) y cosas que quieres meter en la imagen y no versionar (rara vez, pero pasa). Escríbelos por separado.
+!!! info "Por qué aquí aparece `-DskipTests`"
+    En esta sesión queremos aislar el problema de **construir y empaquetar** la aplicación. Más adelante, cuando trabajes con integración continua, las pruebas formarán parte explícita del proceso antes de publicar una imagen.
 
 ---
 
-## 🧊 Capas y caché: por qué el orden lo es todo
+## 📤 2. El Dockerfile y el contexto de construcción son cosas distintas
 
-Al construir, Docker guarda cada capa y, en la siguiente construcción, reutiliza las que no hayan cambiado. La regla es implacable: **cuando una capa se invalida, todas las que vienen detrás se reconstruyen**, hayan cambiado o no.
+En un comando como:
 
-Y una capa `COPY` se invalida en cuanto cambia **el contenido** de lo que copia. Vuelve al primer intento:
+```bash
+docker build -t escaparate:prueba .
+```
+
+el último argumento no indica dónde está el Dockerfile. Indica el **contexto de construcción**: el conjunto de ficheros que Docker puede utilizar durante la construcción.
+
+El punto final significa:
+
+```text
+contexto = directorio actual
+```
+
+Las instrucciones `COPY` solo pueden acceder a ficheros que estén dentro de ese contexto.
+
+### 2.1. Un Dockerfile puede estar en otro sitio
+
+La opción `-f` permite indicar la ruta del Dockerfile:
+
+```bash
+docker build \
+  -f practicas/docker/app/Dockerfile.ingenuo \
+  -t escaparate:ingenua \
+  escaparate/
+```
+
+Si ejecutas este comando desde la raíz de `daw-despliegue`:
+
+```text
+Dockerfile
+→ practicas/docker/app/Dockerfile.ingenuo
+
+contexto
+→ escaparate/
+```
+
+Por tanto, dentro del Dockerfile:
+
+```dockerfile
+COPY pom.xml .
+COPY src ./src
+```
+
+esas rutas se buscan en `escaparate/`, **no** junto al Dockerfile.
+
+Esta separación es útil: los ficheros técnicos de despliegue pueden vivir en `practicas/`, mientras el contexto sigue siendo el código real de la aplicación.
+
+---
+
+### 2.2. `.dockerignore`: decidir qué ni siquiera entra en el contexto
+
+Si el contexto contiene compilaciones anteriores, configuración del IDE, ficheros locales o credenciales, no queremos enviarlos al motor.
+
+Para eso existe `.dockerignore`, situado en la raíz del contexto. En nuestro caso:
+
+```text
+escaparate/
+└── .dockerignore
+```
+
+Un ejemplo razonable sería:
+
+```dockerignore
+.git
+target/
+.idea/
+.vscode/
+*.iml
+.env
+.env.*
+uploads/
+```
+
+Sus efectos principales son:
+
+- **menos transferencia** al motor de Docker;
+- **menos invalidaciones** de caché por ficheros irrelevantes;
+- **menos riesgo** de copiar accidentalmente contenido local o sensible.
+
+!!! warning "`.gitignore` y `.dockerignore` resuelven problemas distintos"
+    `.gitignore` decide qué no entra en el historial Git. `.dockerignore` decide qué no entra en el contexto de construcción. Pueden compartir reglas, pero no son el mismo fichero ni tienen el mismo objetivo.
+
+---
+
+## 🧊 3. Capas y caché: por qué el orden lo cambia todo
+
+### 3.1. Cómo se aprovecha la caché
+
+Docker intenta reutilizar resultados de construcciones anteriores. Si una instrucción puede resolverse exactamente igual que antes, su resultado puede recuperarse de caché.
+
+El problema aparece cuando escribes:
 
 ```dockerfile
 COPY . .
-RUN mvn package -DskipTests
+RUN mvn -B package -DskipTests
 ```
 
-Cambias una coma en un fichero de código, reconstruyes, y como el contexto ha cambiado se invalida el `COPY`; como se invalida el `COPY`, se invalida el `RUN`; y como se invalida el `RUN`, Maven vuelve a **descargar desde cero todas las dependencias del proyecto**. Cuatro minutos, cada vez, por una coma.
+Un cambio mínimo en cualquier fichero copiado invalida ese `COPY`. La compilación posterior también debe repetirse y Maven puede necesitar resolver otra vez dependencias que no han cambiado.
 
-El arreglo consiste en separar lo que cambia poco de lo que cambia mucho, y ponerlo en ese orden:
+La estrategia habitual consiste en separar **lo estable** de **lo que cambia con frecuencia**:
 
 ```dockerfile
 COPY pom.xml .
 RUN mvn -B dependency:go-offline
+
 COPY src ./src
-RUN mvn -B package
+RUN mvn -B package -DskipTests
 ```
 
-Primero se copia **solo** el fichero que declara las dependencias, que cambia una vez al mes. Después se descargan esas dependencias, y esa capa queda en caché. Solo entonces se copia el código fuente, que cambia cada cinco minutos, y se compila. Ahora, cuando toques una coma, se invalidan las dos últimas capas y las dependencias siguen ahí: la construcción baja de minutos a segundos.
+El razonamiento es:
 
-!!! tip "La regla, en una frase"
-    Ordena las instrucciones de **menos volátil a más volátil**. Lo que casi nunca cambia, arriba; lo que cambia en cada commit, abajo. Es el mismo criterio que hace que no vuelvas a poner los cimientos cada vez que cambias un cuadro de sitio.
+```text
+pom.xml cambia poco
+        ↓
+resolver dependencias
+        ↓
+capa reutilizable
 
-!!! warning "Lo que borras en un `RUN` posterior no adelgaza la imagen"
-    Si una capa instala herramientas de compilación y otra las desinstala, la primera capa sigue existiendo con todo su peso: la segunda solo añade una marca de borrado encima. Por eso las limpiezas van encadenadas dentro del mismo `RUN`… o, mejor todavía, se resuelven con lo que viene ahora.
+código cambia mucho
+        ↓
+copiar src
+        ↓
+compilar
+```
+
+Si solo cambia una clase Java, Docker puede reutilizar la parte relacionada con las dependencias y repetir únicamente lo que depende del código.
+
+!!! tip "La regla práctica"
+    Coloca antes las instrucciones que dependen de ficheros **menos volátiles** y después las que dependen de ficheros que cambian con frecuencia.
+
+!!! warning "Caché de construcción y tamaño final son problemas distintos"
+    Ordenar bien las capas puede hacer que una reconstrucción sea mucho más rápida, pero no elimina automáticamente Maven, el JDK o el código fuente de la imagen final. Para reducir el contenido de producción necesitamos otra técnica: la construcción multietapa.
 
 ---
 
-## 🪆 Construcción multietapa
+### 3.2. Medir antes de afirmar que algo mejora
 
-Aquí está el segundo problema del primer intento, y es el gordo. Para **compilar** Escaparate hacen falta Maven, el JDK completo y todas las dependencias descargadas. Para **ejecutarlo** solo hace falta un entorno de ejecución de Java y el artefacto. Esa imagen ingenua lleva a producción el compilador, el código fuente y el repositorio de dependencias: cientos de megabytes de cosas que no solo sobran, sino que **son superficie de ataque**.
+En la actividad compararás dos cosas distintas:
 
-La construcción multietapa resuelve esto declarando varias imágenes en el mismo Dockerfile y quedándose solo con la última:
+1. **tiempo de construcción**;
+2. **tamaño lógico de la imagen**.
+
+En Linux puedes medir una construcción con:
+
+```bash
+time docker build ...
+```
+
+Y consultar después la imagen con:
+
+```bash
+docker image ls escaparate:ingenua
+```
+
+o:
+
+```bash
+docker image ls escaparate:optimizada
+```
+
+Utiliza siempre el mismo procedimiento para que las mediciones sean comparables.
+
+!!! info "Content Size y uso de disco no son lo mismo"
+    Para comparar las imágenes nos interesa el tamaño del contenido de cada imagen, que Docker muestra como `SIZE` en `docker image ls` y como **Content Size** en algunas interfaces gráficas.
+
+    `docker system df`, en cambio, responde a otra pregunta: cuánto espacio ocupa Docker en conjunto en tu equipo. Puede verse afectado por capas compartidas, cachés y otros objetos, así que no utilizaremos esa cifra para comparar la imagen ingenua con la optimizada.
+
+---
+
+## 🪆 4. Construcción multietapa: compilar no es ejecutar
+
+Para **compilar** Escaparate hacen falta Maven, el JDK, el código fuente y las dependencias de construcción.
+
+Para **ejecutarlo** necesitamos mucho menos:
+
+```text
+runtime de Java
++
+WAR de Escaparate
+```
+
+Una construcción multietapa permite utilizar una imagen completa para fabricar el artefacto y una segunda imagen más pequeña para ejecutarlo.
 
 ```dockerfile
-# ---------- Etapa 1: compilación ----------
-FROM maven:3.9-eclipse-temurin-21 AS build
+# Etapa 1: construcción
+FROM maven:3.9.16-eclipse-temurin-21-alpine AS build
 WORKDIR /app
+
 COPY pom.xml .
 RUN mvn -B dependency:go-offline
-COPY src ./src
-RUN mvn -B package
 
-# ---------- Etapa 2: ejecución ----------
-FROM eclipse-temurin:21-jre-alpine
-RUN addgroup -S escaparate && adduser -S escaparate -G escaparate
+COPY src ./src
+RUN mvn -B package -DskipTests \
+    && cp target/*.war /tmp/app.war
+
+# Etapa 2: ejecución
+FROM eclipse-temurin:21.0.12_8-jre-alpine-3.24
 WORKDIR /app
-COPY --from=build /app/target/escaparate.war app.war
-USER escaparate
+
+COPY --from=build /tmp/app.war /app/app.war
+
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/app.war"]
 ```
 
-Línea a línea, lo que importa:
+La frontera importante está en el segundo `FROM`:
 
-- `FROM … AS build` **nombra** la primera etapa. Todo lo que ocurra en ella —Maven, el JDK, el código fuente, las dependencias— vive únicamente durante la construcción.
-- El segundo `FROM` **empieza de cero**: descarta todo lo anterior y arranca sobre una imagen que solo trae el entorno de ejecución de Java, sin compilador.
-- `COPY --from=build` es la costura entre ambas: rescata de la primera etapa **exclusivamente el artefacto** y lo mete en la imagen final.
-- El `RUN` con `addgroup`/`adduser` y el `USER` posterior son el asunto de la sección siguiente.
-- `ENTRYPOINT` fija el proceso que se ejecutará siempre al arrancar el contenedor.
+```text
+ETAPA BUILD
+Maven
+JDK
+código fuente
+repositorio local de Maven
+WAR generado
+        │
+        │ COPY --from=build
+        ▼
+ETAPA RUNTIME
+JRE
+WAR
+```
 
-El resultado: la imagen final no contiene ni Maven, ni el compilador, ni tu código fuente. Solo un entorno de ejecución y un artefacto. La diferencia de tamaño entre las dos versiones es de un orden de magnitud, y la vas a medir tú mismo en la actividad —conviene que el número lo veas en tu pantalla y no en un apunte—.
+`COPY --from=build` copia únicamente el artefacto que queremos conservar.
 
----
+La imagen final ya no contiene Maven, el compilador, el código fuente ni el repositorio local utilizado durante la construcción.
 
-## 🎯 Etapas que no acaban en imagen
+!!! note "Las dependencias de ejecución no desaparecen"
+    Las bibliotecas Java que Escaparate necesita para funcionar siguen formando parte del artefacto generado. Lo que eliminamos de la imagen final son las **herramientas y materiales de construcción** que no son necesarios en producción.
 
-Una etapa intermedia no tiene por qué existir solo para alimentar a la final: puede servir para **extraer ficheros** de la construcción sin llevártelos a producción.
-
-El caso típico es justo el tuyo. Al compilar Escaparate se generan informes de pruebas y documentación del código. Eso no debe ir dentro de la imagen de la aplicación —no lo necesita para funcionar y no quieres publicarlo con ella—, pero sí quieres tenerlo en disco para poder servirlo aparte. Es la misma tensión que viste en la sesión 2 con la documentación del código: un artefacto que se produce al construir, que no se versiona y que alguien tiene que publicar en algún sitio.
-
-Guarda la idea, porque en la sesión 6 vas a servir esos informes desde Nginx, en una ruta distinta de la aplicación.
-
-!!! info "Para saber más: cómo se extraen sin generar imagen"
-    Docker permite construir solo hasta una etapa concreta y volcar su contenido en una carpeta de tu disco en lugar de guardarlo como imagen:
-
-    ```dockerfile
-    FROM scratch AS informes
-    COPY --from=build /app/target/site ./
-    ```
-
-    ```bash
-    docker build --target informes --output type=local,dest=./informes .
-    ```
-
-    `scratch` es una imagen literalmente vacía, que aquí no sirve para ejecutar nada sino solo para contener ficheros; `--target` dice hasta qué etapa construir; y `--output type=local` escribe el resultado en disco. Es la forma limpia de sacar artefactos de una construcción, y la verás en pipelines reales. No lo vas a necesitar en la actividad de hoy.
+Este cambio explica la reducción de tamaño. La mejora de tiempo al reconstruir después de tocar código procede principalmente de la **caché** del apartado anterior. Son dos optimizaciones relacionadas, pero no son la misma.
 
 ---
 
-## 🛡️ El usuario y la base: los dos descuidos por defecto
+## 🎯 Para saber más: etapas que no acaban en la imagen final
 
-**Por defecto, todo lo que corre dentro de un contenedor corre como administrador.** Es cómodo mientras experimentas y es una mala idea en cuanto la cosa sale de tu máquina: si alguien consigue ejecutar código a través de un fallo de tu aplicación, lo hace con todos los permisos dentro del contenedor, y desde ahí las posibilidades de saltar al anfitrión son mucho mayores que si fuera un usuario cualquiera.
+Una etapa intermedia también puede servir para producir informes, documentación u otros artefactos sin incorporarlos a la imagen de producción.
 
-El arreglo son dos líneas: crear un usuario sin privilegios y declararlo con `USER` antes de que arranque la aplicación. A partir de ahí, el proceso no puede escribir donde no debe ni instalar nada. Y si tu aplicación necesita escribir en algún sitio, tendrás que dárselo explícitamente, que es exactamente lo que quieres: obligarte a saber qué escribe y dónde.
+Por ejemplo, una construcción podría generar `target/site/` y extraerlo después:
 
-La otra decisión es **de qué base partes**, y va del mismo asunto: cada paquete instalado en la imagen es código que no has escrito, que no usas y que puede tener fallos conocidos.
+```dockerfile
+FROM scratch AS informes
+COPY --from=build /app/target/site ./
+```
 
-| Base | Tamaño | A cambio |
+```bash
+docker build --target informes --output type=local,dest=./informes .
+```
+
+No necesitas utilizar esta técnica en la actividad de hoy. Quédate con la idea: **una construcción puede producir varios resultados y no todos tienen que viajar dentro de la imagen que ejecuta la aplicación**.
+
+---
+
+## 🛡️ 5. Usuario sin privilegios y directorios escribibles
+
+### 5.1. Ejecutar como usuario sin privilegios
+
+Si no declaras otro usuario, el proceso del contenedor suele ejecutarse como `root`. Para una aplicación expuesta a peticiones externas es una mala elección: una vulnerabilidad en la aplicación tendría más permisos dentro del contenedor de los necesarios.
+
+El patrón básico es:
+
+```dockerfile
+RUN addgroup -S escaparate \
+    && adduser -S escaparate -G escaparate
+
+USER escaparate
+```
+
+Pero quitar privilegios introduce una consecuencia importante: **la aplicación deja de poder escribir en cualquier sitio**.
+
+Escaparate guarda imágenes de productos en el filesystem. Por tanto, la imagen debe preparar explícitamente una ruta escribible y comunicar a la aplicación dónde está.
+
+Un patrón sería:
+
+```dockerfile
+RUN addgroup -S escaparate \
+    && adduser -S escaparate -G escaparate \
+    && mkdir -p /data/uploads \
+    && chown -R escaparate:escaparate /data
+
+ENV APP_STORAGE_PATH=/data/uploads
+
+USER escaparate
+```
+
+Ahora las responsabilidades quedan claras:
+
+```text
+imagen
+→ crea /data/uploads
+→ asigna propietario
+
+APP_STORAGE_PATH
+→ informa a Escaparate de dónde escribir
+
+USER escaparate
+→ impide escribir fuera de los lugares permitidos
+```
+
+Puedes comprobarlo al ejecutar la imagen:
+
+```bash
+docker exec <contenedor> id
+```
+
+y:
+
+```bash
+docker exec <contenedor> sh -c \
+  'printf "%s\n" "$APP_STORAGE_PATH"; test -w "$APP_STORAGE_PATH" && echo "writable"'
+```
+
+!!! warning "`USER` no sirve si la aplicación necesita escribir donde no tiene permiso"
+    Ejecutar como usuario sin privilegios no consiste únicamente en añadir una línea al final del Dockerfile. Hay que identificar qué directorios necesita escribir el proceso y preparar sus permisos durante la construcción.
+
+---
+
+### 5.2. Elegir una base mínima
+
+La etapa final también debe contener solo lo necesario.
+
+| Base | Ventaja | Coste |
 |---|---|---|
-| Distribución completa (Debian, Ubuntu) | Cientos de MB | Todo funciona, todas las herramientas están, muchísimo paquete que no usas |
-| Variante mínima (`-slim`, `alpine`) | Decenas de MB | Menos superficie y descargas más rápidas; alguna incompatibilidad ocasional con bibliotecas nativas |
-| Sin distribución (`distroless`, `scratch`) | Mínimo | Superficie mínima, pero **no hay shell**: no puedes entrar a mirar cuando algo falla |
+| Distribución completa | Muchas herramientas disponibles | Más tamaño y más software instalado |
+| Variante mínima (`-slim`, `alpine`) | Menos tamaño y superficie | Puede faltar alguna herramienta o biblioteca |
+| `distroless` / `scratch` | Superficie mínima | Diagnóstico más difícil; normalmente no hay shell |
 
-Para este módulo, las variantes mínimas son el punto dulce: bastante más ligeras y todavía depurables, y son las que vas a usar. Pero apunta el peaje de la última fila, porque es una permuta real: cuanto más segura y pequeña es la imagen, más ciego te quedas el día que hay que diagnosticar algo dentro. Que exista esa tercera fila, y por qué hay empresas que la eligen, es suficiente por ahora.
-
----
-
-## 🔍 Vulnerabilidades: quién te las mete
-
-Existen herramientas que analizan una imagen y listan las vulnerabilidades conocidas de todo lo que hay dentro: base, bibliotecas del sistema y dependencias de tu proyecto. Cada una tiene su identificador público, su gravedad y, casi siempre, la versión en la que se corrigió.
-
-Lo llamativo la primera vez que lo ejecutas es que **la inmensa mayoría de los hallazgos no son culpa de tu código**: vienen de la imagen base y de las bibliotecas que arrastra. De ahí salen las dos consecuencias prácticas del apartado anterior: partir de una base mínima reduce la lista drásticamente, y **una imagen no se hace más segura con el tiempo, sino menos**, porque cada semana se descubren fallos en software que ya estaba dentro. Reconstruir periódicamente sobre una base actualizada no es mantenimiento opcional: es la única forma de que la imagen siga siendo aceptable dentro de seis meses.
-
-Hoy solo lo vas a ver funcionar. El análisis en serio, con corrección de hallazgos, llega en la sesión 8 junto al resto de la seguridad del despliegue.
+En este módulo utilizaremos variantes mínimas que todavía permitan inspeccionar el contenedor cuando algo falle.
 
 ---
 
-## 🏷️ Etiquetar y publicar
+## 🔍 6. Una imagen también envejece
 
-Ya sabes que una imagen se nombra `usuario/nombre:etiqueta`. Lo que toca decidir ahora es **qué pones en la etiqueta**, y la respuesta viene de la sesión 2: el mismo versionado semántico que usas para marcar el código.
+Una imagen puede funcionar perfectamente y contener software con vulnerabilidades conocidas. La imagen base, las bibliotecas del sistema y las dependencias de la aplicación evolucionan aunque tu código no cambie.
 
-La práctica habitual es publicar la misma imagen con varias etiquetas a la vez: una **inmutable**, que identifica esa construcción concreta y no se reutiliza jamás (`1.2.0`), y una o varias **móviles**, que van saltando a la última construcción de una serie (`1.2`, `1`, o `latest`).
+Por eso conviene:
 
-!!! danger "En producción se despliega la inmutable"
-    Si tu servidor arranca la etiqueta móvil, dos despliegues idénticos pueden acabar ejecutando código distinto y no habrá forma humana de saber qué versión estaba corriendo cuando ocurrió el incidente. Las etiquetas móviles son una comodidad para desarrollar; el despliegue reproducible referencia una versión exacta. Cuando quieras la máxima precisión, existe además el **digest**: la huella criptográfica del contenido de la imagen, que identifica un contenido exacto aunque alguien reescriba la etiqueta.
+- partir de bases mantenidas y razonablemente pequeñas;
+- reconstruir periódicamente;
+- analizar las imágenes con herramientas de escaneo;
+- actualizar cuando aparezcan correcciones relevantes.
 
-Publicar consiste en iniciar sesión en el registro, etiquetar la imagen con tu usuario y subirla. A partir de ese momento, cualquier máquina con acceso puede ejecutarla **sin tener tu código, ni Maven, ni Java**. Ese es el momento en que tu trabajo deja de vivir en tu ordenador: es, literalmente, el punto número dos de la lista de la primera sesión, resuelto.
+En la sesión de seguridad volverás sobre este problema con más detalle. Hoy basta con entender que **reducir software innecesario también reduce superficie de ataque**.
+
+---
+
+## 🏷️ 7. Etiquetas fijas, etiquetas móviles y publicación
+
+### 7.1. Etiquetas fijas, móviles y digest
+
+Una misma imagen puede tener varias etiquetas.
+
+Por ejemplo:
+
+```text
+ghcr.io/usuario/escaparate:sesion-04
+ghcr.io/usuario/escaparate:latest
+```
+
+En el módulo utilizaremos dos ideas:
+
+- una **etiqueta fija por convención**, como `sesion-04`, que no reutilizaremos para otro resultado;
+- una **etiqueta móvil**, como `latest`, que puede moverse a una imagen distinta.
+
+!!! warning "Una etiqueta no es técnicamente inmutable"
+    Aunque decidamos no reutilizar `sesion-04`, un registro permite volver a publicar otra imagen con el mismo nombre de etiqueta. La referencia realmente ligada al contenido es el **digest**, por ejemplo `sha256:...`.
+
+Esto explica por qué un procedimiento reproducible debe evitar depender únicamente de etiquetas móviles:
+
+```text
+latest
+→ puede cambiar
+
+sesion-04
+→ estable por nuestra convención
+
+digest
+→ identifica contenido exacto
+```
+
+Más adelante, cuando trabajes con releases reales de Escaparate, aparecerán versiones como `1.0.0` y `2.0.0`. En esta actividad `sesion-04` identifica simplemente el resultado validado de la práctica.
+
+### 7.2. Publicar en GHCR
+
+Ya utilizaste GitHub Container Registry en la sesión anterior. Si Docker no sigue autenticado:
+
+```bash
+docker login ghcr.io -u <tu-usuario>
+```
+
+Utiliza la credencial configurada para GHCR, no tu contraseña normal de GitHub.
+
+Después, publicar consiste en etiquetar la imagen con su nombre completo y enviarla al registro:
+
+```bash
+docker tag escaparate:optimizada \
+  ghcr.io/<tu-usuario>/escaparate:sesion-04
+
+docker push ghcr.io/<tu-usuario>/escaparate:sesion-04
+```
+
+La misma imagen puede recibir además otra etiqueta:
+
+```bash
+docker tag escaparate:optimizada \
+  ghcr.io/<tu-usuario>/escaparate:latest
+
+docker push ghcr.io/<tu-usuario>/escaparate:latest
+```
+
+La imagen no se duplica conceptualmente por tener dos nombres: son dos referencias al mismo contenido mientras ambas etiquetas apunten al mismo digest.
 
 ---
 
 ## 🎯 Qué debes saber hacer al salir de esta sesión
 
-- Escribir un `Dockerfile` que compile un proyecto Java y deje la aplicación lista para arrancar.
-- Dejar fuera del contexto de construcción lo que no debe viajar, con un `.dockerignore`.
-- Ordenar las instrucciones para que la caché sirva de algo, y explicar qué se reconstruye y qué no.
-- Escribir una construcción multietapa y justificar la diferencia de tamaño con la versión ingenua.
-- Hacer que la aplicación no corra como administrador dentro del contenedor.
-- Publicar la imagen con una etiqueta inmutable y una móvil, y saber cuál se despliega.
+- Escribir un `Dockerfile` que compile una aplicación Java y deje únicamente lo necesario para ejecutarla.
+- Distinguir la ruta del Dockerfile del **contexto de construcción** y utilizar `-f` cuando estén separados.
+- Utilizar `.dockerignore` para evitar contenido innecesario en el contexto.
+- Ordenar instrucciones para aprovechar la caché y explicar qué se invalida cuando cambia el código.
+- Distinguir la mejora de **tiempo de reconstrucción** de la reducción del **tamaño final**.
+- Construir una imagen multietapa.
+- Ejecutar Escaparate con un usuario sin privilegios y preparar una ruta escribible para `APP_STORAGE_PATH`.
+- Medir de forma consistente tiempo y tamaño.
+- Publicar una misma imagen con una etiqueta fija por convención y una etiqueta móvil.
 
-Lo que basta con reconocer: la extracción de artefactos con `--target`, las bases sin distribución, el escaneo de vulnerabilidades —que se trabaja en la sesión 8— y el detalle del historial de capas.
+Lo que basta con reconocer: extracción de artefactos con `--target`, bases sin distribución, digest y escaneo de vulnerabilidades.
 
 ---
 
@@ -226,19 +496,22 @@ Lo que basta con reconocer: la extracción de artefactos con `--target`, las bas
 
 ??? tip "Abrir resumen"
 
-    - Un `Dockerfile` es la receta de la imagen y cada instrucción produce una capa. `EXPOSE` no publica nada, `ADD` hace más magia de la que quieres y `ARG`/`ENV` no sirven para secretos: quedan en el historial.
-    - El contexto de construcción es la carpeta entera que se envía al motor, no solo lo que copias. Un `.dockerignore` evita que viajen el historial de Git, las compilaciones locales y los ficheros con credenciales.
-    - La caché funciona por capas y en cascada: cuando una se invalida, todas las siguientes se reconstruyen. Ordena las instrucciones de menos volátil a más volátil, y copia el fichero de dependencias antes que el código.
-    - Lo que borras en una capa posterior no reduce el tamaño: la capa anterior sigue ahí con todo su peso.
-    - La construcción multietapa compila en una imagen con todas las herramientas y copia **solo el artefacto** a una imagen final mínima. Ni compilador, ni código fuente, ni dependencias en producción.
-    - Una etapa intermedia también puede servir para extraer ficheros al disco sin generar imagen, usando `--target` y salida local: así se sacan los informes y la documentación de la construcción.
-    - Por defecto el proceso corre como administrador dentro del contenedor. Crear un usuario sin privilegios y declararlo con `USER` cuesta dos líneas.
-    - Cada paquete de la imagen base es superficie de ataque. Las variantes mínimas reducen mucho la lista de vulnerabilidades; las imágenes sin distribución la reducen más, a costa de quedarte sin shell para depurar.
-    - La mayoría de vulnerabilidades vienen de la base, no de tu código, y una imagen se degrada con el tiempo: hay que reconstruirla periódicamente sobre una base actualizada.
-    - Publica cada construcción con una etiqueta inmutable, y despliega siempre esa. Las etiquetas móviles valen para desarrollar; para producción, versión exacta o digest.
+    - El Dockerfile describe cómo se construye la imagen; el **contexto de construcción** determina qué ficheros pueden utilizar sus `COPY`.
+    - `-f` permite mantener el Dockerfile en una carpeta distinta del contexto.
+    - `.gitignore` controla el historial Git; `.dockerignore` controla lo que Docker recibe durante la construcción.
+    - La caché mejora las reconstrucciones: copia primero lo estable, como `pom.xml`, y después lo volátil, como `src/`.
+    - Caché y multietapa resuelven problemas distintos: la primera reduce trabajo repetido; la segunda reduce lo que termina en producción.
+    - Una construcción multietapa puede compilar con Maven y JDK y ejecutar después únicamente con JRE + WAR.
+    - Las dependencias Java necesarias para ejecutar siguen dentro del artefacto; lo que desaparece son herramientas y materiales de construcción.
+    - Ejecutar como usuario sin privilegios obliga a preparar explícitamente los directorios que la aplicación necesita escribir.
+    - En Escaparate, `APP_STORAGE_PATH` debe apuntar a una ruta escribible por ese usuario.
+    - Compara imágenes siempre con la misma métrica: tiempo de construcción y tamaño del contenido, no uso global de disco.
+    - `latest` es móvil. Una etiqueta como `sesion-04` será fija por convención durante la práctica, pero solo el digest identifica técnicamente un contenido exacto.
 
 ---
 
-Con esto ya tienes las piezas para la **Actividad 2.2**. Vas a empaquetar Escaparate dos veces: primero de la forma ingenua y después con construcción multietapa, midiendo los tiempos y los tamaños de las dos para que el argumento sea tuyo y no mío. Por el camino tocarás una coma en el código y reconstruirás, que es la forma más rápida de entender para qué sirve la caché.
+Con esto tienes las piezas para la **Actividad 2.2**. Construirás Escaparate primero de forma ingenua y después de forma optimizada, utilizando el mismo contexto y midiendo qué cambia en tiempo y tamaño.
 
-Después le quitarás los privilegios a la aplicación y publicarás la imagen en el registro con sus dos etiquetas. Al terminar, Escaparate será un paquete que cualquiera puede descargar y arrancar sin tener instalado ni Java ni Maven ni tu código.
+Después modificarás el código para observar la caché, separarás construcción y ejecución mediante varias etapas, retirarás privilegios al proceso y prepararás su almacenamiento escribible. Finalmente publicarás la imagen en GHCR con una etiqueta fija para la sesión y otra móvil.
+
+La actividad no te dará el Dockerfile completo. Tendrás que reconocer y combinar los patrones que acabas de estudiar.

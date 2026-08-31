@@ -1,237 +1,419 @@
-# 🚀 1. Arquitecturas web y proceso de despliegue
+# 🚀 Arquitecturas web y proceso de despliegue
 
-!!!info "Descarga de diapositivas"
+!!! info "Descarga de diapositivas"
     [Descarga las diapositivas](diapositivas/arquitecturas-despliegue.pptx){target="_blank" rel="noopener"}
 
 ---
 
-En primero aprendiste, entre otras cosas, sobre programación y bases de datos. Durante este segundo curso de DAW vas a aprender, en otros módulos, a escribir el lado servidor de una aplicación web, a montar la interfaz que consume su API y a diseñarla. Este módulo se ocupa de lo que viene justo después, que es también lo que decide si todo aquello llega a existir para alguien: **una aplicación que solo funciona en el ordenador donde se escribió no le sirve a nadie**.
+En primero aprendiste a programar, trabajar con bases de datos y construir aplicaciones. Durante segundo seguirás desarrollando frontend y backend en otros módulos. Aquí el foco cambia: **una aplicación no está terminada cuando funciona en tu ordenador, sino cuando puede ejecutarse de forma fiable para otras personas**.
 
-Aquí no vas a programar. Vas a coger una aplicación ya escrita y a conseguir que funcione en un sitio que no es tu ordenador, que siga funcionando cuando te vas a casa, que no se caiga porque entren cien personas a la vez y que se pueda actualizar sin apagarla. Antes de tocar una sola herramienta, hoy toca entender qué es exactamente lo que hay que mover, en qué piezas se descompone y por qué el trayecto desde tu ordenador hasta el servidor tiene tantas paradas.
+Desplegar no es "subir archivos a un servidor". Significa preparar todo lo necesario para que una aplicación pueda arrancar, conectarse a sus datos, recibir configuración, proteger sus secretos, responder por red, soportar fallos, actualizarse y dejar pistas cuando algo va mal.
+
+Ese es el problema que recorre todo el módulo.
 
 ---
 
-## 🌐 Todo empieza con una petición
+## 🕰️ 1. Del despliegue artesanal al despliegue reproducible
 
-El modelo **cliente-servidor** es la base de todo lo que verás este curso: un programa pide (el cliente, casi siempre un navegador) y otro responde (el servidor). El cliente inicia la conversación, el servidor nunca llama primero. Esa asimetría, que parece trivial, condiciona el resto del módulo: cualquier cosa que quieras que el usuario vea tiene que estar escuchando en algún sitio, esperando a que alguien pregunte.
+Hace años era habitual que muchos proyectos pequeños se publicaran mediante procedimientos muy manuales: compilar en el equipo del desarrollador, copiar ficheros por FTP, modificar la configuración directamente en el servidor y comprobar después si todo seguía funcionando.
 
-Lo que el servidor devuelve puede ser de dos naturalezas muy distintas, y la diferencia importa mucho más de lo que parece:
+Ese modelo sigue existiendo, pero cuanto más crecen una aplicación, un equipo o el número de despliegues, más problemas aparecen:
+
+- pasos que solo conoce una persona;
+- servidores configurados de forma distinta;
+- versiones difíciles de identificar;
+- errores humanos al repetir tareas;
+- actualizaciones que producen interrupciones;
+- pruebas que se hacen demasiado tarde;
+- dificultad para saber qué cambió cuando algo falla.
+
+El despliegue moderno intenta convertir ese procedimiento artesanal en un **proceso reproducible, trazable y progresivamente automatizado**.
+
+```mermaid
+flowchart LR
+    subgraph ANT["Antes: despliegue artesanal"]
+        A1["Escribir código"] --> A2["Compilar<br/>manualmente"]
+        A2 --> A3["Copiar ficheros<br/>al servidor"]
+        A3 --> A4["Configurar<br/>a mano"]
+        A4 --> A5["Comprobar<br/>si funciona"]
+    end
+
+    subgraph MOD["Hoy: flujo reproducible"]
+        B1["Commit"] --> B2["Validar"]
+        B2 --> B3["Construir<br/>artefacto"]
+        B3 --> B4["Publicar"]
+        B4 --> B5["Desplegar"]
+        B5 --> B6["Verificar"]
+        B6 --> B7["Monitorizar"]
+    end
+
+    A5 -. "evolución" .-> B1
+```
+
+!!! note "Una comparación deliberadamente simplificada"
+    No significa que antes todo se hiciera por FTP ni que hoy todas las empresas utilicen Kubernetes, microservicios o nube pública. La tendencia importante es otra: **el camino entre escribir código y ponerlo delante de usuarios se ha convertido en una parte explícita del producto, versionada, comprobable y cada vez más automatizada**.
+
+Esta evolución también explica por qué desarrollo y operaciones ya no pueden vivir completamente separados. Quien escribe una aplicación debe entender cómo se ejecutará, cómo recibirá configuración, cómo se comprobará su estado y qué ocurrirá cuando falle. Esa colaboración entre desarrollo, operaciones, automatización y feedback continuo es parte de la cultura que suele agruparse bajo el término **DevOps**.
+
+---
+
+## 🎯 2. Qué queremos conseguir cuando desplegamos
+
+El objetivo no es simplemente que la página "se abra". Un buen despliegue debería reunir varias propiedades:
+
+| Propiedad | Qué significa |
+|---|---|
+| **Reproducible** | Dos personas pueden seguir el mismo procedimiento y obtener un resultado equivalente. |
+| **Trazable** | Podemos saber qué versión está funcionando, quién la cambió y cómo llegó hasta allí. |
+| **Configurable** | El mismo artefacto puede ejecutarse en distintos entornos cambiando la configuración externa. |
+| **Seguro** | Los secretos no viajan en el código y solo se exponen los servicios necesarios. |
+| **Observable** | Podemos saber si funciona, cuánto tarda y por qué falla sin adivinar. |
+| **Escalable** | Podemos aumentar capacidad cuando la carga lo exige. |
+| **Actualizable** | Podemos publicar una versión nueva de forma controlada y volver atrás si algo sale mal. |
+
+A lo largo del módulo irás construyendo estas propiedades una por una.
+
+---
+
+## 🌍 3. Desarrollo, staging y producción
+
+Una misma aplicación suele pasar por varios **entornos**. El código puede ser el mismo, pero cambian los datos, las credenciales, los nombres de host, los recursos disponibles y el nivel de exigencia.
+
+| Entorno | Para qué sirve | Ejemplo |
+|---|---|---|
+| **Desarrollo** | Trabajar rápido y probar cambios | PostgreSQL local, datos de ejemplo |
+| **Staging / preproducción** | Validar una versión en condiciones parecidas a producción | Servicios de prueba, configuración casi real |
+| **Producción** | Dar servicio a usuarios reales | Datos reales, seguridad y disponibilidad exigentes |
+
+```mermaid
+flowchart LR
+    D["Desarrollo"] --> S["Staging<br/>preproducción"]
+    S --> P["Producción"]
+    P --> M["Monitorización"]
+    M -. "feedback" .-> D
+```
+
+Una regla te acompañará todo el curso:
+
+> **El artefacto de la aplicación debería ser el mismo en todos los entornos. Lo que cambia es la configuración que se le proporciona desde fuera.**
+
+Si para pasar de desarrollo a producción necesitas modificar el código o recompilar con una contraseña distinta, el despliegue se vuelve frágil.
+
+---
+
+## 🌐 4. Todo empieza con una petición
+
+El modelo **cliente-servidor** es la base de la web. Un cliente, normalmente un navegador, inicia una petición y un servidor responde.
+
+```mermaid
+flowchart LR
+    C["Navegador<br/>cliente"] -->|"petición HTTP"| S["Servidor"]
+    S -->|"respuesta HTTP"| C
+```
+
+Lo que el servidor devuelve puede tener dos naturalezas distintas:
 
 | | Contenido estático | Contenido dinámico |
 |---|---|---|
-| **Qué es** | Un fichero que ya existe en disco: `.html`, `.css`, `.js`, imágenes | Una respuesta que se **fabrica** en el momento de la petición |
-| **Quién lo sirve** | Un servidor web (Nginx, Apache), o directamente un almacenamiento de objetos o una CDN | Un runtime que ejecuta código: Java, PHP, Node… |
-| **Coste por petición** | Casi cero: leer un fichero y enviarlo | Consultar base de datos, aplicar lógica, generar la respuesta |
-| **¿Hay que ejecutar lógica para producirlo?** | No: el fichero ya está hecho | Sí, en cada petición |
+| **Qué es** | Un fichero que ya existe: HTML, CSS, JS, imagen... | Una respuesta que se genera al recibir la petición |
+| **Quién lo sirve** | Servidor web, almacenamiento de objetos, CDN... | Un runtime que ejecuta código: Java, PHP, Node... |
+| **Trabajo por petición** | Leer y entregar | Aplicar lógica, consultar datos, construir la respuesta |
+| **¿Hay que ejecutar lógica para producirlo?** | No | Sí |
 
-Fíjate en la última fila, que es la que de verdad separa las dos columnas. No es que lo estático sea igual para todo el mundo —un fichero puede servirse solo a quien haya iniciado sesión—, sino que **el servidor no tiene que ejecutar nada para producirlo**: ya está hecho, solo hay que entregarlo.
+La diferencia importante no es si el contenido "cambia", sino **si hay que ejecutar lógica para producir la respuesta**.
 
-De aquí sale una de las decisiones de arquitectura más rentables que existen: **separar lo estático de lo dinámico** para que cada uno lo sirva quien mejor lo hace. Verás las consecuencias prácticas de esta separación en la sesión 6, cuando pongas un servidor web delante, y en la 9 de *Introducción a la Nube Pública*, cuando lo estático viaje por una red de distribución de contenido y lo dinámico se quede en el servidor.
+Separar contenido estático y dinámico permite que cada parte sea atendida por la pieza más adecuada. Más adelante servirás estáticos con un servidor web y también estudiarás cómo pueden distribuirse desde otros servicios.
 
 ---
 
-## 🧱 De dos capas a n capas
+## 🧱 5. Capas lógicas y unidades de despliegue
 
-Cuando decimos que una aplicación tiene *capas* hablamos de **responsabilidades separadas**: la presentación por un lado, la lógica de negocio por otro y los datos por otro. Eso es una decisión de diseño, y no dice nada sobre dónde se ejecuta cada parte.
+Cuando hablamos de **capas** describimos responsabilidades lógicas:
 
-Lo que sí nos interesa aquí es la pregunta siguiente: **cuántas máquinas distintas hacen falta para ejecutarlas**. Una aplicación de tres capas puede correr entera en un portátil o repartirse entre tres servidores, y las dos cosas son igual de legítimas. En la industria, a esa separación física se le llama a veces *nivel* o *tier* para distinguirla de la lógica, aunque en el día a día casi todo el mundo dice «capas» para ambas cosas.
-
-En este módulo nos importa el reparto físico, porque es lo que hay que desplegar, configurar y pagar. Así que en los diagramas que vienen **cada caja es una máquina distinta**, y conviene que no interiorices lo contrario: que tu aplicación tenga tres capas no obliga a nadie a comprar tres servidores.
-
-En **dos capas**, la máquina del usuario habla directamente contra un servidor que tiene la lógica y los datos juntos:
-
-```mermaid
-flowchart LR
-    C["👤 Máquina del usuario<br/>cliente"] -->|internet| S["🖥️ Servidor<br/>lógica + base de datos"]
+```text
+presentación
+lógica de negocio
+datos
 ```
 
-Es el modelo del programa de escritorio conectado a una base de datos corporativa, y aguanta mal en web: cada cliente necesitaría credenciales de la base de datos, y eso es inaceptable en cuanto el cliente es un navegador que cualquiera puede abrir y curiosear.
+Eso no determina automáticamente cuántas máquinas, contenedores o servicios hacen falta.
 
-En **tres capas repartidas** aparece la disposición que domina la web actual: presentación, lógica de negocio y datos, cada una en su propia máquina.
+Una aplicación con tres capas puede ejecutarse entera en un portátil:
 
 ```mermaid
 flowchart LR
-    C["👤 Máquina del usuario<br/>cliente"] -->|internet| A["🖥️ Servidor de aplicación<br/>lógica de negocio"] -->|red privada| D[("🗄️ Servidor de<br/>base de datos")]
+    N["Navegador"] --> A["Aplicación"]
+    A --> D[("Base de datos")]
 ```
 
-En estos diagramas, **cada caja representa un componente desplegado de forma independiente y cada flecha una comunicación entre componentes**. Ese componente podría ejecutarse en una máquina virtual, un contenedor o un servicio administrado. Varias cajas podrían incluso compartir físicamente una misma máquina.
-
-Fíjate en la consecuencia: el navegador nunca habla con la base de datos. Habla con la aplicación, que es la única que tiene las credenciales y la única que decide qué se puede consultar y qué no. Y el servidor de base de datos ni siquiera necesita estar accesible desde internet, solo desde la máquina de la aplicación. Esta es la arquitectura que vas a desplegar durante casi todo el módulo.
-
-**Una arquitectura puede repartir todavía más sus componentes**: puedes insertar un proxy inverso delante, una caché en medio o un servicio de búsqueda al lado. Cada componente desplegado de forma independiente aporta algo, pero también añade complejidad, posibles puntos de fallo y coste. Recuerda la distinción anterior: una capa es una separación lógica de responsabilidades; un componente o nodo de despliegue es una pieza que ejecutamos de forma independiente.
+o distribuir sus componentes:
 
 ```mermaid
 flowchart LR
-    C["👤 Máquina del usuario<br/>cliente"] -->|internet| P["🚦 Proxy inverso"]
-    P -->|red privada| A1["🖥️ Aplicación<br/>réplica 1"]
-    P -->|red privada| A2["🖥️ Aplicación<br/>réplica 2"]
-    A1 --> K[("⚡ Caché")]
-    A2 --> K
-    A1 --> D[("🗄️ Base de datos")]
+    N["Navegador"] --> A["Aplicación"]
+    A --> D[("Base de datos<br/>en otro nodo")]
+```
+
+!!! info "Cómo leer los diagramas de este módulo"
+    Cada caja representa una **unidad o componente desplegado de forma independiente**, no necesariamente una máquina física. Puede ejecutarse en una máquina física, una máquina virtual, un contenedor, un servicio PaaS o un servicio administrado. Varias unidades pueden incluso compartir el mismo host.
+
+Cuando el sistema crece aparecen más piezas:
+
+```mermaid
+flowchart LR
+    C["Cliente"] --> P["Proxy inverso<br/>balanceador"]
+    P --> A1["Aplicación<br/>réplica 1"]
+    P --> A2["Aplicación<br/>réplica 2"]
+    A1 --> D[("Base de datos")]
     A2 --> D
 ```
 
+Cada nueva pieza puede mejorar una propiedad concreta, como seguridad, disponibilidad o rendimiento, pero también aumenta el coste y la complejidad operativa.
+
 !!! tip "La regla del despliegue"
-    Cada capa nueva mejora una propiedad concreta (rendimiento, seguridad, escalabilidad) y empeora dos: complejidad operativa y coste. Todo el módulo consiste en aprender a decidir cuándo esa permuta compensa. No hay arquitecturas buenas y malas, hay arquitecturas proporcionadas y desproporcionadas al problema.
+    No existe una arquitectura universalmente mejor. Una solución es buena cuando su complejidad es proporcional al problema que resuelve.
 
 ---
 
-## 🧩 Monolito o servicios
+## 🧩 6. Monolito o microservicios
 
-Otra decisión, distinta de la anterior aunque se confundan a menudo. Las capas dicen *dónde se ejecuta cada parte*; el monolito frente a los servicios dice **en cuántos trozos independientes se despliega la lógica**.
+Esta decisión es distinta de separar capas.
 
-Una aplicación **monolítica** se construye y se despliega como una unidad: un solo artefacto que contiene el catálogo, los pedidos, las facturas y los usuarios. Una arquitectura de **microservicios** parte esa lógica en componentes pequeños, autónomos, con su propio almacén de datos y su propio ciclo de despliegue, que se comunican por API.
+Las capas indican **qué responsabilidades existen**. Monolito y microservicios indican **en cuántas unidades independientes se divide y despliega la lógica de negocio**.
+
+Una aplicación **monolítica** se construye y despliega como una unidad. Una arquitectura de **microservicios** divide la lógica en servicios autónomos que pueden tener ciclos de despliegue y escalado independientes.
 
 | | Monolito | Microservicios |
 |---|---|---|
-| **Desplegar un cambio pequeño** | Se vuelve a desplegar todo | Solo el servicio afectado |
-| **Escalar la parte que se satura** | Se replica la aplicación entera, aunque solo se ahogue una función | Se replica solo ese servicio |
-| **Depurar un error** | Un log, una traza, un proceso | Traza repartida entre varios servicios y varias máquinas |
-| **Equipo necesario** | Uno puede con todo | Un equipo por servicio, y alguien que orqueste |
-| **Cuándo elegirlo** | Producto joven, equipo pequeño, dominio poco claro | Escala alta, equipos independientes, partes con cargas muy distintas |
+| **Desplegar un cambio pequeño** | Se despliega la aplicación completa | Puede desplegarse solo el servicio afectado |
+| **Escalar una función concreta** | Se replica todo el monolito | Puede escalarse solo ese servicio |
+| **Depurar un fallo** | Menos procesos y comunicaciones | Logs y trazas repartidos entre servicios |
+| **Complejidad operativa** | Menor | Mucho mayor |
+| **Cuándo encaja** | Equipos pequeños o medianos, producto joven | Sistemas grandes con dominios y equipos realmente independientes |
 
-La tentación es pensar que los microservicios son «lo moderno» y el monolito «lo antiguo». No es así: la mayoría de las aplicaciones del mundo real son monolitos bien hechos, y muchas migraciones a microservicios acaban en un sistema distribuido que nadie sabe operar. Cuando una empresa sí necesita hacer la transición, además, no la hace de golpe.
+!!! warning "Moderno no significa microservicios"
+    Un monolito bien modularizado sigue siendo una solución perfectamente actual. Dividir un sistema en microservicios introduce red, fallos parciales, observabilidad distribuida, coordinación de datos y más infraestructura. Solo compensa cuando existe un problema que justifica ese coste.
 
-!!! info "Para saber más: cómo se migra un monolito"
-    La transición no se hace reescribiendo la aplicación entera y cambiándola un lunes por la mañana. Se sustituye funcionalidad poco a poco dejando la vieja en marcha, con algo delante que decide qué peticiones van a la parte nueva y cuáles a la antigua, hasta que el monolito se queda sin trabajo y se apaga. El patrón tiene nombre —*Strangler Fig*— y lo entenderás mucho mejor en la sesión 7, cuando pongas tú ese «algo delante».
+También existen otros modelos, como PaaS, serverless o arquitecturas orientadas a eventos. Los irás encontrando en otros contextos, pero no necesitas dominarlos ahora para aprender a desplegar.
 
-!!! warning "Repartir capas no es trocear la lógica"
-    Es la confusión más habitual, y la vas a tener delante todo el curso. A partir de la sesión 5 verás el front, la aplicación y la base de datos de Escaparate ejecutándose por separado, primero en contenedores distintos y más adelante en máquinas distintas. Eso es **separar capas**: cada pieza se ejecuta donde le conviene, pero toda la lógica de negocio —catálogo, altas de producto, imágenes— sigue viviendo en un único artefacto que se construye y se despliega de una vez. Trocearla en un servicio de catálogo, otro de pedidos y otro de usuarios, cada uno con sus propios datos y su propio despliegue, sería otra cosa. Eso no lo vas a hacer aquí.
+!!! info "Lo que vas a poner a prueba hoy"
+    Hasta aquí has construido el mapa general del módulo. En la Actividad 1.1 no vas a desplegar todavía nada.
 
-La aplicación que vas a desplegar este curso es, por tanto, un **monolito de tres capas**. Y está bien que lo sea: te permite ver todos los problemas de despliegue sin añadirles el de coordinar seis servicios a la vez.
+    Vas a practicar una habilidad previa: **observar un sistema que ya está desplegado y separar lo que puedes demostrar de lo que solo puedes suponer**.
+
+    Para hacerlo utilizarás principalmente tres ideas de los apartados siguientes:
+
+    - contenido estático y dinámico;
+    - peticiones, respuestas y cabeceras HTTP;
+    - componentes visibles e invisibles de un despliegue.
+
+    El resto del mapa irá cobrando sentido a medida que seas tú quien construya esas piezas durante el curso.
 
 ---
 
-## 📨 HTTP: el idioma en el que se habla el despliegue
+## 📨 7. HTTP: el idioma del diagnóstico
 
-HTTP lo vas a ver como programador en otros módulos. Aquí lo miras con otros ojos, porque cuando algo falla en producción **la respuesta HTTP suele ser la única pista que tienes** antes de entrar en la máquina.
+HTTP no solo sirve para programar APIs. Para quien despliega una aplicación es también una herramienta de diagnóstico.
 
-Una petición lleva un **método** (`GET` para pedir, `POST` para crear, `PUT` para reemplazar, `DELETE` para borrar), una ruta, unas **cabeceras** y a veces un cuerpo. La respuesta trae un **código de estado**, sus propias cabeceras y el contenido. Los códigos se agrupan en familias, y esa agrupación funciona como una primera orientación sobre dónde mirar:
+Una petición contiene:
 
-| Familia | Significado | Quién tiene el problema |
-|---|---|---|
-| `2xx` | Todo bien | Nadie |
-| `3xx` | Redirección: lo que buscas está en otro sitio | Nadie, pero comprueba que el destino es correcto |
-| `4xx` | El cliente ha pedido mal (`404` no existe, `401` no autenticado, `403` sin permiso) | Quien pregunta |
-| `5xx` | El servidor ha fallado atendiendo una petición válida (`500` error interno, `502`/`503` no llega al backend) | Tú |
+```text
+método + ruta + cabeceras + cuerpo opcional
+```
 
-!!! warning "La regla sirve para orientarse, no para cerrar el caso"
-    «Los 4xx son de quien pregunta y los 5xx de quien responde» es una regla mnemotécnica útil, pero no es una ley. Un `404` puede ser una URL mal escrita por el usuario y también un despliegue que no copió los ficheros donde tocaba; un `403` puede ser un permiso mal puesto por ti. Úsala para decidir por dónde empezar a mirar, no para decidir de quién es la culpa.
+y una respuesta:
 
-Esa última fila es la que te va a quitar el sueño. Un `502` no significa «la aplicación tiene un error»: significa que **quien recibió la petición no consiguió hablar con quien tenía que responderla**. Es un error de despliegue, no de programación, y buena parte de este módulo consiste en aprender a diagnosticarlo.
+```text
+código de estado + cabeceras + cuerpo
+```
 
-Las cabeceras son el otro instrumento de diagnóstico. Con una petición que pide solo la cabecera de la respuesta, sin descargar el contenido, ya se ve muchísimo:
+Los códigos proporcionan una primera pista:
+
+| Familia | Orientación inicial |
+|---|---|
+| `2xx` | La petición ha sido atendida correctamente |
+| `3xx` | El cliente debe continuar en otro destino |
+| `4xx` | Hay un problema con la petición, el recurso o el acceso |
+| `5xx` | El servidor o algún componente intermedio no ha podido responder correctamente |
+
+!!! warning "Es una pista, no una sentencia"
+    Un `404` puede ser una URL mal escrita, pero también un despliegue que no copió un recurso. Un `403` puede deberse a permisos mal configurados. Los códigos ayudan a decidir dónde empezar a investigar.
+
+Con `curl` puedes observar una respuesta sin depender del navegador:
 
 ```bash
 curl -I https://ejemplo.org
 ```
+
+Una salida posible sería:
 
 ```text
 HTTP/2 200
 server: nginx
 content-type: text/html; charset=UTF-8
 cache-control: max-age=3600
-set-cookie: JSESSIONID=8F2A...; Path=/; HttpOnly
 strict-transport-security: max-age=31536000
 ```
 
-Línea a línea: `HTTP/2 200` dice que la petición fue bien y con qué versión del protocolo se habló. `server` delata qué software está atendiendo, lo cual cuenta bastante sobre la arquitectura que hay detrás. `content-type` indica qué tipo de contenido devuelve, y es la causa de un error clásico: un fichero servido con el tipo equivocado que el navegador se niega a interpretar. `cache-control` decide durante cuánto tiempo el navegador o una CDN pueden guardarse la respuesta sin volver a pedirla. `set-cookie` es el servidor entregando un identificador de sesión. Y `strict-transport-security` obliga al navegador a no volver a conectarse a ese sitio sin cifrado.
+Las cabeceras pueden revelar qué servidor responde, qué contenido entrega, qué política de caché aplica o si el navegador debe utilizar siempre HTTPS.
 
-!!! info "Tu salida no tiene por qué ser idéntica"
-    El juego exacto de cabeceras depende de cómo esté configurado cada servidor y cambia con el tiempo. Lo importante no es que coincida con la de arriba, sino que sepas leer la que te devuelva a ti.
-
-Detente en la cookie de sesión, porque tiene consecuencias importantes más adelante. **HTTP no tiene estado**: cada petición llega al servidor de forma independiente. Una forma habitual de mantener una sesión consiste en guardar su estado en el servidor y entregar al navegador un identificador mediante una cookie. Mientras existe una sola instancia esto es sencillo; cuando aparecen varias réplicas, si cada una guarda las sesiones únicamente en su propia memoria, una petición puede llegar a otra instancia que no conozca esa sesión. Habrá que resolverlo compartiendo el estado, manteniendo afinidad entre usuario e instancia o utilizando otras estrategias. Ese problema reaparecerá cuando trabajes con varias réplicas.
----
-
-## 📦 De qué está hecha una aplicación web
-
-Aquí está el cambio de mentalidad que trae este módulo. Como programador, «la aplicación» es tu proyecto. Como responsable del despliegue, la aplicación es un conjunto de **cinco piezas de naturaleza distinta**, y cada una viaja de una manera:
-
-| Pieza | Qué es | En tu ordenador | Qué necesita fuera de él |
-|---|---|---|---|
-| **Estáticos** | HTML, CSS, JS, imágenes | Ficheros en una carpeta | Alguien que los sirva por HTTP, rápido y cacheados |
-| **Artefacto y runtime** | El código compilado y el intérprete o máquina virtual que lo ejecuta | Tu IDE lo arranca por ti | Un proceso que arranque solo, se reinicie si muere y escuche en un puerto |
-| **Datos** | La base de datos y su contenido | Una instalación local con cuatro filas de prueba | Un servidor propio, con copias de seguridad y acceso restringido |
-| **Configuración** | Dirección de la base de datos, rutas, puertos, modo de ejecución | Escrita a fuego en el código o en un fichero | Debe cambiar **sin recompilar**: es distinta en cada entorno |
-| **Secretos** | Contraseñas, claves de API, certificados | Suelen estar en el mismo fichero de configuración | Nunca en el repositorio, nunca dentro del paquete de la aplicación |
-
-Las dos últimas filas son las que más problemas dan en la vida real. Si la dirección de la base de datos está dentro del código, tienes que recompilar para desplegar en otro entorno, y a la tercera vez alguien desplegará la versión de pruebas contra la base de datos de producción. Si las contraseñas están en el repositorio, están en el historial de Git para siempre, aunque las borres mañana.
-
-!!! warning "El error más caro es siempre el mismo"
-    Empaquetar la configuración y los secretos junto con la aplicación. Todo el módulo vuelve una y otra vez a la misma regla: **el paquete de la aplicación es idéntico en todos los entornos; lo que cambia es lo que le inyectas desde fuera al arrancarlo.** Lo verás con contenedores en la sesión 5, con el servidor de aplicaciones en la 10 y, más adelante, al desplegar contenedores en servicios administrados de nube.
+HTTP además es **stateless**: cada petición es independiente. Esta propiedad parece sencilla mientras hay una única instancia, pero se vuelve importante cuando aparezcan varias réplicas y haya que decidir dónde guardar el estado de una sesión.
 
 ---
 
-## 🛍️ Escaparate: la aplicación que vas a desplegar todo el curso
+## 📦 8. De qué está hecho realmente un despliegue
 
-**Escaparate** es un catálogo de productos con imágenes. Nada espectacular: se listan productos, se ve el detalle de cada uno, se da de alta uno nuevo con su foto. Te la entregamos hecha y **no vas a programarla**. Lo que vas a construir es todo lo que la rodea, que es precisamente el contenido del módulo.
+Como programador puedes pensar que "la aplicación" es el proyecto de tu IDE. Para desplegarla necesitas distinguir varias piezas:
+
+| Pieza | Qué es | Qué necesita al desplegar |
+|---|---|---|
+| **Estáticos** | HTML, CSS, JS, imágenes del frontend | Un servicio capaz de entregarlos por HTTP |
+| **Artefacto y runtime** | WAR/JAR, binario, paquete + Java, Node, PHP... | Un proceso capaz de ejecutarlo y reiniciarlo |
+| **Datos** | Información persistente | Almacenamiento estable, copias y acceso restringido |
+| **Configuración** | Hosts, puertos, rutas, modo de ejecución | Poder cambiar sin recompilar |
+| **Secretos** | Contraseñas, tokens, certificados | Permanecer fuera del código y del repositorio |
+
+Las dos últimas piezas son especialmente importantes.
+
+Si la dirección de PostgreSQL está escrita dentro del código, tendrás que modificar o recompilar la aplicación para cambiar de entorno. Si una contraseña entra en Git, borrarla del fichero después no garantiza que haya desaparecido del historial.
+
+!!! warning "Una regla para todo el curso"
+    **El paquete de la aplicación debe ser independiente del entorno.** La configuración y los secretos se proporcionan desde fuera cuando la aplicación arranca.
+
+---
+
+## 🛍️ 9. Escaparate: el hilo conductor del módulo
+
+### 9.1. Arquitectura inicial de Escaparate
+
+Durante el curso desplegarás una aplicación llamada **Escaparate**, un pequeño catálogo de productos. La aplicación está deliberadamente hecha para que el problema interesante no sea programarla, sino desplegarla.
+
+Al principio del módulo utilizarás su distribución integrada:
 
 ```mermaid
 flowchart TB
-    N["🌐 Navegador"] --> F["Front estático<br/>HTML + CSS + JS<br/>config.js"]
-    F -- "llamadas a la API" --> A["Aplicación<br/>Spring Boot 3 · Java 21<br/>artefacto .war"]
-    A --> D[("PostgreSQL<br/>productos")]
-    A --> I["📁 Carpeta de<br/>imágenes en disco"]
+    N["Navegador"] --> A["Escaparate<br/>Spring Boot 3 · Java 21"]
+    A --> F["Frontend estático<br/>integrado"]
+    A --> API["API"]
+    API --> D[("PostgreSQL")]
+    API --> I["Filesystem<br/>imágenes"]
 ```
 
-Estas son sus piezas y por qué están así:
+En esta primera versión:
 
-- **El front es estático puro.** HTML, CSS y JavaScript sin ningún proceso de construcción, con un único fichero `config.js` de una línea donde se indica en qué dirección está la API. Está separado del back a propósito: eso te permitirá servirlo desde sitios muy distintos a lo largo del curso —el propio servidor web, un almacenamiento de objetos, una red de distribución— cambiando exclusivamente esa línea.
-- **El back es un `.war` de Spring Boot 3 sobre Java 21** que sirve para las dos cosas: puede arrancarse solo, porque lleva un servidor dentro, o desplegarse en un Tomcat instalado aparte. Que valga para ambas te dejará comparar las dos formas de ejecutar exactamente el mismo artefacto en la sesión 10.
-- **Los datos viven en PostgreSQL**, con su esquema y sus productos de ejemplo ya preparados.
-- **Las imágenes de los productos se guardan en una carpeta del disco de la máquina** donde corre la aplicación. Apunta este detalle: parece el sitio más natural del mundo para dejarlas, y de hecho lo es… mientras haya una sola máquina.
-- **Tres endpoints de instrumentación** que no existen para el usuario, sino para ti: uno dice qué máquina concreta ha respondido, otro genera carga de trabajo a propósito, y otro responde si la aplicación está sana. Son las tres sondas con las que verás, más adelante, cómo se reparte el tráfico, cómo escala un sistema y cómo se detecta que una pieza ha muerto.
+- el frontend está formado por HTML, CSS y JavaScript, pero se sirve desde la propia aplicación Spring Boot;
+- frontend y API salen inicialmente del **mismo contenedor y del mismo puerto**;
+- el backend se empaqueta como `escaparate.war`;
+- los datos viven en PostgreSQL;
+- las imágenes subidas se almacenan inicialmente en el filesystem;
+- la configuración de base de datos y almacenamiento puede recibirse desde fuera.
 
-!!! example "Por qué una aplicación tan sencilla"
-    Porque el objetivo no es la aplicación, es el trayecto. Una aplicación complicada te haría perder las tres horas de clase entendiendo su código en lugar de desplegándola. Escaparate es lo bastante pequeña para caber en la cabeza el primer día y lo bastante completa para tener las cinco piezas de la tabla anterior: estáticos, artefacto, datos, configuración y secretos.
+Más adelante utilizarás otras distribuciones para estudiar qué ocurre cuando algunas piezas se despliegan por separado. Separar el frontend no convierte a Escaparate en microservicios: la lógica de negocio seguirá siendo un único monolito.
+
+### 9.2. Endpoints para observar el sistema
+
+Escaparate incluye además endpoints que existen para ayudarte a estudiar el despliegue:
+
+| Endpoint | Para qué sirve |
+|---|---|
+| `/api/salud/vivo` | Indica si el proceso está vivo |
+| `/api/salud/listo` | Comprueba si la aplicación está preparada para trabajar |
+| `/api/instancia` | Permite saber qué instancia ha respondido |
+| `/api/carga?ms=...` | Genera carga de CPU de forma controlada |
+
+Los utilizarás más adelante para comprobar readiness, balanceo, escalado y comportamiento ante carga.
 
 ---
 
-## 🚚 Qué falta para que esto salga de tu ordenador
+## 🔄 10. Del código al usuario
 
-Imagina que hoy mismo te piden poner Escaparate en producción para una tienda real. Tienes el código y una máquina con acceso a internet. Esta es la lista de todo lo que falta, ordenada tal como la vas a ir resolviendo:
+La aplicación no salta directamente desde el editor hasta producción. El recorrido moderno se parece más a esto:
 
-1. Que el código y el **procedimiento de despliegue** estén escritos, versionados y documentados, no en tu cabeza.
-2. Que la aplicación arranque en esa máquina **con las mismas versiones** de Java y PostgreSQL que en tu equipo, y que eso siga siendo repetible dentro de seis meses.
-3. Que la **configuración y las contraseñas** vengan de fuera del paquete, distintas en cada entorno y fuera del repositorio.
-4. Que responda en los puertos 80 y 443, no en el 8080, con un **nombre** que la gente pueda teclear, y que los estáticos los sirva quien mejor lo hace.
-5. Que haya un **único punto de entrada** capaz de repartir el trabajo entre varias copias de la aplicación.
-6. Que la conexión vaya **cifrada**, con un certificado válido que se renueve solo, y que la base de datos **no sea accesible desde internet**.
-7. Que puedas saber, sin entrar en la máquina, **qué está pasando**: cuántos errores hay, qué ruta falla, si la memoria está al límite.
-8. Que el proceso **arranque solo**, se reinicie si muere y aguante un pico de visitas sin desplomarse.
-9. Que publicar **una nueva versión** sea automático y volver atrás cueste un minuto si sale mal.
-10. Que si una copia se cae **se reponga sola**, y que actualizar no implique cortar el servicio.
+```mermaid
+flowchart LR
+    C["Código"] --> R["Repositorio"]
+    R --> B["Build"]
+    B --> T["Pruebas"]
+    T --> A["Artefacto<br/>imagen"]
+    A --> G["Registro"]
+    G --> S["Staging"]
+    S --> P["Producción"]
+    P --> O["Monitorización"]
+    O -. "feedback" .-> C
+```
 
-Ninguno de esos diez puntos es un problema de programación. Todos son problemas de despliegue, y cada uno tiene su sitio en el calendario:
+No vas a automatizar todo esto en la primera semana. El propósito de este esquema es que puedas ubicar cada herramienta cuando aparezca:
 
-| Lo que falta | Dónde se resuelve |
+- Git da trazabilidad al código y a la configuración.
+- Docker ayuda a empaquetar de forma reproducible.
+- Un registry distribuye las imágenes.
+- Nginx puede actuar como servidor web, proxy o balanceador.
+- TLS protege las comunicaciones.
+- Logs y métricas permiten observar el sistema.
+- CI valida y construye automáticamente.
+- CD automatiza la publicación y el despliegue.
+- Kubernetes declara y mantiene el estado deseado de un conjunto de contenedores.
+
+---
+
+## 🚚 11. Qué falta para sacar Escaparate de tu ordenador
+
+Imagina que hoy te piden poner Escaparate en producción. Tienes el código y una máquina conectada a Internet. Todavía faltan muchas cosas:
+
+1. Que el código y el **procedimiento de despliegue** estén versionados y documentados.
+2. Que la aplicación se ejecute con **versiones y dependencias reproducibles**.
+3. Que **configuración y secretos** estén fuera del artefacto y del repositorio.
+4. Que responda con un **nombre**, por los puertos adecuados, y que los recursos web se sirvan correctamente.
+5. Que pueda existir un **punto de entrada** capaz de dirigir y repartir tráfico.
+6. Que las comunicaciones estén **cifradas** y los servicios internos no queden expuestos innecesariamente.
+7. Que puedas saber **qué está ocurriendo** mediante estado, logs y métricas.
+8. Que puedas medir disponibilidad y rendimiento y entender qué limita al sistema.
+9. Que construir, comprobar, publicar, desplegar y volver atrás sea cada vez más **automático**.
+10. Que varias instancias puedan ser **orquestadas**, reemplazadas y actualizadas progresivamente.
+
+Cada punto tiene su lugar en el curso:
+
+| Problema | Dónde se trabaja |
 |---|---|
 | 1 · Versionado y documentación | Sesión 2 |
-| 2 · Empaquetado reproducible | Sesiones 3 a 5 · contenedores |
+| 2 · Contenedores, imágenes y despliegue reproducible | Sesiones 3 a 5 |
 | 3 · Configuración y secretos externos | Sesión 5 y refuerzos posteriores |
-| 4 · Servir estáticos y configurar el servidor web | Sesión 6 |
-| 5 · Proxy inverso y ejecución de la aplicación | Sesión 7 |
-| 6 · Cifrado, certificados y endurecimiento | Sesión 8 |
-| 7 · Saber qué ocurre mediante logs y observabilidad | Sesión 9 |
-| 8 · Verificar disponibilidad y rendimiento | Sesiones 10 y 11 |
-| 9 · Automatizar construcción, publicación y despliegue | Sesiones 12 y 13 |
-| 10 · Auditar y defender el despliegue completo | Sesiones 14 a 16 |
+| 4 · Servidor web y nombres | Sesión 6 |
+| 5 · Proxy inverso y balanceo | Sesión 7 |
+| 6 · HTTPS y endurecimiento | Sesión 8 |
+| 7 · Observabilidad | Sesión 9 |
+| 8 · Servidores de aplicaciones y rendimiento | Sesiones 10 y 11 |
+| 9 · CI, CD y rollback | Sesiones 12 y 13 |
+| 10 · Kubernetes local, rolling updates y nube | Sesiones 14 a 16 |
 
-Ese es el módulo entero. Cada sesión existe porque resuelve un punto de esa lista, y al final del curso Escaparate estará desplegada de cuatro formas distintas y sabrás argumentar cuál le venderías a qué cliente.
+Ese es el mapa del módulo:
 
-De todos ellos, el segundo es la puerta de entrada: mientras «funciona en mi máquina» siga siendo cierto solo en tu máquina, el resto no se puede ni empezar. La respuesta a ese problema tiene nombre y llega en la sesión 3.
+```text
+manual
+  ↓
+reproducible
+  ↓
+automatizado
+  ↓
+orquestado
+```
 
 ---
 
 ## 🎯 Qué debes saber hacer al salir de esta sesión
 
-- Nombrar las cinco piezas de una aplicación web desplegada y decir qué necesita cada una.
-- Distinguir contenido estático de dinámico y explicar por qué conviene separarlos.
-- Leer la cabecera de una respuesta HTTP e interpretar el código de estado, el servidor, el tipo de contenido y la caché.
-- Usar la pestaña de red del navegador para saber cuántas peticiones hace una página y de qué tipo son.
-- Explicar por qué la configuración y los secretos nunca viajan dentro del paquete.
+No tienes que memorizar todavía todas las tecnologías anteriores. Al terminar esta primera sesión deberías poder:
 
-Todo lo demás de este apunte —las arquitecturas de n capas, los microservicios, la lista de los diez puntos— es el mapa del curso. Está aquí para que sepas dónde estás en cada momento, no para memorizarlo hoy.
+- explicar qué significa desplegar una aplicación y por qué no equivale a copiar ficheros;
+- distinguir desarrollo, staging y producción;
+- nombrar las propiedades que buscamos en un despliegue profesional;
+- distinguir contenido estático y dinámico;
+- diferenciar capas lógicas de unidades físicas o virtuales de despliegue;
+- explicar la diferencia entre monolito y microservicios sin asumir que uno es "mejor";
+- interpretar códigos y cabeceras HTTP como primeras pistas de diagnóstico;
+- identificar las cinco piezas de un despliegue: estáticos, artefacto/runtime, datos, configuración y secretos;
+- describir la arquitectura inicial de Escaparate;
+- situar de forma general Git, Docker, CI/CD, observabilidad y Kubernetes dentro del camino que lleva el código hasta producción.
 
 ---
 
@@ -239,18 +421,19 @@ Todo lo demás de este apunte —las arquitecturas de n capas, los microservicio
 
 ??? tip "Abrir resumen"
 
-    - En el modelo cliente-servidor siempre pregunta el cliente: cualquier cosa que el usuario deba ver tiene que estar escuchando en algún sitio, esperando la petición.
-    - Contenido estático es un fichero que ya existe; contenido dinámico se fabrica en cada petición. Separarlos permite que cada uno lo sirva quien mejor lo hace, y es la base de media docena de decisiones posteriores.
-    - Las capas separan responsabilidades: presentación, lógica y datos. Pueden ejecutarse juntas o distribuirse entre distintos componentes o nodos. En la arquitectura que utilizaremos, el navegador no accede directamente a la base de datos: habla con la aplicación, que es quien conoce las credenciales y aplica las reglas de acceso.
-    - Cada capa nueva mejora una propiedad y empeora dos: complejidad y coste. No hay arquitecturas buenas, hay arquitecturas proporcionadas al problema.
-    - El monolito se despliega y se escala como una unidad; los microservicios, pieza a pieza, a cambio de un sistema distribuido que hay que saber operar. La mayoría de aplicaciones reales son monolitos bien hechos.
-    - Repartir las capas entre varias máquinas no convierte un monolito en microservicios: mientras la lógica de negocio siga siendo un único artefacto que se construye y se despliega de una vez, sigue siendo un monolito.
-    - Los códigos HTTP `4xx` suelen orientar primero hacia la petición o el acceso y los `5xx` hacia el servidor, pero son solo una pista inicial. Un `502`, por ejemplo, suele indicar que un intermediario no ha podido obtener una respuesta válida del servicio que tenía detrás.
-    - HTTP no guarda estado; la sesión es un parche que funciona con un servidor y se rompe con dos. Recuérdalo cuando llegue el balanceo.
-    - Una aplicación web son cinco piezas con necesidades distintas: estáticos, artefacto y runtime, datos, configuración y secretos. Las dos últimas nunca viajan dentro del paquete.
-    - El paquete de la aplicación debe ser idéntico en todos los entornos; lo que cambia es lo que se le inyecta desde fuera al arrancar.
-    - Escaparate es el hilo del curso: front estático separado, artefacto que vale para servidor embebido y externo, datos en PostgreSQL, imágenes en disco local y tres endpoints de instrumentación para ver el reparto de tráfico, generar carga y comprobar la salud.
+    - Una aplicación que solo funciona en el equipo del desarrollador todavía no está desplegada.
+    - El despliegue moderno intenta sustituir procedimientos manuales por procesos reproducibles, trazables y progresivamente automatizados.
+    - Desarrollo, staging y producción son entornos distintos. El artefacto debería mantenerse; la configuración cambia.
+    - Un buen despliegue debe ser reproducible, trazable, configurable, seguro, observable, escalable y actualizable.
+    - Las capas separan responsabilidades; las unidades de despliegue indican dónde y cómo se ejecutan los componentes.
+    - Monolito no significa antiguo y microservicios no significa automáticamente mejor.
+    - HTTP es también una herramienta de diagnóstico: códigos y cabeceras ayudan a localizar problemas.
+    - Un despliegue incluye estáticos, artefacto/runtime, datos, configuración y secretos.
+    - Configuración y secretos no deben quedar incorporados al artefacto.
+    - Escaparate comienza como un monolito integrado con frontend y API en Spring Boot, PostgreSQL y almacenamiento de imágenes en filesystem.
+    - El camino completo va desde código y repositorio hasta build, pruebas, artefacto, despliegue, verificación y monitorización.
+    - El módulo avanza desde procedimientos manuales hacia despliegues reproducibles, automatizados y finalmente orquestados.
 
 ---
 
-Con esto ya tienes el mapa: sabes de qué está hecha una aplicación web, qué piezas tiene Escaparate y qué le falta para vivir fuera de tu ordenador. En la **Actividad 1.1** vas a comprobar que todo lo anterior se puede leer directamente en sitios reales: abrirás dos webs muy distintas, mirarás qué servidor las atiende, qué recursos cargan y qué cabeceras devuelven, y deducirás de ahí qué arquitectura tienen detrás y qué habría hecho falta para desplegarlas.
+Con este mapa ya puedes interpretar mejor lo que observarás en la **Actividad 1.1**. Abrirás despliegues reales, inspeccionarás sus peticiones y respuestas y tratarás de separar tres cosas que un profesional nunca debe confundir: **lo que puedes observar, lo que puedes inferir y lo que desde fuera simplemente no puedes saber**.

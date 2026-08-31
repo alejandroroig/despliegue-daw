@@ -1,113 +1,318 @@
 # 🧪 Actividad 1.2: Tu repositorio como herramienta de despliegue
 
-!!! warning "Descarga la plantilla"
-    📄 [Plantilla 1.2 — Tu repositorio como herramienta de despliegue](plantillas/Actividad_1_2_DAW_Plantilla.docx){target="_blank" rel="noopener"}
+!!! warning "Descarga el material"
+    Para esta actividad necesitas la aplicación `escaparate-integrado.zip`.
 
 ## Contexto
 
-La semana pasada dedicaste la sesión a mirar despliegues ajenos desde fuera. Hoy empieza el tuyo, y no por el servidor: por el sitio donde va a vivir todo lo demás.
+La semana pasada dedicaste la sesión a observar despliegues ajenos desde fuera. Hoy empieza el tuyo, pero no por el servidor: por el lugar donde van a vivir el código, la documentación y el procedimiento de trabajo.
 
-El encargo es concreto. Tu responsable te pide que dejes montado el repositorio del proyecto **antes** de que llegue nadie más al equipo, con tres condiciones que ha repetido dos veces: que cualquiera pueda clonarlo y saber qué hacer con él, que no contenga ni una credencial, y que se pueda identificar sin ambigüedad qué versión es cada cosa. Lo que montes hoy lo vas a usar los dieciséis viernes del curso.
+El encargo es concreto. Tu responsable te pide preparar el repositorio del proyecto antes de que llegue nadie más al equipo, con tres condiciones:
+
+- que cualquier miembro del equipo con acceso pueda clonarlo y entender qué contiene;
+- que no incorpore secretos ni ficheros locales que no deban versionarse;
+- que permita identificar sin ambigüedad estados concretos del proyecto.
+
+
+El repositorio que prepares hoy se seguirá utilizando durante el módulo.
+
+!!! info "Sobre Escaparate"
+    `escaparate-integrado.zip` es una aplicación ya preparada para las prácticas de despliegue. **No necesitas entender ni modificar todavía su código.** En esta actividad actúa simplemente como un proyecto real que debes incorporar correctamente a tu repositorio.
 
 ## Qué vas a practicar
 
-- **Crear** un repositorio con una estructura pensada para el despliegue, no para el código.
-- **Decidir** qué no entra nunca en el historial, y configurarlo antes del primer commit.
-- **Recuperarte** de tres errores distintos eligiendo la operación adecuada a cada uno.
-- **Trabajar con ramas** y proponer los cambios mediante una petición de fusión.
-- **Etiquetar** una versión y entender por qué una etiqueta no es una rama.
+- Crear un repositorio y organizarlo para trabajar durante el módulo.
+- Interpretar y completar reglas de `.gitignore`.
+- Distinguir **directorio de trabajo**, **área de preparación (*staging*)** e **historial**.
+- Recuperarte de errores distintos utilizando la operación adecuada.
+- Trabajar con ramas y Pull Requests.
+- Crear una etiqueta para identificar un estado concreto del repositorio.
 
 ## Requisitos previos
 
 - Git instalado, con tu nombre y tu correo configurados.
-- **Cuenta de GitHub con acceso resuelto**: clave SSH registrada o token de acceso personal. Esto es lo primero de la sesión, y no se puede aplazar: sin ello no puedes publicar nada.
-- El documento de la actividad 1.1 terminado.
-- El código de **Escaparate**, que se te entrega hoy.
+- **Cuenta de GitHub**. No necesitas traer un token preparado: configurarás la autenticación HTTPS en el paso 3.
+- `escaparate-integrado.zip`.
+- La carpeta completa `actividad-1.1/` de la sesión anterior (o el fichero comprimido subido a Aules).
 
-!!! danger "Fuera de las carpetas sincronizadas"
-    Trabaja en una carpeta que **no** esté dentro de OneDrive, iCloud ni Google Drive. Esos sistemas y Git se pelean por los mismos ficheros, y el resultado es un repositorio corrupto sin aviso previo.
+!!! danger "Fuera de carpetas sincronizadas"
+    Trabaja fuera de OneDrive, iCloud, Google Drive u otras carpetas sincronizadas.
 
-!!! info "Reparto de tiempo orientativo"
-    Pasos 1 a 4, unos 40 minutos. Paso 5, unos 25. Pasos 6 a 8, unos 25.
+!!! info "Tiempo orientativo"
+    - Pasos 1 a 4: 40 min.
+    - Pasos 5 y 6: 30 min.
+    - Pasos 7 y 8: 25 min.
+
+!!! info "Capturas durante los primeros pasos"
+    Hasta que crees la rama `sesion-02` en el paso 7, guarda las capturas de esta actividad en una carpeta temporal **fuera del repositorio**. Así podrás practicar los distintos estados de Git sin que las imágenes pendientes aparezcan continuamente en `git status`. En el paso 7 las incorporarás al repositorio junto con el Markdown de la actividad.
 
 ---
 
-## Paso 1 — El esqueleto
+## Paso 1: El esqueleto
 
-Crea una carpeta `daw-despliegue` e inicialízala como repositorio. Dentro, monta esta estructura:
+Crea una carpeta `daw-despliegue` e inicialízala como repositorio Git haciendo que su rama principal se llame `main`. Dentro, prepara esta estructura:
 
-```
+```text
 daw-despliegue/
 ├── README.md
 ├── docs/
-├── entregas/tema1/
-└── escaparate/     ← el código que se te ha entregado, tal cual
+│   └── README.md
+├── entregas/
+│   └── tema1/
+├── escaparate/
+│   └── ... aplicación integrada ...
+└── practicas/
+    └── README.md
 ```
 
-Antes de preparar nada, mira en qué estado ve Git lo que acabas de crear.
+Descomprime `escaparate-integrado.zip` y coloca su contenido dentro de `escaparate/`.
 
-**Comprueba**: aparecen como no seguidos tanto tus carpetas como el proyecto entero de Escaparate.
-**Captura**: el estado del repositorio antes de tu primer commit.
+El `README.md` de la raíz puede contener inicialmente solo:
+
+- nombre del módulo;
+- una frase indicando que será el repositorio de trabajo de Despliegue.
+
+En `docs/README.md` basta con explicar que esa carpeta contendrá documentación del proyecto. En `practicas/README.md` explica que esa carpeta contendrá los ficheros de configuración y despliegue creados durante las prácticas del módulo.
+
+Tras editar los ficheros mencionados, ejecuta:
+
+```bash
+git status
+```
+
+!!! question "Observa"
+    `entregas/tema1/` todavía está vacía. ¿Aparece en `git status`? ¿Qué te dice eso sobre cómo trata Git los directorios vacíos?
+
+**Captura:** estado inicial del repositorio.
 
 ---
 
-## Paso 2 — Lo que no entra
+## Paso 2: Lo que no entra
 
-Abre la carpeta de Escaparate y busca lo que **no** debe acabar nunca en el historial. Hay dos familias: los ficheros que se generan al compilar y cualquier cosa que contenga una credencial.
+Antes del primer commit debes revisar qué ficheros deberían quedar fuera del historial.
 
-Configura el repositorio para ignorarlos. Como mínimo tienen que quedar fuera la carpeta de compilación de Maven, los ficheros de clases, los ficheros de variables de entorno y la configuración de tu editor.
+### 2.1 Inspecciona Escaparate
 
-**Comprueba**: al volver a mirar el estado, ninguno de esos ficheros aparece ya como pendiente de añadir.
-**Captura**: el fichero de exclusiones y el estado del repositorio después de crearlo.
+Dentro de `escaparate/` ya existe un fichero `.gitignore`. Ábrelo y explica brevemente qué pretende excluir cada regla.
+
+No lo borres: forma parte del proyecto que has recibido.
+
+### 2.2 Protege el repositorio completo
+
+Crea además un `.gitignore` en la **raíz de `daw-despliegue/`** para establecer reglas aplicables a todo el repositorio.
+
+Como mínimo deben quedar excluidos:
+
+- directorios de compilación Maven;
+- ficheros `.class`;
+- ficheros `.env`;
+- configuración local de los IDE habituales;
+- datos locales generados al ejecutar Escaparate, como las imágenes subidas durante las pruebas.
+
+Puedes comprobar qué regla afecta a una ruta con:
+
+```bash
+git check-ignore -v <ruta>
+```
+
+Prueba, por ejemplo:
+
+```bash
+git check-ignore -v escaparate/target/prueba.class
+git check-ignore -v escaparate/.env
+git check-ignore -v escaparate/uploads/prueba.png
+```
+
+!!! warning "No ignores demasiado"
+    Un fichero de configuración no es automáticamente un secreto y un `.jar` no es automáticamente un artefacto prescindible. No utilices reglas generales sin comprobar qué eliminarían del proyecto.
+
+**Comprueba:** las rutas anteriores quedan ignoradas y los ficheros necesarios de Escaparate siguen apareciendo como candidatos a ser versionados.
+
+**Captura:** el `.gitignore` creado, las comprobaciones realizadas y `git status`.
 
 !!! question "Reflexiona"
-    Has hecho esto **antes** del primer commit, no después. Si lo hubieras hecho al revés, ¿bastaría con añadir las reglas más tarde para que esos ficheros desaparecieran del repositorio? Y si lo que se hubiera colado fuera la contraseña de la base de datos, ¿sería suficiente con borrarla en un commit posterior?
+    Si un fichero ya hubiese entrado en un commit y después añadieras su nombre a `.gitignore`, ¿desaparecería del historial?
+
+    Y si lo publicado hubiese sido una contraseña real, ¿bastaría con borrarla en un commit posterior?
 
 ---
 
-## Paso 3 — Publica
+## Paso 3: Publica
 
-Haz el primer commit y crea en GitHub un repositorio **público** llamado `daw-despliegue`, vacío, sin ningún fichero inicial. Enlázalo y publica lo que tienes.
+Añade el contenido de la carpeta `daw-despliegue` al área de preparación y crea el primer commit.
 
-**Comprueba**: el repositorio se ve en tu perfil de GitHub y el contenido del `README` aparece en la portada.
-**Captura**: la página del repositorio en GitHub.
+Después crea en GitHub un repositorio **privado** llamado `daw-despliegue`, vacío, sin ningún fichero inicial.
 
-!!! tip "Si te pide usuario y contraseña"
-    GitHub dejó de aceptar la contraseña de la web hace años. Si te la pide, estás usando la dirección `https` sin token. Revisa qué dirección tiene configurada tu repositorio como remoto y qué método de autenticación resolviste en los requisitos previos.
+### 3.1 Crea el PAT del módulo
+
+En este curso trabajaremos con GitHub mediante HTTPS. Para evitar gestionar varias credenciales durante las primeras sesiones utilizaremos, como simplificación didáctica, un único **Personal Access Token (classic)** que servirá tanto para Git como para GitHub Container Registry.
+
+En GitHub ve a:
+
+```text
+GitHub
+→ Settings
+→ Developer settings
+→ Personal access tokens
+→ Tokens (classic)
+```
+
+Selecciona **Generate new token → Generate new token (classic)** y crea:
+
+```text
+Nombre: DAW - Curso
+Caducidad: hasta el final del curso o la indicada por el profesor
+Scopes:
+    repo
+    write:packages
+```
+
+Los dos permisos tienen finalidades distintas:
+
+- `repo` permite trabajar desde Git con tu repositorio privado;
+- `write:packages` se utilizará en la Actividad 2.1 para publicar imágenes en `ghcr.io`.
+
+Cuando GitHub muestre el token, **cópialo en ese momento y guárdalo en un gestor de contraseñas**. No necesitas ni debes escribirlo dentro de `daw-despliegue`.
+
+!!! danger "El token no aparece en la entrega"
+    No incluyas el PAT en `actividad-1.2.md`, en `.env`, en el README ni en ninguna captura. Si se filtra accidentalmente, revócalo desde GitHub y crea otro.
+
+!!! warning "Una simplificación para el aula"
+    Un PAT classic con `repo` tiene permisos amplios. Lo utilizamos porque nos permite trabajar con Git ahora y reutilizar la misma credencial con GHCR en la próxima sesión, reduciendo la gestión de credenciales mientras aprendes las herramientas.
+
+??? info "Alternativa recomendada: mínimo privilegio"
+    Si prefieres aplicar desde ahora una política más estricta, puedes utilizar **dos credenciales separadas**:
+
+    1. Para Git, crea un **fine-grained personal access token** limitado únicamente a `daw-despliegue`, con `Contents: Read and write`.
+    2. En la Actividad 2.1 crearás un **PAT classic** independiente con `write:packages` para GHCR.
+
+    La ruta para el primero es:
+
+    ```text
+    GitHub
+    → Settings
+    → Developer settings
+    → Personal access tokens
+    → Fine-grained tokens
+    → Generate new token
+    ```
+
+    Selecciona tu cuenta como *Resource owner*, limita *Repository access* a `daw-despliegue` y concede únicamente `Contents: Read and write`.
+
+    Esta opción sigue mejor el **principio de mínimo privilegio**: si una credencial se comprometiera, el daño posible quedaría limitado a la finalidad para la que fue creada. GitHub recomienda los PAT *fine-grained* para restringir el acceso a repositorios concretos, mientras que GitHub Packages requiere actualmente un PAT classic para la autenticación manual.
+
+### 3.2 Enlaza y publica el repositorio
+
+Enlaza ahora tu repositorio local con el remoto mediante la URL HTTPS y publica `main`, utilizando lo explicado en la teoría.
+
+Si Git solicita credenciales:
+
+```text
+Username: <tu-usuario-de-GitHub>
+Password: <tu-PAT>
+```
+
+En `Password` se introduce el PAT, **no la contraseña normal de tu cuenta de GitHub**. Si tu equipo utiliza un gestor de credenciales, es posible que lo recuerde y no vuelva a preguntarlo en cada `push`.
+
+Añade después como **colaborador** al usuario de GitHub del profesor, de forma que pueda acceder al repositorio y corregir el trabajo sin que tengas que hacerlo público durante el curso.
+
+**Comprueba:**
+
+- la rama principal es `main`;
+- el repositorio existe en GitHub y su visibilidad es privada;
+- el profesor aparece con acceso al repositorio;
+- el README aparece renderizado;
+- `escaparate/` contiene el proyecto recibido;
+- no hay secretos ni artefactos locales en el repositorio.
+
+**Captura:** portada del repositorio en GitHub sin mostrar el PAT ni ninguna otra información sensible.
+
+!!! info "Privado durante el curso, publicable al final"
+    El repositorio se mantendrá privado mientras realizas las actividades para que el trabajo no quede expuesto al resto de la clase. Al final del módulo, después de revisar que no contiene secretos, credenciales ni datos personales, podrás cambiarlo a público y conservarlo como muestra de tu trabajo técnico.
 
 ---
 
-## Paso 4 — Incorpora lo de la semana pasada
+## Paso 4: Incorpora lo de la semana pasada
 
-La actividad 1.1 la entregaste como documento suelto porque este repositorio todavía no existía. Ahora sí existe: colócalo en `entregas/tema1/` y regístralo con un commit propio, con su mensaje.
+La actividad 1.1 la entregaste comprimida en Aules porque este repositorio todavía no existía. Recupera la carpeta `actividad-1.1/`, colócala completa dentro de `entregas/tema1/` y regístrala con un commit propio.
 
-**Captura**: el fichero visible en GitHub dentro de su carpeta.
+La estructura resultante será la siguiente:
+
+```text
+daw-despliegue/
+└── entregas/
+    └── tema1/
+        └── actividad-1.1/
+            ├── actividad-1.1.md
+            └── img/
+```
+
+**Captura:** fichero y commit que lo incorporó.
 
 ---
 
-## Paso 5 — Tres maneras de estropearlo y tres de arreglarlo
+## Paso 5: Tres maneras de estropearlo y tres de arreglarlo
 
-Aquí está el núcleo de la sesión. Vas a provocar tres situaciones y a resolver cada una eligiendo tú la operación adecuada. **No te digo qué comando usar**: eso es exactamente lo que se corrige.
+Aquí está el núcleo de la sesión. Vas a provocar tres situaciones y a resolver cada una eligiendo tú la operación adecuada. **No se indica qué comando usar**: eso debes decidirlo tú.
 
-Después de cada una, anota **qué área de Git ha quedado afectada** —directorio de trabajo, preparación o historial— y por qué esa era la operación correcta y no otra.
+Después de cada situación anota:
 
-**Situación 1.** Escribe tres párrafos en el `README` y déjalos a medias. No te convencen. Quieres volver al contenido que tenía en el último commit sin borrar el fichero ni deshacer nada a mano.
+- qué zona de Git estaba afectada;
+- qué operación utilizaste;
+- por qué esa operación era adecuada.
 
-**Situación 2.** Modifica el `README` otra vez, esta vez con algo que sí quieres conservar, y prepáralo. Te das cuenta de que todavía no querías incluirlo en el próximo commit. Sácalo de la preparación **sin perder ni una línea de lo escrito**.
+---
 
-**Situación 3.** Añade al `README` una línea claramente equivocada, regístrala y **publícala**. Ya no es un error privado: está en el servidor y cualquiera puede haberlo descargado. Deshazlo de la forma que corresponde a un cambio publicado, y publica también la corrección.
+### Situación 1: Cambio que todavía no has preparado
 
-**Comprueba**: tras la situación 3, el contenido erróneo ha desaparecido del fichero pero **ambos** commits siguen en el historial.
-**Captura**: el estado del repositorio o el contenido del fichero antes y después de cada situación, y el historial al terminar la tercera.
+Escribe tres párrafos en el `README.md` de la carpeta raíz y déjalos a medias. No te convencen. Decides descartarlos por completo y quieres volver al contenido que tenía el fichero en el último commit, sin editarlo manualmente.
+
+**Comprueba:** el cambio desaparece y el repositorio vuelve a estar limpio.
+
+---
+
+### Situación 2: Cambio preparado que quieres conservar
+
+Modifica otra vez el `README.md`, esta vez con contenido válido que sí quieres conservar. Prepáralo para el siguiente commit. Después decides que todavía no quieres incluir ese fichero en el próximo commit. Sácalo del área de preparación **sin perder lo escrito**.
+
+**Comprueba:**
+
+- el fichero sigue modificado;
+- el contenido permanece;
+- el cambio ya no está preparado.
+
+!!! warning "Antes de seguir"
+
+    El contenido era válido. Regístralo ahora en un commit normal y publícalo para que la siguiente situación empiece desde un estado limpio.
+
+---
+
+### Situación 3: El error ya está publicado
+
+Añade al `README.md` una línea claramente equivocada, regístrala en un commit y **publícala**. Ahora el error ya forma parte del historial compartido: está en el servidor y cualquiera puede haberlo descargado. 
+
+Deshaz su efecto de forma que:
+
+- el contenido incorrecto desaparezca;
+- el commit original siga existiendo;
+- aparezca un nuevo commit que deshaga sus cambios.
+
+Publica también la corrección.
+
+**Captura:** historial final y README corregido.
 
 !!! question "Reflexiona"
-    En la situación 3 podrías haber hecho desaparecer ese commit del historial y forzar la publicación. Explica qué le habría ocurrido a un compañero que hubiera descargado tu rama entre las dos operaciones. Y una segunda: en un repositorio del que se despliega a producción, **¿qué más se pierde, aparte del trabajo ajeno, cuando se reescribe historial publicado?**
+    Podrías haber hecho desaparecer el commit original reescribiendo el historial y forzando después el `push`.
+
+    ¿Qué problema tendría alguien que hubiese descargado tu rama durante ese intervalo?
+
+    ¿Qué información de trazabilidad puede perderse cuando se cambian commits que ya habían sido publicados?
 
 ---
 
-## Paso 6 — La tabla de decisión
+## Paso 6: La tabla de decisión
 
-Sin ejecutar nada más, rellena esta tabla razonando a partir de lo que acabas de practicar. La tercera columna es la que se corrige:
+Sin ejecutar nada más, completa esta tabla razonando a partir de lo que acabas de practicar. La incorporarás al Markdown de la actividad en el paso 7:
 
 | Situación | Qué harías | Por qué esa y no otra |
 |---|---|---|
@@ -117,93 +322,177 @@ Sin ejecutar nada más, rellena esta tabla razonando a partir de lo que acabas d
 
 ---
 
-## Paso 7 — La rama de la sesión
+## Paso 7: La rama y la documentación de la sesión
 
-Todo lo que falta va en una rama llamada `sesion-02`. Créala y trabaja en ella.
+El trabajo normal del módulo se realizará mediante ramas. Crea una rama llamada `sesion-02` para trabajar en ella.
 
-Escribe el `README` pensando en alguien que llega al repositorio sin haber estado en esta clase. Hoy todavía no hay nada que desplegar, así que lo que tiene que explicar es:
+### 7.1 Documenta la actividad
 
-- Qué es este repositorio y qué contiene.
-- Qué hay que tener instalado para trabajar en él.
-- **Cómo se trabaja aquí**: una rama por sesión con el nombre `sesion-NN`, y las entregas llegan a la rama principal mediante petición de fusión.
-- Un índice de las entregas. La primera línea ya la puedes escribir: la actividad 1.1, que colocaste en el paso 4.
+Ahora crea dentro del repositorio:
 
-Deja además creado el apartado «Puesta en marcha», aunque hoy solo contenga una línea diciendo que se completará cuando haya algo que arrancar. En la sesión 5 lo rellenarás de verdad.
+```text
+entregas/
+└── tema1/
+    └── actividad-1.2/
+        ├── actividad-1.2.md
+        └── img/
+```
 
-Publica la rama y **abre una petición de fusión** hacia la rama principal, con una descripción que explique qué has hecho hoy y por qué. Esa descripción es parte de la entrega. Después ciérrala tú mismo integrando el trabajo.
+Mueve a `img/` las capturas que has guardado durante los pasos anteriores e insértalas en `actividad-1.2.md` utilizando rutas relativas.
 
-**Comprueba**: en GitHub, la petición de fusión aparece como fusionada y el `README` se ve en la portada con su contenido.
-**Captura**: la petición de fusión con su descripción, y el `README` renderizado.
+El Markdown debe recoger, de forma ordenada:
+
+- las explicaciones sobre `.gitignore`;
+- las respuestas y reflexiones solicitadas durante la actividad;
+- las tres situaciones del paso 5, indicando qué zona de Git estaba afectada, qué operación utilizaste y por qué;
+- la tabla de decisión del paso 6;
+- las capturas solicitadas.
+
+!!! tip "No dupliques los ficheros técnicos"
+    `actividad-1.2.md` documenta lo que has hecho. Los ficheros reales del proyecto, como `.gitignore`, `README.md` o el contenido de `escaparate/`, permanecen en su ubicación normal dentro del repositorio.
+
+### 7.2 Completa el README del repositorio
+
+En esta misma rama, amplía el `README.md` de la raíz para que una persona que no haya estado en clase pueda entender:
+
+- qué es el repositorio;
+- qué contiene;
+- qué herramientas básicas hacen falta;
+- cómo se trabaja: ramas `sesion-NN`;
+- que los cambios llegan a `main` mediante **Pull Request (PR)**;
+- un índice de entregas que enlace las actividades 1.1 y 1.2;
+- un apartado `Puesta en marcha`, que por ahora puede indicar que se completará más adelante.
+
+Registra los cambios de la rama y publícala. **Abre en GitHub una Pull Request** hacia la rama principal con una descripción que indique:
+
+1. qué has cambiado;
+2. por qué;
+3. cómo has comprobado que el repositorio queda en buen estado.
+
+Abre la Pull Request con `Create pull request`.
+
+Antes de fusionarla, haz una captura de la PR abierta y del README renderizado. Guarda ambas en `entregas/tema1/actividad-1.2/img/`, enlázalas desde `actividad-1.2.md` y registra y publica esos últimos cambios.
+
+Comprueba que la Pull Request se actualiza automáticamente con el nuevo commit.
+
+Cuando toda la documentación esté incluida, fusiónala utilizando **Create a merge commit**, de forma que la bifurcación y la posterior integración puedan verse en el historial. Después, actualiza tu `main` local.
+
+**Comprueba:**
+
+- la PR aparece fusionada;
+- `entregas/tema1/actividad-1.2/` está en `main`;
+- el README actualizado está en `main`;
+- el grafo permite identificar la rama y su fusión.
 
 !!! question "Reflexiona"
-    Podrías haber fusionado con un comando y ahorrarte todo esto. Hoy no había nadie revisando ni nada que comprobar, así que ha sido pura ceremonia. **¿Qué tendría que aparecer en esa página para que dejara de serlo?**
+    Hoy has revisado tu propia PR y apenas existen comprobaciones automáticas. ¿Qué podría aparecer en esa página más adelante para convertirla en una auténtica puerta de entrada a `main`?
 
 ---
 
-## Paso 8 — La primera versión
+## Paso 8: La primera versión identificable
 
-Sobre la rama principal ya integrada, marca la versión `v0.1.0` con una etiqueta anotada que diga qué contiene, y publícala.
+Sobre la rama principal ya integrada, marca la versión `v0.1.0` con una **etiqueta anotada**. Añade un mensaje que describa qué contiene este primer estado identificable de **tu repositorio del módulo** y publica la etiqueta.
 
-**Comprueba**: la etiqueta aparece en GitHub en el apartado de etiquetas, asociada al commit correcto.
-**Captura**: la etiqueta en GitHub y la salida del comando que lista tus etiquetas con su mensaje.
+!!! note "Dos cosas diferentes"
+    Esta etiqueta identifica un estado de `daw-despliegue`. No necesitas relacionarla con ninguna posible versión interna de las herramientas o aplicaciones que contiene el repositorio.
+
+**Comprueba:**
+
+- `v0.1.0` aparece en GitHub;
+- es una etiqueta anotada;
+- apunta al mismo commit que `main` en este momento.
+
+### Comprueba qué se mueve
+
+Haz ahora un **commit vacío temporal solo en local**. No lo publiques.
+
+Vuelve a observar `main`, `origin/main` y `v0.1.0`.
+
+- ¿Cuál se ha movido?
+- ¿Cuáles permanecen en el commit anterior?
+
+Cuando termines la comprobación, elimina ese commit temporal y deja tu `main` local otra vez exactamente en `origin/main`.
 
 !!! question "Reflexiona"
-    La rama principal y la etiqueta `v0.1.0` apuntan ahora mismo al mismo commit. Haz un commit más y vuelve a mirarlas. **¿Cuál de las dos se ha movido?** Con eso contestado, explica por qué un procedimiento de despliegue reproducible debería indicar una **versión concreta** y no limitarse a decir «despliega lo que haya ahora mismo en la rama principal».
-
----
-
-## Si te sobra tiempo
-
-Nada de esto se entrega ni se corrige.
-
-**Provoca un conflicto y resuélvelo.** Crea una rama, cambia en ella la primera línea del `README` y regístralo. Vuelve a la principal, cambia **esa misma línea** por algo distinto y regístralo también. Ahora intenta fusionar. Git no podrá decidir por ti: verás unas marcas en el fichero señalando las dos versiones. Quédate con una combinación de ambas, borra las marcas y cierra la fusión. Merece la pena verlo hoy con calma, porque el día que te pase será con prisa.
-
-**Genera la documentación del código.** El proyecto de Escaparate está preparado para producir la documentación de sus clases a partir de los comentarios del código. Genérala, ábrela en tu navegador y anota en el `README` el comando exacto que la regenera. No la añadas al repositorio: es un artefacto, y en diciembre la producirá y la publicará el pipeline.
+    ¿Por qué un procedimiento de despliegue reproducible debería señalar una **versión concreta y estable (por ejemplo, una etiqueta publicada)** y no limitarse a decir "despliega lo que haya ahora mismo en `main`"?
 
 ---
 
 ## Verificación
 
-Para dar por válida la práctica se ejecutará, sustituyendo `<usuario>` por el tuyo:
+Para dar por válida la práctica, el profesor utilizará la cuenta añadida como colaboradora y clonará el repositorio desde un entorno autenticado, sustituyendo `<usuario>` por el tuyo:
 
 ```bash
 git clone https://github.com/<usuario>/daw-despliegue.git verifica && cd verifica
-git log --graph --oneline --all --decorate | head -30
-git tag -n
-cat .gitignore
-git log --all --oneline -- '.env' 'target/*' '*.class' | wc -l
-ls entregas/tema1/
 ```
 
-Y debe observarse:
+Al ser un repositorio privado, este comando solo funcionará para una cuenta que tenga acceso y esté correctamente autenticada.
 
-- Que el repositorio **se clona sin credenciales**: es público.
-- Que la cuenta de commits que tocan ficheros de compilación o de variables de entorno es **cero**.
-- Que existen tanto el commit que introduce el error del paso 5 **como** el que lo deshace, sin que el primero haya sido borrado.
-- Que el trabajo del paso 7 llegó a la rama principal **a través de una petición de fusión**, y no por un envío directo.
-- Que la etiqueta `v0.1.0` existe, está anotada y apunta al commit correcto.
-- Que en `entregas/tema1/` está la entrega de la actividad 1.1.
-- Que el `README` explica el convenio de ramas y contiene el índice de entregas.
+Y se comprobará:
+
+```bash
+git branch --show-current
+git log --graph --oneline --all --decorate | head -30
+
+git tag -n
+git cat-file -t v0.1.0
+git show v0.1.0 --no-patch
+
+cat .gitignore
+cat escaparate/.gitignore
+
+git log --all --name-only --pretty=format: \
+  | grep -E '(^|/)(\.env($|\.)|target/|[^/]+\.class$)' \
+  | sed '/^$/d' \
+  | wc -l
+
+find escaparate -name .git -type d -print
+
+ls entregas/tema1/
+test -f escaparate/pom.xml && echo "pom.xml OK"
+test -f escaparate/mvnw && echo "Maven Wrapper OK"
+test -f practicas/README.md && echo "practicas/README.md OK"
+```
+
+Debe observarse:
+
+- rama principal `main`;
+- ningún `.env`, fichero de `target/` o `.class` registrado en el historial;
+- ningún repositorio Git anidado dentro de `escaparate/`;
+- el commit erróneo y el commit que lo deshace;
+- la fusión de `sesion-02`;
+- `v0.1.0` como etiqueta anotada;
+- actividades 1.1 y 1.2 en `entregas/tema1/`;
+- Escaparate con su `pom.xml` y Maven Wrapper.
+
+La Pull Request se comprobará también en GitHub.
 
 ---
 
 ## Qué se entrega
 
-- [ ] El repositorio `daw-despliegue` público, con la estructura y el proyecto dentro.
-- [ ] El fichero de exclusiones, creado **antes** del primer commit, con su reflexión.
-- [ ] Las tres situaciones resueltas, con sus capturas y el área afectada en cada una.
-- [ ] La tabla de decisión, con la columna del porqué completa.
-- [ ] La petición de fusión de la rama `sesion-02`, con descripción, fusionada.
-- [ ] La etiqueta `v0.1.0` publicada.
-- [ ] El `README` con el convenio de ramas y el índice de entregas.
-- [ ] El documento de hoy, colocado en `entregas/tema1/` y enlazado desde el índice.
+- [ ] Repositorio privado `daw-despliegue` con el profesor añadido como colaborador.
+- [ ] `escaparate-integrado` incorporado como carpeta `escaparate/`.
+- [ ] `.gitignore` del repositorio y análisis del `.gitignore` recibido con Escaparate.
+- [ ] Actividad 1.1 completa en `entregas/tema1/actividad-1.1/`.
+- [ ] `entregas/tema1/actividad-1.2/actividad-1.2.md` con respuestas, reflexiones y tabla de decisión.
+- [ ] `entregas/tema1/actividad-1.2/img/` con las capturas enlazadas mediante rutas relativas.
+- [ ] Las tres situaciones de recuperación documentadas.
+- [ ] Pull Request `sesion-02 → main` fusionada.
+- [ ] README actualizado.
+- [ ] Etiqueta anotada `v0.1.0`.
+
+!!! info "Dónde queda la entrega"
+    Desde esta actividad, la evidencia del trabajo queda versionada en el propio repositorio. No necesitas generar un documento Word ni convertir la actividad a PDF.
 
 ---
 
 ## ✅ Cierre
 
-Tienes un repositorio público con el proyecto dentro, sin una sola credencial en su historial y con una versión marcada. Y, sobre todo, tienes la costumbre de saber salir de tres errores distintos sin romper nada, que es lo que separa a quien usa Git de quien lo sufre.
+Ya tienes preparado el repositorio que utilizarás como base durante el módulo. Dentro conviven la aplicación, la documentación, tus entregas y el espacio donde irás incorporando las distintas configuraciones de despliegue. Además, el historial empieza limpio: has decidido qué debe versionarse, qué debe quedarse fuera y has marcado un primer estado identificable con `v0.1.0`.
 
-Hoy buena parte de esto habrá parecido ceremonia. La rama para una sesión en la que trabajas solo, la petición de fusión que te apruebas a ti mismo, la etiqueta `v0.1.0` de un repositorio que todavía no despliega nada. Anótalo, porque en diciembre vas a volver aquí: esa rama tendrá un guardián que decidirá si tu código puede entrar, esa petición de fusión será el sitio donde se ejecuten las pruebas, y esa etiqueta será lo que te permita deshacer un despliegue roto en treinta segundos.
+Durante la práctica has comprobado que Git no guarda simplemente "versiones de ficheros". Un cambio puede encontrarse en el directorio de trabajo, en el área de preparación o formando ya parte del historial, y **la forma correcta de deshacerlo depende de dónde se encuentre y de si ese historial se ha compartido**. También has visto que una rama puede seguir avanzando mientras una etiqueta permanece señalando un punto concreto.
 
-Antes de eso, la semana que viene empieza el trabajo de verdad. Escaparate ya está en tu repositorio, pero solo funciona si tienes instalado exactamente lo que hace falta y en la versión correcta, que es justo el problema que viste que sufren todos los despliegues. En la próxima sesión conocerás la forma estándar de resolverlo: empaquetar una aplicación junto con todo lo que necesita para funcionar, de modo que arranque igual en tu portátil, en el del compañero de al lado y en un servidor que no has visto nunca.
+Parte del flujo de hoy (crear una rama trabajando solo, abrir una Pull Request que tú mismo fusionas o etiquetar un repositorio que todavía no despliega nada) puede parecer innecesario. Más adelante dejará de serlo: las Pull Requests incorporarán comprobaciones automáticas, las etiquetas y releases de la aplicación permitirán saber exactamente qué versión se está desplegando y el historial servirá para reconstruir qué ocurrió cuando algo falle.
+
+A partir de la próxima sesión el repositorio deja de ser solo organización. Empezarás a utilizarlo para **construir, ejecutar y desplegar Escaparate de forma reproducible**, comenzando por aislar la aplicación y sus dependencias del equipo concreto en el que se ejecuta.

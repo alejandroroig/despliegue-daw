@@ -1,157 +1,201 @@
 # 🧪 Actividad 1.1: Qué se puede saber de un despliegue desde fuera
 
-!!! warning "Descarga la plantilla"
-    📄 [Plantilla 1.1 — Qué se puede saber de un despliegue desde fuera](plantillas/Actividad_1_1_DAW_Plantilla.docx){target="_blank" rel="noopener"}
-
 ## Contexto
 
-Es tu primer día en una empresa que despliega y mantiene las aplicaciones web de sus clientes. Antes de dejarte tocar nada, tu responsable te pone el ejercicio de calentamiento que aquí se hace siempre con la gente que entra: **mirar sitios que ya están funcionando y averiguar qué se puede deducir de ellos sin acceso a ninguna máquina**.
+Es tu primer día en una empresa que despliega y mantiene aplicaciones web. Antes de dejarte tocar ningún servidor, tu responsable te propone un ejercicio sencillo: **mirar dos sitios que ya están funcionando y averiguar qué puedes demostrar sobre ellos sin acceso a ninguna máquina**.
 
-No es un juego de adivinar. Cuando dentro de unos meses te toque diagnosticar por qué un sitio va lento o devuelve errores, empezarás exactamente así: desde fuera, con las mismas dos herramientas que vas a usar hoy. Y la parte más importante del ejercicio no es lo que consigas averiguar, sino que sepas separarlo de lo que solo estás suponiendo.
+No se trata de adivinar la arquitectura. Cuando una aplicación vaya lenta, falle o responda de forma extraña, muchas veces empezarás exactamente así: observando desde fuera.
+
+La parte más importante de esta actividad será distinguir entre:
+
+- **lo que has observado**;
+- **lo que puedes deducir razonablemente**;
+- **lo que no puedes saber desde fuera**.
+
+---
 
 ## Qué vas a practicar
 
-- **Pedir** la cabecera de una respuesta HTTP e interpretar lo que revela.
-- **Reconocer** cuándo una respuesta viene de una caché y no del servidor original.
-- **Inventariar** con el navegador qué descarga una página y de cuántos sitios distintos.
-- **Distinguir** lo que has observado de lo que estás deduciendo.
+- Obtener e interpretar cabeceras HTTP.
+- Distinguir una petición `HEAD` de una petición `GET`.
+- Reconocer indicios de caché, CDN o proxy.
+- Analizar qué recursos descarga realmente una página con DevTools.
+- Observar cookies y respuestas de error.
+- Separar evidencia de inferencia.
+
+---
 
 ## Requisitos previos
 
-- Un navegador con herramientas de desarrollador (F12).
-- `curl` disponible en el terminal:
+- Navegador con herramientas de desarrollador.
+- `curl` instalado.
+
+Comprueba:
 
 ```bash
 curl --version
 ```
 
-- La plantilla descargada, donde vas a ir volcando todo.
+!!! warning "Trabajar con otros sistemas operativos"
+    En el aula se trabajará sobre Linux. Si utilizas tu propio portátil con Windows, los comandos son prácticamente los mismos, aunque hay tres diferencias que conviene recordar: en PowerShell es preferible escribir `curl.exe`; para descartar la salida, se utiliza `NUL` en lugar de `/dev/null`, y para dividir una orden en varias líneas, PowerShell usa el acento grave `` ` `` y CMD usa `^`.
 
-!!! info "Reparto de tiempo orientativo"
-    Pasos 1 a 3, unos 35 minutos. Pasos 4 y 5, unos 30. El paso 6 y la redacción final, unos 25.
+!!! info "Tiempo orientativo"
+    - Pasos 1 a 3: 35 min.
+    - Pasos 4 y 5: 30 min.
+    - Paso 6 y redacción final: 25 min.
 
-!!! warning "Solo observación"
-    Todo lo que se te pide aquí es mirar lo que un servidor entrega voluntariamente a quien le pide una página: exactamente lo mismo que hace tu navegador cada vez que visitas un sitio. No lances peticiones repetidas en bucle, no uses herramientas de escaneo y no intentes acceder a nada que no sea público. La frontera entre inspeccionar y molestar es fina, y en esta profesión conviene tenerla clara desde el primer día.
+## Paso 1: Tus dos sujetos
 
----
+Trabajarás con estos dos sitios:
 
-## Paso 1 — Tus dos sujetos
-
-Vas a trabajar con dos sitios elegidos para que sean lo más distintos posible entre sí:
-
-| | Sitio | Qué representa |
-|---|---|---|
-| **1** | Esta misma web de apuntes | Documentación: ficheros que ya existían antes de que preguntaras |
-| **2** | `https://www.amazon.es` | Una tienda con usuarios, sesión y catálogo enorme |
+| Sitio | Qué representa |
+|---|---|
+| `https://alejandroroig.github.io/despliegue-daw/tema1/actividad_1_1/` | Documentación publicada como sitio estático |
+| `https://www.amazon.es/` | Una aplicación web comercial compleja |
 
 **No hace falta que inicies sesión ni que te crees ninguna cuenta**: todo lo que vas a mirar está disponible sin identificarse.
 
-!!! info "Si el sitio externo cambia"
-    Los sitios públicos pueden modificar su configuración, sus cabeceras o sus mecanismos de protección sin avisar. Si el segundo sitio no permite realizar alguna de las comprobaciones previstas, el profesor proporcionará una URL alternativa. Lo importante es aplicar el procedimiento de observación, no obtener unos valores concretos.
+Antes de tocar nada, crea un fichero `actividad-1.1.md` en una carpeta de trabajo con nombre `actividad-1.1/`. Escribe en el fichero dos o tres líneas por sitio indicando **qué esperas encontrar**:
 
-Antes de tocar nada, escribe en la plantilla, en dos o tres líneas por sitio, **qué esperas encontrar**. No es una adivinanza con premio: al final compararás y verás qué te dijo la evidencia que no te decía la intuición.
+- contenido estático o dinámico;
+- pocas o muchas peticiones;
+- pocas o muchas cookies;
+- posibles capas intermedias;
+- arquitectura aparentemente sencilla o compleja.
+
+No se evalúa acertar. Al final volverás a estas predicciones.
 
 ---
 
-## Paso 2 — Pregunta solo por la cabecera
+## Paso 2: Pregunta por las cabeceras
 
 Consigue de cada uno de los dos sitios **únicamente la cabecera de la respuesta**, sin descargar el contenido. `curl` tiene una opción para eso; búscala en su ayuda.
 
-Recoge en la plantilla, para cada sitio:
+Recoge en `actividad-1.1.md`, para cada sitio:
 
-- El código de estado y la versión del protocolo.
-- Qué software dice estar atendiendo la petición.
-- El tipo de contenido devuelto.
-- Qué dice sobre caché.
-- Cuántas cookies te entrega sin que hayas iniciado sesión.
-- Si hay alguna cabecera que delate que **entre tú y el servidor hay alguien más**.
+- código de estado;
+- versión HTTP;
+- `Server`, si aparece;
+- `Content-Type`;
+- cabeceras relacionadas con caché;
+- cabeceras `Set-Cookie`;
+- posibles indicios de CDN, proxy o cualquier capa intermedia.
 
-**Comprueba**: obtienes una cabecera completa de cada sitio.
-**Captura**: la salida de las dos peticiones.
+!!! important "`HEAD` y `GET` no son la misma petición"
+    Un servidor puede aceptar `GET` y rechazar `HEAD`.
+    Si un sitio rechaza `HEAD`, realiza después un `GET` normal pero descartando el cuerpo:
+    
+    ```bash
+    curl -sS -D - -o /dev/null https://direccion
+    ```
 
-!!! tip "Si Amazon te dice que ese método no está permitido"
-    No es un fallo tuyo: le has hecho una petición con un método que ese servidor no acepta, y te lo está diciendo con el código correspondiente. Fíjate en que, aun negándose, te devuelve la cabecera entera, así que tienes todo lo que necesitas. Anota ese código: es un ejemplo perfecto de que un `4xx` no siempre significa que quien pregunta se haya equivocado de dirección.
+    O, si trabajas desde Windows, en PowerShell puedes utilizar:
+
+    ```powershell
+    curl.exe -sS -D - -o NUL https://direccion
+    ```
+
+!!! tip "Sobre Amazon"
+    Amazon puede responder a una petición hecha con `curl` de forma distinta a una realizada desde un navegador normal. Si aparece un `405`, un `202`, una respuesta de CloudFront o una cabecera de desafío, **no intentes sortearla ni forzar el acceso**: anota el código y las cabeceras. Esa diferencia también forma parte de la evidencia.
+
+**Capturas:** conserva la salida de las peticiones realizadas.
+
+!!! info "Imágenes en documentos Markdown"
+    Guarda las capturas de la actividad en una subcarpeta `img/` e insértalas en el Markdown utilizando rutas relativas.
+
 
 ---
 
-## Paso 3 — La misma pregunta dos veces
+## Paso 3: La misma petición varias veces
 
-Pide **dos veces seguidas** la cabecera de la web de apuntes y compara ambas salidas. Hay cabeceras que cambian entre la primera y la segunda: una cuenta segundos y otra dice si la respuesta se ha encontrado ya guardada o ha habido que ir a buscarla.
+Pide **dos veces seguidas** las cabeceras de la web de apuntes y compara ambas respuestas. Fíjate especialmente en las cabeceras relacionadas con caché: algunas pueden cambiar entre una petición y otra y otras pueden mantenerse. Intenta explicar qué indica cada una a partir de los valores que hayas obtenido.
 
-Anota cuáles son y qué valor toman en cada intento.
+Compara especialmente:
 
-**Comprueba**: al menos una cabecera tiene distinto valor en la segunda petición.
-**Captura**: las dos salidas, una debajo de la otra.
+- `Age`;
+- `X-Cache`;
+- `X-Cache-Hits`;
+- `Via`;
+- `X-Served-By`;
+- otras cabeceras relacionadas con caché.
 
-!!! tip "Si la segunda petición dice exactamente lo mismo que la primera"
-    Repítela. Puede que te haya atendido un servidor de caché distinto del de la primera vez, y ese aún no tenga guardada la respuesta.
+No es obligatorio obtener una secuencia concreta como `MISS → HIT`.
 
 !!! question "Reflexiona"
-    Si la segunda respuesta no la generó nadie de nuevo, **¿dónde estaba guardada y quién te la sirvió?** Señala la cabecera concreta que lo demuestra, no la intuición.
+    1. ¿Hay evidencia de que existe una caché intermedia?
+    2. Si una respuesta fue servida desde caché, ¿qué cabecera lo sugiere?
+    3. ¿Qué significa que `Age` aumente?
+    4. ¿Las dos peticiones han sido atendidas necesariamente por el mismo nodo?
+
+**Captura:** coloca las dos salidas una debajo de la otra.
 
 ---
 
-## Paso 4 — Cuenta lo que se descarga de verdad
+## Paso 4: Cuenta lo que descarga realmente el navegador
 
-Abre cada uno de los dos sitios con las herramientas de desarrollador en la pestaña de **red**, y recarga con el registro ya activo. **No enumeres nada**: quédate con los totales y con lo que dicen los filtros por tipo.
+Ahora utiliza el navegador.
 
-Para cada sitio, anota:
+Para cada sitio:
+
+1. Abre DevTools.
+2. Ve a **Network / Red**.
+3. Limpia el registro.
+4. Recarga la página.
+5. Espera unos 10 segundos después de la carga inicial.
+6. Registra los datos.
+
+Anota:
 
 - Cuántas peticiones hacen falta para pintar la página y cuánto se transfiere en total.
-- Cuántas hay de cada tipo: documento, estilos, script, imagen y llamadas a una API.
+- Cuántas hay de cada tipo: documento, estilos, script, imagen y peticiones Fetch/XHR. Si aparecen, identifica cuáles parecen corresponder a llamadas a una API.
 - Cuántos **dominios distintos** aparecen involucrados.
 
-**Comprueba**: el número de peticiones deja de crecer cuando la página termina de cargar.
-**Captura**: la pestaña de red de cada sitio, con el total de peticiones y de bytes visible.
 
 !!! question "Reflexiona"
-    Centrándote en el **documento HTML principal**, uno de los dos sitios puede entregarte contenido previamente generado mientras que el otro necesita producir una respuesta dinámica. **¿Qué diferencias observas y qué evidencias concretas las apoyan?** No intentes deducir más de lo que muestran las cabeceras y la pestaña de red.
+    Centrándote en el documento HTML principal:
+    
+    - ¿qué diferencias aprecias entre ambos sitios?;
+    - ¿qué indicios apoyan la idea de un sitio mayoritariamente estático o de una aplicación más dinámica?;
+    - ¿qué cosas sigues sin poder saber?
+
+**Captura:** pestaña Network de ambos sitios con los totales visibles.
+
 ---
 
-## Paso 5 — La sesión y el error
+## Paso 5: Cookies y errores
 
 Dos comprobaciones rápidas sobre los mismos dos sitios:
 
-- En la pestaña de **almacenamiento** o **aplicación**, mira las cookies guardadas en cada uno. Anota cuántas hay y si alguna parece un identificador de sesión.
-- Pide en el navegador una **ruta inventada** que seguro no existe, y observa con qué código responde cada sitio y qué te devuelve: una página de error propia, una genérica del servidor o una redirección.
+- En la pestaña de `Application / Storage → Cookies`, mira las **cookies** guardadas en cada uno. Anota cuántas hay y si alguna parece relacionada con sesión, idioma, preferencias o protección. ¿Observas atributos como `Secure`, `HttpOnly` o `SameSite`?
+- Solicita en cada sitio una **ruta inventada** que seguro no existe y observa con qué código HTTP responde cada sitio, si hay redirección, qué contenido aparece y si la página de error parece propia del sitio o genérica.
 
-**Comprueba**: los dos responden con algo distinto de `200` a la ruta inventada.
-**Captura**: las cookies de la tienda y la respuesta de cada sitio a la ruta inexistente, con el código visible.
+!!! warning "¡Cuidado con las apariencias! Verifica el código real"
+    Un sitio podría devolver `404`, `403`, una redirección o incluso `200`. Si ocurre esto último, explica por qué no demuestra necesariamente que la ruta exista.
+
+**Capturas:** cookies de Amazon y respuesta de ambos sitios a la ruta inventada.
 
 ---
 
-## Paso 6 — Lo que puedes demostrar y lo que solo supones
+## Paso 6: Qué puedes demostrar y qué solo supones
 
-Esta es la parte que se corrige de verdad.
+Para Amazon, documenta en `actividad-1.1.md`:
 
-En el apunte de hoy has visto que una aplicación web desplegada tiene cinco piezas. Para **la tienda**, rellena esta tabla:
-
-| Pieza | ¿Tienes evidencia de que existe? | ¿Cuál exactamente? |
+| Pieza | ¿Tienes evidencia? | Evidencia concreta |
 |---|---|---|
-| Estáticos | | |
-| Artefacto y runtime | | |
+| Recursos estáticos | | |
+| Artefacto y runtime del servidor | | |
 | Datos | | |
 | Configuración por entorno | | |
 | Secretos | | |
 
 La segunda columna solo admite tres respuestas: **sí**, **no** o **no es observable desde fuera**. Y la tercera columna es obligatoria cuando respondas que sí: hay que decir qué has visto en tus capturas que lo demuestre.
 
-Escribir «tendrá una base de datos, seguro» no vale. Escribir «no puedo demostrarlo desde fuera, pero un catálogo de ese tamaño no se mantiene a mano» sí vale, porque estás diciendo abiertamente que es una deducción.
+Escribir "tendrá una base de datos, seguro" no vale. Escribir "no puedo demostrarlo desde fuera, pero un catálogo de ese tamaño no se mantiene a mano" sí vale, porque estás diciendo abiertamente que es una deducción.
 
 Cierra con dos párrafos cortos:
 
-1. **Vuelve a tus predicciones del paso 1.** ¿En qué acertaste y en qué no? ¿Qué te dijo la evidencia que no te había dicho la intuición?
-2. **¿En cuál de los dos sitios notarías antes, desde fuera, que algo se ha roto por dentro?** ¿Y cuál podría estar medio caído durante horas sin que un visitante ocasional se diera cuenta?
-
----
-
-## Si te sobra tiempo
-
-Nada de esto se entrega ni se corrige. Es para quien vaya sobrado.
-
-**El que no te deja mirar.** Pide la cabecera de `https://www.filmaffinity.com/es` igual que hiciste en el paso 2. El sitio funciona perfectamente cuando lo abres en el navegador, pero a ti te va a decir que no. Mira qué software firma la respuesta y compáralo con el nombre del sitio: ¿quién te ha contestado? ¿Y qué habrá visto en tu petición que no ve en la de un navegador?
-
-**La CDN que no cachea.** En la tienda hay evidencia de que existe una red de distribución por delante y, a la vez, la propia respuesta dice que el documento principal **no** debe guardarse en caché. Si no se puede cachear, ¿para qué sirve entonces esa red delante? Se te ocurrirán al menos dos utilidades.
+1. **Vuelve a tus predicciones del paso 1.** ¿En qué acertaste? ¿Qué te mostró la evidencia que no habías previsto?
+2. **¿En cuál de los dos sitios crees que notarías antes desde fuera que algo interno se ha roto?** Justifica la respuesta sin afirmar nada que no puedas observar.
 
 ---
 
@@ -160,17 +204,17 @@ Nada de esto se entrega ni se corrige. Es para quien vaya sobrado.
 Para dar por válida la práctica se ejecutará:
 
 ```bash
-curl -I <dirección de esta web de apuntes>
-curl -I <dirección de esta web de apuntes>
-curl -I https://www.amazon.es
+curl -I https://alejandroroig.github.io/despliegue-daw/tema1/actividad_1_1/
+curl -I https://alejandroroig.github.io/despliegue-daw/tema1/actividad_1_1/
+curl -I https://www.amazon.es/
 ```
 
 Y debe observarse:
 
-- Que los datos recogidos en tu documento son **coherentes** con lo que devuelven los sitios al corregir.
-- Que has identificado las cabeceras que cambian entre las dos peticiones seguidas y qué informan.
+- Que los datos recogidos en `actividad-1.1.md` son **coherentes** con lo que devuelven los sitios al corregir.
+- Que has identificado e interpretado las principales cabeceras relacionadas con caché y has comparado su valor entre ambas peticiones.
 - Que has anotado el código con el que responde la tienda a la petición de cabecera y que no lo has confundido con un error tuyo.
-- Que cada casilla marcada como «sí» en la tabla del paso 6 señala una evidencia concreta que aparece en tus capturas.
+- Que cada casilla marcada como "sí" en la tabla del paso 6 señala una evidencia concreta que aparece en tus capturas.
 
 Si un sitio ha cambiado desde que hiciste la práctica, tu captura lo justifica: por eso se piden capturas y no transcripciones a mano.
 
@@ -184,17 +228,19 @@ Si un sitio ha cambiado desde que hiciste la práctica, tu captura lo justifica:
 - [ ] Las cookies y la respuesta a la ruta inexistente.
 - [ ] La tabla de las cinco piezas, con la columna de evidencia completa.
 - [ ] Los dos párrafos de cierre del paso 6.
-- [ ] El documento con las capturas legibles y las respuestas ordenadas.
+- [ ] `actividad-1.1.md` con las respuestas y reflexiones.
+- [ ] Carpeta `img/` con las capturas utilizadas y enlazadas mediante rutas relativas.
+- [ ] Carpeta completa comprimida como `actividad-1.1.zip`.
 
 !!! info "Dónde se entrega"
-    Hoy, como documento suelto: el repositorio del módulo todavía no existe. Guárdalo tal cual, porque la semana que viene lo crearás y esta entrega será lo primero que registres en él.
+    Comprime la carpeta completa `actividad-1.1/` como `actividad-1.1.zip` y súbela a la tarea correspondiente de Aules. Debe incluir el fichero `actividad-1.1.md` y la carpeta `img/` con las capturas enlazadas desde el Markdown. **Conserva esta carpeta: la incorporarás a tu repositorio en la próxima sesión.**
 
 ---
 
 ## ✅ Cierre
 
-Al terminar tienes un método para mirar cualquier sitio web desde fuera y hacerte una idea razonable de lo que hay detrás, con dos herramientas que vas a usar todo el curso. Y tienes algo más valioso: la costumbre de decir «esto lo he visto» y «esto lo estoy suponiendo» sin mezclarlo, que es la diferencia entre diagnosticar y adivinar.
+Al terminar tienes un método para mirar cualquier sitio web desde fuera y hacerte una idea razonable de lo que hay detrás, con dos herramientas que vas a usar todo el curso. Y tienes algo más valioso: la costumbre de decir "esto lo he visto" y "esto lo estoy suponiendo" sin mezclarlo, que es la diferencia entre diagnosticar y adivinar.
 
-También has visto de primera mano tres de las piezas que este módulo va a ir montando: contenido guardado en algún sitio intermedio que responde antes que el servidor, sesiones que viajan en cookies, y capas colocadas por delante que contestan por él.
+También has visto de primera mano varias piezas que aparecerán durante el módulo: contenido que puede quedar almacenado en una caché intermedia, cookies que permiten conservar información entre peticiones y capas como CDN, proxies o mecanismos de protección que pueden responder antes de que la petición llegue a la aplicación de origen.
 
-Y tienes una lista implícita de todo lo que **no** se puede saber desde fuera: ahí empieza el resto del módulo. En la próxima sesión dejas de mirar despliegues ajenos y empiezas a preparar el tuyo. El primer paso no es una máquina ni un servidor: es el sitio donde van a vivir el código y el procedimiento, con una rama por cada sesión, etiquetas que identifican versiones desplegables y secretos que nunca entran.
+Y tienes una lista implícita de todo lo que no se puede saber desde fuera: ahí empieza el resto del módulo. En la próxima sesión dejas de mirar despliegues ajenos y empiezas a preparar el tuyo. El primer paso no es una máquina ni un servidor: es el sitio donde van a vivir el código y el procedimiento, con una rama por cada sesión, etiquetas que permiten identificar estados concretos del repositorio y secretos que nunca entran en el historial.
