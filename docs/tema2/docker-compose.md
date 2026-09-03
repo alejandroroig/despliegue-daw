@@ -5,26 +5,17 @@
 
 ---
 
-La sesión pasada terminaste con Escaparate empaquetado y publicado. Para verlo funcionar tuviste que crear una red, arrancar PostgreSQL con unas variables, arrancar la aplicación con las suyas y recordar qué debía ponerse en marcha antes.
+Hasta ahora has podido levantar varios contenedores mediante órdenes `docker run`, redes y variables de entorno. Pero ese conocimiento, qué imágenes forman el sistema, cómo se conectan, qué configuración reciben y qué datos deben sobrevivir, **también forma parte del despliegue**. Si solo vive en tu memoria o en el historial del terminal, no es reproducible.
 
-Ese conocimiento, qué imágenes forman el sistema, qué configuración reciben, cómo se conectan y qué datos deben sobrevivir, **también forma parte del despliegue**. Si solo vive en tu memoria o en el historial del terminal, no es reproducible.
+Docker Compose permite trasladar esa descripción a un fichero versionado. Para estudiar el patrón utilizaremos una arquitectura muy habitual de dos servicios:
 
-Hoy vas a trasladarlo a un fichero versionado.
-
-La distribución actual de Escaparate sigue teniendo esta forma:
-
-```text
-Navegador
-    │
-    ▼
-Escaparate
-(frontend + API)
-    │
-    ▼
-PostgreSQL
+```mermaid
+flowchart LR
+    N["Navegador"] --> A["Aplicación web<br/>(frontend + api)"]
+    A --> D[("PostgreSQL")]
 ```
 
-Por tanto, el despliegue principal tendrá dos servicios: la aplicación y la base de datos. Más adelante separarás otras piezas, pero hoy no existe un servicio `front` independiente.
+El despliegue tendrá dos servicios: la aplicación y la base de datos. El objetivo de esta sesión es describir y operar correctamente esa relación, no añadir más piezas.
 
 ---
 
@@ -160,15 +151,11 @@ services:
 
 La aplicación no necesita conocer la IP de PostgreSQL:
 
-```text
-app
- │
- │ DB_HOST=bd
- ▼
-DNS interno de Docker
- │
- ▼
-contenedor actual del servicio bd
+```mermaid
+flowchart LR
+    A["app"] -->|"bd:5432"| D["bd"]
+    A -.-> DNS["DNS interno<br/>de Docker"]
+    DNS -.-> D
 ```
 
 Las direcciones IP pueden cambiar cuando los contenedores se recrean. El nombre de servicio es la referencia estable.
@@ -199,7 +186,7 @@ puerto del anfitrión : puerto del contenedor
 
 y crea una entrada desde fuera de la red Docker hacia ese servicio.
 
-Para la distribución integrada de Escaparate, el objetivo será:
+Para una aplicación web integrada con base de datos, un esquema razonable es:
 
 ```text
 Navegador
@@ -322,9 +309,9 @@ services:
 En nuestro flujo de trabajo utilizaremos un fichero `.env` junto al `compose.yaml`:
 
 ```text
-BD_USUARIO=escaparate
+BD_USUARIO=appuser
 BD_CLAVE=una-clave-local
-BD_NOMBRE=escaparate
+BD_NOMBRE=appdb
 ```
 
 Ese fichero:
@@ -532,7 +519,7 @@ arranca app
 
 Una comprobación de salud tampoco significa siempre lo mismo.
 
-Escaparate dispone de:
+Una aplicación puede exponer, por ejemplo:
 
 ```text
 /api/salud/vivo
@@ -557,7 +544,7 @@ liveness OK
 readiness NO
 ```
 
-En Escaparate, `/api/salud/listo` comprueba además la disponibilidad de PostgreSQL.
+En el proyecto del módulo, `/api/salud/listo` aplicará precisamente esta idea comprobando también la disponibilidad de PostgreSQL.
 
 Esto explica por qué hay dos momentos diferentes:
 
@@ -671,7 +658,7 @@ Lo que basta con reconocer: el nombre de proyecto explícito y los límites de C
     - Compose sustituye una colección de comandos imperativos por una **descripción declarativa** del conjunto.
     - Cada entrada de `services` representa un servicio y su nombre sirve también como nombre DNS dentro de la red del proyecto.
     - Los contenedores de la misma red se comunican mediante sus puertos internos. Publicar un puerto solo es necesario cuando debe entrar tráfico desde el anfitrión.
-    - En la distribución actual de Escaparate solo `app` necesita publicar el puerto 8080; PostgreSQL permanece accesible únicamente dentro de la red Docker.
+    - En una arquitectura `app + bd`, normalmente solo la aplicación necesita publicar el puerto de entrada; la base de datos puede permanecer en la red interna.
     - Para PostgreSQL 18, en estas prácticas el volumen persistente se monta en `/var/lib/postgresql`.
     - `stop` detiene; `down` elimina contenedores y red; `down -v` elimina además los volúmenes.
     - Un montaje de fichero permite introducir contenido desde fuera. Montar un directorio completo encima de otro puede ocultar los ficheros que ya tenía la imagen.
@@ -685,6 +672,4 @@ Lo que basta con reconocer: el nombre de proyecto explícito y los límites de C
 
 ---
 
-Con esto ya tienes las piezas necesarias para la **Actividad 2.3**. Primero utilizarás Compose en un escenario pequeño para aislar red y persistencia. Después pasarás al despliegue integrado de Escaparate con `app` y `bd`, eliminarás exposiciones innecesarias, sacarás la configuración local del YAML y comprobarás la diferencia entre "contenedor arrancado" y "servicio preparado".
-
-Al terminar, otra persona podrá clonar el repositorio y poner en marcha el sistema a partir de una descripción versionada, sin reconstruir mentalmente una secuencia de comandos.
+En la actividad aplicarás esta descripción declarativa al proyecto del módulo y comprobarás red interna, persistencia, configuración externa y la diferencia entre **contenedor arrancado** y **servicio preparado**.

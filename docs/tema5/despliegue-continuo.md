@@ -211,7 +211,7 @@ Si el pipeline construye, prueba, mide la cobertura y escanea la imagen, **¿por
 Vuelve a la reflexión del paso 1 de la actividad anterior: los tests pasaron en una máquina limpia que no tenía tu base de datos, ni Redis, ni Nginx, ni tu `.env`, ni tu certificado. Todo lo que has montado desde octubre **no estaba allí**. De ahí sale una lista de cosas que ninguna puerta de calidad puede ver:
 
 - Una variable de entorno que falta, o escrita con el valor de otro entorno.
-- Una configuración que apunta a donde no debe: un nombre de servicio equivocado, un puerto cambiado, una dirección que en tu portátil resolvía.
+- Una configuración que apunta a donde no debe: un nombre de servicio equivocado, un puerto cambiado, una dirección que en tu ordenador resolvía.
 - Un secreto caducado o mal copiado.
 - Una dependencia externa que se comporta distinto en producción.
 - Un cambio en el esquema de datos que la versión anterior no entiende.

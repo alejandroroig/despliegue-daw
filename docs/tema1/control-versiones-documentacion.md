@@ -5,7 +5,7 @@
 
 ---
 
-La sesión anterior terminó con una idea importante: un despliegue profesional no puede depender de "los ficheros que tengo ahora mismo en mi portátil" ni de una lista de pasos que solo recuerda una persona.
+La sesión anterior terminó con una idea importante: un despliegue profesional no puede depender de "los ficheros que tengo ahora mismo en mi ordenador" ni de una lista de pasos que solo recuerda una persona.
 
 Antes de automatizar, contenerizar o desplegar nada necesitamos una **fuente de verdad**: un lugar donde queden registrados el código, la configuración que sí puede compartirse, la documentación y el procedimiento de trabajo.
 
@@ -182,7 +182,7 @@ Ejemplos:
 docs: añade instrucciones de arranque
 fix: corrige la ruta de almacenamiento
 chore: configura variables de desarrollo
-docs: documenta la actividad 1.2
+docs: documenta el procedimiento de despliegue
 ```
 
 !!! warning "Uso de Conventional Commits"
@@ -569,7 +569,7 @@ Por ejemplo, un PAT puede permitir escribir en repositorios, publicar paquetes o
 
 #### 5.1.2. La simplificación que utilizaremos en el aula
 
-En la Actividad 1.2 crearás un único **Personal Access Token (classic)** para el módulo con dos ámbitos:
+Para simplificar el trabajo inicial del módulo utilizaremos un único **Personal Access Token (classic)** con dos ámbitos:
 
 ```text
 repo
@@ -596,7 +596,7 @@ La simplificación tiene un coste: un PAT classic con `repo` es una credencial a
     → write:packages
     ```
 
-    GitHub recomienda los tokens *fine-grained* para limitar el acceso a repositorios concretos. Sin embargo, GitHub Packages requiere actualmente un PAT classic para la autenticación manual. En la Actividad 1.2 podrás elegir esta alternativa si prefieres trabajar desde el principio con mínimo privilegio.
+    GitHub recomienda los tokens *fine-grained* para limitar el acceso a repositorios concretos. Sin embargo, GitHub Packages requiere actualmente un PAT classic para la autenticación manual. Puedes utilizar esta alternativa si prefieres trabajar desde el principio con mínimo privilegio.
 
 Aunque reutilicemos el mismo PAT en la opción simplificada, **Git y Docker no comparten una sesión**. Git se autentica contra `github.com`; Docker se autenticará más adelante contra `ghcr.io`. Cada herramienta guarda y utiliza sus propias credenciales.
 
@@ -1058,7 +1058,7 @@ No necesitas memorizar una sintaxis extensa. Con unas pocas construcciones basta
 ### 10.1. Títulos
 
 ```markdown
-# Actividad 1.2
+# Informe de despliegue
 
 ## Recuperación de errores
 
@@ -1108,7 +1108,7 @@ git commit -m "Actualiza la documentación"
 ### 10.4. Enlaces
 
 ```markdown
-[Actividad 1.1](../actividad-1.1/actividad-1.1.md)
+[Informe anterior](../informe-anterior/informe.md)
 ```
 
 Conviene utilizar **rutas relativas** cuando enlazas contenido del propio repositorio.
@@ -1213,7 +1213,7 @@ pero no hace falta copiar el mismo YAML a varios lugares del repositorio.
 Durante el módulo utilizaremos una separación parecida a:
 
 ```text
-escaparate/
+aplicacion/
     código de la aplicación
 
 practicas/
@@ -1255,7 +1255,7 @@ Por ejemplo:
 
 ```dotenv
 DB_HOST=bd
-DB_NAME=escaparate
+DB_NAME=aplicacion
 DB_USER=cambia-este-valor
 DB_PASSWORD=cambia-este-valor
 ```
@@ -1416,4 +1416,4 @@ Al terminar deberías poder:
 
 ---
 
-Con esto tienes toda la base necesaria para la **Actividad 1.2**. El enunciado no te dirá qué comando utilizar en cada problema de recuperación porque la decisión forma parte de la actividad. La información necesaria para tomarla está en este tema: primero identifica **dónde se encuentra el cambio** y después decide si el historial **ya se ha compartido**.
+En la actividad aplicarás este flujo a tu repositorio del módulo. La decisión importante no será recordar comandos de memoria, sino identificar **dónde está el cambio** y si el historial **ya se ha compartido** antes de elegir cómo actuar.

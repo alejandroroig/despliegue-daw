@@ -5,7 +5,7 @@
 
 ---
 
-En primero aprendiste a programar, trabajar con bases de datos y construir aplicaciones. Durante segundo seguirás desarrollando frontend y backend en otros módulos. Aquí el foco cambia: **una aplicación no está terminada cuando funciona en tu ordenador, sino cuando puede ejecutarse de forma fiable para otras personas**.
+En primero aprendiste a programar, trabajar con bases de datos y construir aplicaciones. En segundo, seguirás desarrollando frontend y backend en otros módulos. Sin embargo, en el módulo de Despliegue de Aplicaciones Web el foco cambia: **una aplicación no está terminada cuando funciona en tu ordenador, sino cuando puede ejecutarse de forma fiable para otras personas**.
 
 Desplegar no es "subir archivos a un servidor". Significa preparar todo lo necesario para que una aplicación pueda arrancar, conectarse a sus datos, recibir configuración, proteger sus secretos, responder por red, soportar fallos, actualizarse y dejar pistas cuando algo va mal.
 
@@ -30,24 +30,18 @@ Ese modelo sigue existiendo, pero cuanto más crecen una aplicación, un equipo 
 El despliegue moderno intenta convertir ese procedimiento artesanal en un **proceso reproducible, trazable y progresivamente automatizado**.
 
 ```mermaid
-flowchart LR
-    subgraph ANT["Antes: despliegue artesanal"]
-        A1["Escribir código"] --> A2["Compilar<br/>manualmente"]
-        A2 --> A3["Copiar ficheros<br/>al servidor"]
-        A3 --> A4["Configurar<br/>a mano"]
-        A4 --> A5["Comprobar<br/>si funciona"]
-    end
-
+flowchart TB
     subgraph MOD["Hoy: flujo reproducible"]
-        B1["Commit"] --> B2["Validar"]
-        B2 --> B3["Construir<br/>artefacto"]
-        B3 --> B4["Publicar"]
-        B4 --> B5["Desplegar"]
-        B5 --> B6["Verificar"]
-        B6 --> B7["Monitorizar"]
+        direction TB
+        B1["Commit"] --> B2["Validar y construir"]
+        B2 --> B3["Desplegar y verificar"]
+        B3 --> B4["Monitorizar"]
     end
 
-    A5 -. "evolución" .-> B1
+    subgraph ANT["Antes: despliegue artesanal"]
+        direction TB
+        A1["Código"] --> A2["Pasos manuales"] --> A3["Servidor"]
+    end
 ```
 
 !!! note "Una comparación deliberadamente simplificada"
@@ -138,7 +132,7 @@ datos
 
 Eso no determina automáticamente cuántas máquinas, contenedores o servicios hacen falta.
 
-Una aplicación con tres capas puede ejecutarse entera en un portátil:
+Una aplicación con tres capas puede ejecutarse entera en un ordenador:
 
 ```mermaid
 flowchart LR
@@ -196,18 +190,8 @@ Una aplicación **monolítica** se construye y despliega como una unidad. Una ar
 
 También existen otros modelos, como PaaS, serverless o arquitecturas orientadas a eventos. Los irás encontrando en otros contextos, pero no necesitas dominarlos ahora para aprender a desplegar.
 
-!!! info "Lo que vas a poner a prueba hoy"
-    Hasta aquí has construido el mapa general del módulo. En la Actividad 1.1 no vas a desplegar todavía nada.
-
-    Vas a practicar una habilidad previa: **observar un sistema que ya está desplegado y separar lo que puedes demostrar de lo que solo puedes suponer**.
-
-    Para hacerlo utilizarás principalmente tres ideas de los apartados siguientes:
-
-    - contenido estático y dinámico;
-    - peticiones, respuestas y cabeceras HTTP;
-    - componentes visibles e invisibles de un despliegue.
-
-    El resto del mapa irá cobrando sentido a medida que seas tú quien construya esas piezas durante el curso.
+!!! info "Conexión con la práctica"
+    Antes de construir infraestructura conviene aprender a **observar un sistema desplegado y separar evidencias de suposiciones**. Las peticiones HTTP, sus cabeceras y la diferencia entre contenido estático y dinámico serán las primeras herramientas para hacerlo.
 
 ---
 
@@ -292,7 +276,7 @@ Al principio del módulo utilizarás su distribución integrada:
 
 ```mermaid
 flowchart TB
-    N["Navegador"] --> A["Escaparate<br/>Spring Boot 3 · Java 21"]
+    N["Navegador"] --> A["Escaparate<br/>Spring Boot · Java 21"]
     A --> F["Frontend estático<br/>integrado"]
     A --> API["API"]
     API --> D[("PostgreSQL")]
@@ -331,14 +315,11 @@ La aplicación no salta directamente desde el editor hasta producción. El recor
 
 ```mermaid
 flowchart LR
-    C["Código"] --> R["Repositorio"]
-    R --> B["Build"]
-    B --> T["Pruebas"]
-    T --> A["Artefacto<br/>imagen"]
+    C["Código<br/>+ Git"] --> B["Build<br/>+ pruebas"]
+    B --> A["Artefacto"]
     A --> G["Registro"]
-    G --> S["Staging"]
-    S --> P["Producción"]
-    P --> O["Monitorización"]
+    G --> D["Despliegue<br/>staging → producción"]
+    D --> O["Monitorización"]
     O -. "feedback" .-> C
 ```
 
@@ -436,4 +417,4 @@ No tienes que memorizar todavía todas las tecnologías anteriores. Al terminar 
 
 ---
 
-Con este mapa ya puedes interpretar mejor lo que observarás en la **Actividad 1.1**. Abrirás despliegues reales, inspeccionarás sus peticiones y respuestas y tratarás de separar tres cosas que un profesional nunca debe confundir: **lo que puedes observar, lo que puedes inferir y lo que desde fuera simplemente no puedes saber**.
+En la primera actividad aplicarás este mapa a sistemas ya desplegados: observarás lo que exponen y distinguirás entre **evidencia, inferencia y aspectos que no pueden conocerse desde fuera**.

@@ -1,223 +1,557 @@
 # 🧪 Actividad 3.1: Dos sitios, un servidor y un nombre
 
-!!! warning "Descarga la plantilla"
-    📄 [Plantilla 3.1 — Dos sitios, un servidor y un nombre](plantillas/Actividad_3_1_DAW_Plantilla.docx){target="_blank" rel="noopener"}
+!!! warning "Descarga los materiales"
+    Para esta actividad necesitas:
+
+    - 📦 [`escaparate-estatico.zip`](files/escaparate-estatico.zip){target="_blank" rel="noopener"}
+    - 📦 [`escaparate-docs.zip`](files/escaparate-docs.zip){target="_blank" rel="noopener"}
 
 ## Contexto
 
-El despliegue de Escaparate funciona, pero se accede a él escribiendo `localhost:8080`, que es una dirección que solo existe en el ordenador donde está corriendo. Nadie de fuera del equipo puede usar eso, y el día que esto se mueva a un servidor de verdad —la semana que viene— dejará de valer del todo.
+Escaparate ya se levanta con un único `docker compose up -d`, pero el resultado del Tema 2 todavía tiene una arquitectura muy directa:
 
-Además hay una deuda pendiente desde que empaquetaste la aplicación: al compilar Escaparate se generan la documentación del código y los informes de las pruebas. Existen, son útiles para el equipo y hasta ahora no han tenido dónde vivir. El encargo de hoy resuelve las dos cosas a la vez: **el catálogo y la documentación, servidos por el mismo servidor y en la misma máquina, pero en dos nombres distintos**, y la configuración de ese servidor versionada junto al proyecto como una parte más del despliegue.
+```text
+Navegador
+    │ :8080
+    ▼
+app
+(frontend + API)
+    │
+    ▼
+bd
+```
+
+En esta sesión aparece una nueva pieza. **Nginx será la única puerta de entrada del despliegue**. Servirá directamente una distribución estática del frontend y un segundo sitio con la documentación del proyecto. Las peticiones dinámicas seguirán llegando a la aplicación Java, pero lo harán a través de Nginx.
+
+El objetivo final es:
+
+```text
+                         ┌── frontend estático
+Navegador ──► web:Nginx ├── documentación
+                         │
+                         └── /api/ ──► app ──► bd
+```
+
+Desde el equipo anfitrión solo debe publicarse el puerto 80 de `web`.
 
 ## Qué vas a practicar
 
-- **Publicar** un sitio bajo un nombre en lugar de una dirección, y comprobar con `dig` qué hay detrás de ese nombre.
-- **Configurar** dos hosts virtuales por nombre en un único servidor, cada uno con su raíz de documentos.
-- **Medir** el efecto real de activar la compresión, y comprobar por las cabeceras qué está haciendo el servidor.
-- **Diagnosticar** los errores clásicos de un servidor de ficheros: permisos, raíz equivocada y tipo MIME.
-- **Documentar** la configuración del servidor web como parte del procedimiento de despliegue.
+- **Incorporar** un servidor web como nueva puerta de entrada de un despliegue existente.
+- **Servir** contenido estático desde Nginx y mantener la API detrás de la red interna.
+- **Configurar** dos hosts virtuales por nombre sobre la misma dirección y puerto.
+- **Resolver** nombres con DNS y comprobar el resultado con `dig`.
+- **Diagnosticar** problemas de permisos, raíz de documentos y tipos MIME.
+- **Configurar** un servidor por defecto para nombres no reconocidos.
+- **Medir** el efecto real de la compresión y comprobar las cabeceras de caché.
+- **Versionar** la configuración del servidor como parte del despliegue.
 
 ## Requisitos previos
 
-- La actividad 2.3 terminada: tu `compose.yaml` levantando el conjunto completo, con la base de datos y la API sin puertos publicados.
-- El paquete de la actividad, que incluye `escaparate-docs.zip` con la documentación del código y los informes de pruebas de Escaparate.
-- El fichero de configuración de Nginx que vienes usando desde la sesión 5, ya en tu repositorio.
-- Tu rama de esta sesión, creada antes de empezar:
+- La Actividad 2.3 terminada, con `app` y `bd` funcionando mediante `practicas/compose/compose.yaml`.
+- La imagen pública:
+
+```text
+ghcr.io/<usuario>/escaparate:sesion-04
+```
+
+- La imagen pública de la base de datos de la Actividad 2.1.
+- El paquete `escaparate-estatico.zip`.
+- El paquete `escaparate-docs.zip`.
+- El repositorio `daw-despliegue` actualizado.
+- Tu rama de esta sesión:
 
 ```bash
-git switch main && git pull
+git switch main
+git pull --ff-only
 git switch -c sesion-06
 ```
 
-!!! danger "El bloque `/api` no se toca"
-    En la configuración que arrastras hay un `location /api` con una directiva `proxy_pass`. Hoy sigue siendo caja negra: no lo modifiques ni lo muevas de sitio. Al terminar la actividad el catálogo tiene que seguir mostrando productos, y eso depende de esas líneas. La semana que viene lo escribes tú entero.
-
-!!! info "Reparto de tiempo orientativo"
-    Pasos 1 y 2, unos 35 minutos. Pasos 3 y 4, unos 40. Paso 5, unos 20.
-
----
-
-## Paso 1 — Deja de escribir direcciones
-
-Cambia dos cosas en tu despliegue: que el servidor web atienda en el **puerto de la web**, no en el 8080, y que se llegue a él por un **nombre**.
-
-Para el nombre no hay que registrar nada. Usa `escaparate.127.0.0.1.nip.io`: es un servicio DNS comodín que devuelve la dirección que el propio nombre lleva dentro. Antes de tocar el navegador, resuélvelo con `dig` y mira qué te contesta: qué tipo de registro es, qué valor tiene y qué TTL trae. Repite la consulta un par de veces seguidas y fíjate en si el número cambia.
-
-Después abre el catálogo en el navegador con ese nombre, sin puerto.
-
-**Comprueba**: el catálogo se ve en `http://escaparate.127.0.0.1.nip.io/` y sigue mostrando los productos.
-**Captura**: la salida completa de `dig` y el catálogo funcionando en el navegador, con el nombre visible en la barra de direcciones.
-
-!!! question "Reflexiona"
-    Ese nombre no lo has registrado tú y aun así resuelve desde cualquier equipo del aula. **¿Quién ha respondido a esa consulta y por qué la respuesta apunta a tu propia máquina?** Y sobre el TTL: ¿qué representa exactamente ese número y qué consecuencia tendría tenerlo muy alto el día que hay que cambiar a qué dirección apunta un nombre?
-
-!!! warning "Si los nombres no resuelven"
-    Puede ocurrir que el filtro de red del centro bloquee este tipo de comodines. En ese caso, añade a `/etc/hosts` **los dos nombres** que vas a usar hoy, ambos apuntando a `127.0.0.1`:
+Crea al comenzar la entrega:
 
 ```text
-    127.0.0.1 escaparate.127.0.0.1.nip.io
-    127.0.0.1 docs.127.0.0.1.nip.io
+entregas/
+└── tema3/
+    └── actividad-3.1/
+        ├── actividad-3.1.md
+        └── img/
 ```
 
-    El navegador los usará sin problema, pero `dig` **seguirá preguntando al DNS y no leerá esas entradas locales**, así que su consulta continuará fallando. Anótalo en la plantilla y explica por qué las dos cosas son compatibles. Para no quedarte sin la parte de DNS, haz el `dig` del paso 1 contra cualquier nombre público que sí resuelva —el del centro, por ejemplo— e identifica ahí el tipo de registro y el TTL.
+Documenta en `actividad-3.1.md` las respuestas, mediciones y reflexiones de la práctica. Guarda las capturas en `img/` y enlázalas mediante rutas relativas.
+
+Los ficheros técnicos no se duplican en `entregas/`. Trabajarás con esta estructura:
+
+```text
+practicas/
+├── compose/
+│   ├── compose.yaml
+│   ├── .env
+│   └── .env.example
+└── nginx/
+    ├── conf.d/
+    │   └── sitios.conf
+    ├── sitio-escaparate/
+    │   └── escaparate/
+    └── sitio-docs/
+```
+
+!!! info "Qué se versiona"
+    Al descomprimir `escaparate-estatico.zip` en `sitio-escaparate/`, el ZIP crea una carpeta `escaparate/`. Por tanto, el frontend quedará en `practicas/nginx/sitio-escaparate/escaparate/`. Ese contenido **sí se versiona** en este repositorio docente, porque será el frontend que llevarás contigo a la instancia en la siguiente sesión.
+
+    Descomprime `escaparate-docs.zip` en `practicas/nginx/sitio-docs/`. Este contenido formará parte del repositorio.
+
+!!! info "Reparto de tiempo orientativo"
+    - Pasos 1 y 2: unos 45 minutos.
+    - Pasos 3 y 4: unos 40 minutos.
+    - Paso 5: unos 20 minutos.
 
 ---
 
-## Paso 2 — El segundo sitio
+## Paso 1: Añade la nueva puerta de entrada
 
-Descomprime `escaparate-docs.zip` en una carpeta del proyecto —llámala `sitio-docs/`— y consigue que el servidor la sirva bajo un nombre **distinto** del catálogo: `docs.127.0.0.1.nip.io`. Misma máquina, mismo puerto, mismo contenedor.
+Descomprime `escaparate-estatico.zip` dentro de:
 
-Dentro hay dos cosas: la documentación del código, que tiene su propia página de inicio, y la carpeta de informes de pruebas, que no la tiene. Para esa segunda el objetivo es que quien entre **vea el listado de ficheros** y pueda abrir cualquiera de ellos.
+```text
+practicas/nginx/sitio-escaparate/
+```
 
-Una condición sobre el contenido: esos ficheros se generan al compilar, así que **no se versionan**. Igual que hiciste con el `.env`, deja la carpeta fuera del repositorio y documenta en el `README` de dónde sale.
+El ZIP crea automáticamente una carpeta `escaparate/`, por lo que el resultado esperado es:
 
-**Comprueba**: `docs.127.0.0.1.nip.io` muestra la documentación de Escaparate y `docs.127.0.0.1.nip.io/informes/` muestra el listado de informes; mientras tanto, el catálogo sigue respondiendo en su nombre sin haber cambiado nada.
-**Captura**: los dos sitios en el navegador, uno junto a otro, y la línea del `.gitignore` que excluye la carpeta.
+```text
+practicas/
+└── nginx/
+    └── sitio-escaparate/
+        └── escaparate/
+            ├── index.html
+            └── ...
+```
 
-!!! tip "Si aquí te sale un error, es uno de tres"
-    Un `403` sobre un fichero que existe suele ser de permisos: el proceso del servidor no es administrador y necesita poder leer los ficheros y atravesar sus carpetas. Un `404` sobre un fichero que también existe casi siempre significa que la raíz de documentos no apunta donde crees o que el montaje no ha llegado dentro del contenedor; entra a mirarlo desde dentro. Y si la página aparece en crudo o sin estilos, abre la consola del navegador y mira qué `Content-Type` ha llegado.
+Comprueba que existe:
 
-!!! question "Reflexiona"
-    Los dos nombres resuelven a la misma dirección IP y llegan al mismo puerto del mismo contenedor. **¿Qué información concreta usa el servidor para decidir cuál de los dos sitios responde, y en qué parte de la petición viaja?**
+```text
+practicas/nginx/sitio-escaparate/escaparate/index.html
+```
 
----
+No muevas ni aplanes el contenido del ZIP.
 
-## Paso 3 — Cuando el nombre no coincide
+Ahora modifica `practicas/compose/compose.yaml` para añadir un servicio:
 
-Pide ahora al servidor una dirección con un nombre que no hayas configurado —vale cualquiera acabado en `.127.0.0.1.nip.io`— y observa qué te devuelve.
+```text
+web
+```
 
-No es lo que la mayoría espera. Corrígelo: declara explícitamente un **servidor por defecto** cuya única misión sea responder con un **`404`** cuando el nombre pedido no coincida con ninguno de tus dos sitios.
+Debe cumplir estas condiciones:
 
-**Comprueba**: un nombre no configurado devuelve `404` y ya no muestra ninguno de tus sitios; los dos nombres buenos siguen funcionando exactamente igual.
-**Captura**: la respuesta a un nombre desconocido antes y después del cambio, con su código de estado en ambos casos.
+- imagen `nginx:1.30.4-alpine`;
+- publicar `80:80`;
+- montar `../nginx/conf.d/` sobre `/etc/nginx/conf.d/` en modo de solo lectura;
+- montar `../nginx/sitio-escaparate/escaparate/` sobre `/srv/www/escaparate/` en modo de solo lectura;
+- depender de `app` para que la aplicación se inicie antes;
+- `app` debe dejar de publicar su puerto 8080 hacia el anfitrión;
+- `bd` continúa sin publicar PostgreSQL.
 
----
+!!! info "¿Por qué `/srv/www/...`?"
+    La imagen oficial de Nginx utiliza `/usr/share/nginx/html` como raíz web predeterminada. Aquí no vamos a depender de esa ubicación: montaremos nuestros dos sitios bajo `/srv/www/escaparate` y `/srv/www/docs`. Así las dos raíces quedan organizadas de forma simétrica y tendrás que declararlas explícitamente con `root` en cada host virtual.
 
-## Paso 4 — Comprimir y cachear, y demostrarlo
+Crea `practicas/nginx/conf.d/sitios.conf` con el primer sitio del despliegue. Configura tú `listen`, `server_name`, `root` e `index` utilizando lo visto en teoría.
 
-Toca mejorar cómo se entregan los ficheros del catálogo. Aquí hay que usar **dos instrumentos distintos**, porque miden cosas distintas.
+El sitio responderá al nombre:
 
-Para saber **qué cabeceras** devuelve el servidor:
+```text
+escaparate.127.0.0.1.nip.io
+```
+
+Dentro de ese bloque incluye **exactamente este fragmento**, que hoy funciona como caja negra:
+
+```nginx
+location /api/ {
+    proxy_pass http://app:8080;
+}
+```
+
+!!! danger "El bloque `/api/` no se modifica hoy"
+    Su función es permitir que el JavaScript servido por Nginx siga accediendo a la API. No cambies la directiva ni añadas todavía cabeceras de proxy. En la Actividad 3.2 escribirás y explicarás esta parte completa.
+
+Levanta el conjunto:
 
 ```bash
-curl -I -H "Accept-Encoding: gzip" http://escaparate.127.0.0.1.nip.io/<ruta-del-fichero>
+docker compose up -d
 ```
 
-Para saber **cuántos bytes viajan de verdad**, que es lo que `-I` no puede decirte porque no descarga el cuerpo:
+Comprueba:
+
+```bash
+docker compose ps
+```
+
+El resultado debe mostrar una única publicación hacia el anfitrión:
+
+```text
+web → puerto 80
+```
+
+`app` y `bd` no deben mostrar puertos publicados.
+
+Valida además la configuración:
+
+```bash
+docker compose exec web nginx -t
+```
+
+Antes de utilizar el navegador, prueba directamente el host virtual:
+
+```bash
+curl -I -H "Host: escaparate.127.0.0.1.nip.io" http://127.0.0.1/
+```
+
+Y comprueba también la parte dinámica:
+
+```bash
+curl -fsS -H "Host: escaparate.127.0.0.1.nip.io" \
+  http://127.0.0.1/api/salud/listo
+```
+
+**Comprueba:** el frontend lo sirve Nginx, `/api/salud/listo` sigue respondiendo y solo `web` publica un puerto.
+
+**Captura:** `docker compose ps`, validación de Nginx y catálogo funcionando.
+
+!!! question "Reflexiona"
+    La imagen `app` sigue conteniendo una copia integrada del frontend. Sin embargo, el navegador ya no la está utilizando. ¿Qué cambio en la arquitectura hace que ahora los ficheros públicos procedan de Nginx y no de Spring Boot?
+
+---
+
+## Paso 2: Deja de escribir direcciones y publica un segundo sitio
+
+Resuelve primero:
+
+```bash
+dig escaparate.127.0.0.1.nip.io
+```
+
+Identifica en la respuesta:
+
+- tipo de registro;
+- dirección obtenida;
+- TTL;
+- servidor que ha contestado.
+
+Repite la consulta y observa el TTL. No es obligatorio que siempre disminuya de la misma forma, porque puede intervenir la caché del resolutor. Lo importante es interpretar qué representa.
+
+Abre después:
+
+```text
+http://escaparate.127.0.0.1.nip.io/
+```
+
+No escribas ningún puerto.
+
+Ahora descomprime `escaparate-docs.zip` en:
+
+```text
+practicas/nginx/sitio-docs/
+```
+
+Asegúrate de que `sitio-docs/` **no** está excluido por `.gitignore`. Si habías añadido una regla para ignorarlo durante una prueba anterior, elimínala.
+
+Añade al servicio `web` un montaje de esa carpeta sobre:
+
+```text
+/srv/www/docs
+```
+
+También en modo de solo lectura.
+
+Crea en `sitios.conf` un **segundo bloque `server`** para:
+
+```text
+docs.127.0.0.1.nip.io
+```
+
+Debe:
+
+- utilizar `/srv/www/docs` como raíz;
+- servir la página inicial de la documentación;
+- permitir el listado automático únicamente en `/informes/`.
+
+Después de cambiar la configuración:
+
+```bash
+docker compose exec web nginx -t
+docker compose exec web nginx -s reload
+```
+
+**Comprueba:**
+
+```text
+http://escaparate.127.0.0.1.nip.io/
+→ catálogo con productos
+
+http://docs.127.0.0.1.nip.io/
+→ documentación
+
+http://docs.127.0.0.1.nip.io/informes/
+→ listado navegable de informes
+```
+
+**Captura:** salida de `dig`, catálogo, documentación y listado de informes.
+
+!!! question "Reflexiona"
+    Los dos nombres resuelven a `127.0.0.1` y llegan al puerto 80 del mismo contenedor. ¿Qué dato de la petición HTTP permite a Nginx saber qué bloque `server` debe utilizar?
+
+!!! warning "Si `nip.io` no resuelve en la red del centro"
+    Añade temporalmente a `/etc/hosts`:
+
+    ```text
+    127.0.0.1 escaparate.127.0.0.1.nip.io
+    127.0.0.1 docs.127.0.0.1.nip.io
+    ```
+
+    El navegador utilizará esas entradas. `dig`, sin embargo, seguirá consultando DNS directamente y no utilizará `/etc/hosts`.
+
+    Para conservar la parte de DNS de la actividad, realiza entonces `dig` sobre un nombre público que sí resuelva y documenta su tipo de registro y TTL.
+
+---
+
+## Paso 3: Decide qué ocurre con un nombre desconocido
+
+Prueba un nombre que no hayas configurado:
+
+```bash
+curl -i http://cualquier-cosa.127.0.0.1.nip.io/
+```
+
+Observa qué sitio responde.
+
+Añade después un bloque `server` explícito que actúe como **servidor por defecto** y cuya única respuesta sea:
+
+```text
+404
+```
+
+Valida y recarga Nginx.
+
+Repite la petición.
+
+**Comprueba:**
+
+- los dos nombres válidos siguen funcionando;
+- un nombre desconocido devuelve `404`;
+- no se muestra accidentalmente ni el catálogo ni la documentación.
+
+**Captura:** respuesta del nombre desconocido antes y después de configurar el servidor por defecto.
+
+!!! question "Reflexiona"
+    ¿Por qué es más seguro declarar explícitamente qué debe ocurrir con un nombre desconocido que aceptar el comportamiento por defecto del servidor?
+
+---
+
+## Paso 4: Comprime, cachea y mídelo
+
+Utiliza el fichero CSS principal de la distribución entregada:
+
+```text
+/css/app.css
+```
+
+Antes de cambiar la configuración:
+
+```bash
+curl -I -H "Accept-Encoding: gzip" \
+  http://escaparate.127.0.0.1.nip.io/css/app.css
+```
+
+Comprueba que todavía no aparece una respuesta comprimida.
+
+Configura después el sitio del catálogo para:
+
+1. activar gzip sobre HTML, CSS y JavaScript;
+2. no intentar comprimir imágenes ya comprimidas;
+3. aplicar una política de caché larga a CSS, JavaScript e imágenes;
+4. evitar aplicar al HTML la misma política larga.
+
+Valida y recarga antes de probar.
+
+Inspecciona las cabeceras:
+
+```bash
+curl -I -H "Accept-Encoding: gzip" \
+  http://escaparate.127.0.0.1.nip.io/css/app.css
+```
+
+Después mide los bytes del cuerpo:
 
 ```bash
 curl -s -H "Accept-Encoding: identity" -o /dev/null \
-  -w "sin comprimir: %{size_download} bytes\n" http://escaparate.127.0.0.1.nip.io/<ruta-del-fichero>
+  -w "sin comprimir: %{size_download} bytes\n" \
+  http://escaparate.127.0.0.1.nip.io/css/app.css
 
 curl -s -H "Accept-Encoding: gzip" -o /dev/null \
-  -w "comprimido:   %{size_download} bytes\n" http://escaparate.127.0.0.1.nip.io/<ruta-del-fichero>
+  -w "comprimido:   %{size_download} bytes\n" \
+  http://escaparate.127.0.0.1.nip.io/css/app.css
 ```
 
-Antes de modificar nada, usa `curl -I` sobre el fichero de estilos de tu front para comprobar que **todavía no se entrega comprimido**. Después, en la configuración del sitio del catálogo:
+Completa en `actividad-3.1.md`:
 
-1. Activa la **compresión** para los tipos de contenido de texto: HTML, CSS y JavaScript. Deja fuera las imágenes.
-2. Añade una **cabecera de caché** a los ficheros que no cambian a diario —estilos, scripts e imágenes— con un plazo largo, y asegúrate de que el HTML **no** hereda ese plazo.
+| Recurso | Bytes con `identity` | Bytes con `gzip` | `Content-Encoding` | `Cache-Control` |
+|---|---:|---:|---|---|
+| CSS principal | | | | |
+| Una imagen | | | | |
+| `index.html` | | | | |
 
-Vuelve a consultar las cabeceras y, ahora sí, lanza las dos peticiones completas —`identity` y `gzip`— para medir la diferencia real de bytes. Rellena la tabla en la plantilla:
+**Comprueba:**
 
-| Fichero | Bytes sin comprimir | Bytes comprimido | `Content-Encoding` | `Cache-Control` |
-|---|---|---|---|---|
-| Estilos | | | | |
-| Una imagen del catálogo | | | | |
-| La página del catálogo | | | | |
+- el CSS viaja con menos bytes al aceptar gzip;
+- aparece `Content-Encoding: gzip` para el contenido textual;
+- una imagen ya comprimida no obtiene una mejora equivalente;
+- el HTML no recibe la misma política larga de caché que los recursos estáticos.
 
-**Comprueba**: en la fila de los estilos las dos cifras de bytes son claramente distintas y aparece la cabecera de compresión; en la de la imagen las dos cifras son iguales y no aparece; y el plazo de caché de la página no es el mismo que el de los estilos.
-**Captura**: la cabecera del fichero de estilos antes y después de activar la compresión, las dos mediciones finales de bytes, y la tabla rellena.
+**Captura:** cabeceras antes y después, mediciones de bytes y tabla completada.
 
 !!! question "Reflexiona"
-    El fichero del disco no ha cambiado de tamaño y sin embargo por la red viaja mucho menos. **¿En qué momento exacto ocurre esa reducción y quién la deshace?** Y sobre la imagen: ¿por qué comprimirla habría sido gastar procesador para nada?
+    El fichero CSS almacenado dentro del contenedor no cambia de tamaño. ¿En qué momento se comprime y quién realiza la operación inversa? ¿Por qué aplicar otra compresión a un JPEG o PNG suele aportar poco o nada?
 
 ---
 
-## Paso 5 — La configuración es parte del despliegue
+## Paso 5: Deja el despliegue preparado para otra persona
 
-Cierra la sesión dejando el trabajo en condiciones de que otra persona lo repita.
+Antes de cerrar, comprueba la configuración completa:
 
-- **Valida** el fichero de configuración con la propia herramienta del servidor antes de aplicarlo, y aplica el cambio **recargando**, no reiniciando el contenedor. Comprueba que la recarga no ha cortado nada.
-- Asegúrate de que la configuración se monta **de solo lectura** dentro del contenedor.
-- Amplía el `README.md` con lo de hoy: los dos nombres publicados y qué sirve cada uno, el puerto en el que atiende el servidor, qué hay que descomprimir y dónde antes de levantar el conjunto, y cómo comprobar que ambos sitios responden.
+```bash
+docker compose exec web nginx -t
+```
 
-Abre la petición de fusión de `sesion-06` hacia la rama principal.
+Revisa también:
 
-**Comprueba**: la validación no da errores y, tras recargar, los dos sitios y el catálogo con sus productos siguen funcionando.
-**Captura**: la salida de la validación, el `README` renderizado en el repositorio y la petición de fusión abierta.
+```bash
+docker compose ps
+git status
+```
 
----
+El resultado final debe cumplir:
 
-## Si te sobra tiempo
+```text
+web
+→ publica 80
+→ sirve sitio-escaparate
+→ sirve sitio-docs
+→ reenvía /api/ hacia app
 
-**Cierra el círculo de la sesión 4.** Los informes y la documentación que hoy has servido salieron de una compilación de Escaparate, pero te los hemos dado hechos. Añade a tu `Dockerfile` una etapa que no acabe en imagen y extrae esos ficheros tú mismo con `--target` y `--output`, tal como se explicaba en el apunte de aquella sesión. Compara lo que obtienes con lo que se te ha entregado.
+app
+→ sin puerto publicado
 
-**URL amigables.** Configura el sitio del catálogo para que, cuando se pida una ruta que no existe como fichero, se sirva la página principal en lugar de un `404`. Es lo que necesita cualquier front que gestione la navegación por su cuenta, y se resuelve con una sola directiva que prueba varias rutas en orden.
+bd
+→ sin puerto publicado
+```
+
+Actualiza `README.md` con:
+
+- ubicación del `compose.yaml`;
+- cómo crear `.env` desde `.env.example`;
+- de dónde salió inicialmente `sitio-docs/` y que queda versionado junto al resto del despliegue;
+- los dos nombres utilizados;
+- URL del catálogo;
+- URL de la documentación;
+- URL de los informes;
+- endpoint `/api/salud/listo` a través de Nginx;
+- cómo comprobar gzip sobre `/css/app.css`;
+- comandos para validar y recargar Nginx;
+- cómo levantar y desmontar el conjunto.
+
+Revisa `entregas/tema3/actividad-3.1/actividad-3.1.md` y comprueba que contiene todas las respuestas y capturas solicitadas.
+
+Después sigue el flujo habitual:
+
+1. registra los cambios utilizando la convención de commits del módulo;
+2. publica `sesion-06`;
+3. abre una Pull Request hacia `main`;
+4. revisa la PR;
+5. fusiona mediante **Create a merge commit**;
+6. actualiza tu `main` local.
+
+**Captura:** configuración validada, `README` renderizado y Pull Request antes de fusionarla.
 
 ---
 
 ## Verificación
 
-Sobre un equipo limpio, partiendo de tu repositorio y del paquete de la actividad:
+La práctica se comprobará desde un clon limpio. Ese clon debe contener ya el frontend, la documentación y la configuración necesarias para levantar ambos sitios.
 
 ```bash
-git clone <tu-repositorio> && cd daw-despliegue
-cp .env.example .env                        # y se rellenarán los valores
-unzip escaparate-docs.zip -d sitio-docs
-docker compose up -d && sleep 20
+git clone https://github.com/<usuario>/daw-despliegue.git verifica
+cd verifica/practicas/compose
 
-docker compose exec front nginx -t
-dig +short escaparate.127.0.0.1.nip.io
+cp .env.example .env
+# se completarán los valores locales necesarios
 
-curl -s -o /dev/null -w "catalogo %{http_code}\n" http://escaparate.127.0.0.1.nip.io/
-curl -s http://escaparate.127.0.0.1.nip.io/api/salud
-curl -s -o /dev/null -w "docs %{http_code}\n" http://docs.127.0.0.1.nip.io/
-curl -s http://docs.127.0.0.1.nip.io/informes/ | head
-curl -s -o /dev/null -w "desconocido %{http_code}\n" \
-  -H "Host: nada.127.0.0.1.nip.io" http://127.0.0.1/
 
-curl -sI -H "Accept-Encoding: gzip" \
-  http://escaparate.127.0.0.1.nip.io/<ruta del fichero de estilos indicada en tu README>
-curl -s -H "Accept-Encoding: identity" -o /dev/null -w "identity %{size_download}\n" \
-  http://escaparate.127.0.0.1.nip.io/<misma ruta>
-curl -s -H "Accept-Encoding: gzip" -o /dev/null -w "gzip     %{size_download}\n" \
-  http://escaparate.127.0.0.1.nip.io/<misma ruta>
+docker compose up -d
+docker compose ps
+
+docker compose exec web nginx -t
 ```
 
-Y debe observarse:
+Se comprobará:
 
-- Que el conjunto levanta **siguiendo solo el `README`**, incluido el paso de descomprimir la documentación.
-- Que la configuración de Nginx es **válida** y está montada de solo lectura.
-- Que el catálogo responde en su nombre, en el puerto de la web y **con sus productos**: la API sigue alcanzándose a través del servidor web.
-- Que el sitio de documentación responde en su nombre y que la ruta de informes devuelve un **listado navegable**.
-- Que un nombre no configurado devuelve **`404`** y no muestra ninguno de los dos sitios.
-- Que el fichero de estilos llega con `Content-Encoding` y una cabecera de caché de plazo largo, y que **los bytes descargados con `gzip` son claramente menos** que con `identity`.
-- Que en el repositorio no está la carpeta de documentación generada.
-- Que la entrega llega a la rama principal **a través de una petición de fusión** desde `sesion-06`.
+```bash
+curl -fsS http://escaparate.127.0.0.1.nip.io/ > /dev/null
+curl -fsS http://escaparate.127.0.0.1.nip.io/api/salud/listo
+curl -fsS http://docs.127.0.0.1.nip.io/ > /dev/null
+curl -fsS http://docs.127.0.0.1.nip.io/informes/ | head
+```
+
+También:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" \
+  -H "Host: desconocido.127.0.0.1.nip.io" http://127.0.0.1/
+```
+
+Debe devolver:
+
+```text
+404
+```
+
+Se inspeccionará `docker compose ps` para comprobar que:
+
+```text
+web → publica 80
+app → sin publicación
+bd  → sin publicación
+```
+
+Y se repetirá la comprobación de gzip sobre `http://escaparate.127.0.0.1.nip.io/css/app.css`.
+
+Finalmente se verificará que:
+
+- `practicas/nginx/conf.d/sitios.conf` está versionado;
+- `practicas/nginx/sitio-escaparate/escaparate/` está versionado;
+- `practicas/nginx/sitio-docs/` está versionado;
+- `README.md` permite reconstruir el despliegue;
+- la actividad y las capturas están en `entregas/tema3/actividad-3.1/`;
+- la rama `sesion-06` llegó a `main` mediante Pull Request.
 
 ---
 
 ## Qué se entrega
 
-- [ ] La consulta `dig` con su tipo de registro y su TTL, y la reflexión sobre quién responde.
-- [ ] El catálogo servido bajo su nombre, en el puerto de la web y sin puerto en la URL.
-- [ ] El segundo sitio bajo su propio nombre, con la documentación y el listado de informes.
-- [ ] La reflexión sobre qué decide cuál de los dos sitios responde.
-- [ ] El servidor por defecto devolviendo `404`, con la respuesta antes y después.
-- [ ] La cabecera antes y después de activar la compresión, y las dos mediciones de bytes.
-- [ ] La tabla del paso 4 completa, con su reflexión.
-- [ ] El fichero de configuración de Nginx versionado y montado de solo lectura, y la carpeta generada excluida del repositorio.
-- [ ] El `README` con los dos nombres, el puerto, el paso previo de descompresión y las comprobaciones.
-- [ ] La petición de fusión de `sesion-06`, fusionada.
-- [ ] La plantilla de la actividad entregada en Moodle, con la URL de la petición de fusión.
+- [ ] `entregas/tema3/actividad-3.1/actividad-3.1.md` con resultados, mediciones y reflexiones.
+- [ ] `entregas/tema3/actividad-3.1/img/` con las capturas enlazadas mediante rutas relativas.
+- [ ] `practicas/compose/compose.yaml` actualizado con `web`, `app` y `bd`.
+- [ ] `practicas/nginx/conf.d/sitios.conf` con los dos hosts y el servidor por defecto.
+- [ ] Frontend estático versionado en `practicas/nginx/sitio-escaparate/escaparate/`.
+- [ ] Documentación versionada en `practicas/nginx/sitio-docs/`.
+- [ ] Catálogo y documentación accesibles mediante nombres distintos en el puerto 80.
+- [ ] `app` y `bd` sin puertos publicados al anfitrión.
+- [ ] Medición de gzip y comprobación de las políticas de caché.
+- [ ] `README.md` actualizado con el procedimiento reproducible.
+- [ ] Pull Request `sesion-06 → main` fusionada mediante merge commit.
 
 ---
 
 ## ✅ Cierre
 
-Tu despliegue ha dejado de ser una cosa que funciona en tu portátil para parecerse a un sitio publicado: se llega por un nombre, atiende en el puerto de la web, sirve dos sitios distintos desde una sola máquina y entrega sus ficheros comprimidos y con instrucciones de caché. Y la configuración que decide todo eso ya no es un fichero prestado: está en tu repositorio, se valida antes de aplicarse y se recarga sin cortar el servicio.
+El despliegue ya no expone directamente Spring Boot. Nginx se ha convertido en la puerta de entrada, sirve los recursos estáticos con reglas propias y decide qué sitio debe responder según el nombre solicitado.
 
-De paso has resuelto la deuda que arrastrabas desde que empaquetaste la aplicación. La documentación y los informes de pruebas existían desde la sesión 4 y no tenían dónde vivir; ahora tienen su propia dirección, y quien la necesite no tiene que pedírtela.
+También has comprobado que DNS y HTTP resuelven problemas diferentes: DNS lleva el nombre hasta una dirección, mientras que la cabecera `Host` permite al servidor decidir qué sitio debe responder una vez establecida la conexión.
 
-Lo que sigue habiendo es **una sola copia** de Escaparate. Si el contenedor de la API se para, no hay catálogo, y no hay nada que pueda hacer nada al respecto. En la próxima sesión el servidor web, además de seguir sirviendo los ficheros del front, pasará a repartir las peticiones de la API entre tres copias de la aplicación: ahí se abre por fin ese bloque `/api` que hoy no has tocado, y ahí aparece el primer problema serio de trabajar con varias copias a la vez. Y el conjunto se muda del portátil a la instancia que habrás creado el miércoles en el módulo de nube.
+En la siguiente sesión mantendrás exactamente esa puerta, pero abrirás el bloque `/api/` que hoy has utilizado como caja negra. Allí aprenderás qué significa actuar como proxy inverso, qué información hay que reenviar y cómo repartir el tráfico entre varias copias de Escaparate.

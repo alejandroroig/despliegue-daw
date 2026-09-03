@@ -45,7 +45,7 @@
 ---
 
 !!! note "Cómo encaja este tema"
-    Es el tema más largo del módulo y el que más peso tiene en la calificación. Cuatro sesiones que siguen el recorrido de una petición: quién la atiende, quién la reparte, quién la protege y quién la cuenta. A partir de la segunda sesión, Escaparate deja de vivir en tu portátil y pasa a un servidor accesible desde internet.
+    Es el tema más largo del módulo y el que más peso tiene en la calificación. Cuatro sesiones que siguen el recorrido de una petición: quién la atiende, quién la reparte, quién la protege y quién la cuenta. A partir de la segunda sesión, Escaparate deja de vivir en tu ordenador y pasa a un servidor accesible desde internet.
 
 !!! warning "El cierre del tema es un documento"
     La última entrega no es una captura más: es la **memoria de configuración y administración segura** del servidor web, que recoge las cuatro sesiones en un solo documento. Ve guardando por el camino lo que te vaya costando resolver —las incidencias también se entregan—.

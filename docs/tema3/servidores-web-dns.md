@@ -1,135 +1,222 @@
-# 🌐 1. Servidores web y DNS
+# 🌐 Servidores web y DNS
 
-!!!info "Descarga de diapositivas"
+!!! info "Descarga de diapositivas"
     [Descarga las diapositivas](diapositivas/servidores-web-dns.pptx){target="_blank" rel="noopener"}
 
 ---
 
-Cerraste la sesión anterior con Escaparate entero funcionando: tres piezas descritas en un fichero, dos de ellas sin una sola puerta abierta al exterior, y un comando que lo levanta todo en cualquier máquina con Docker. Es un despliegue de verdad.
+Un servidor web puede asumir la entrada HTTP de un sistema y servir directamente recursos estáticos. Esto permite separar el trabajo de **entregar ficheros** del trabajo de **ejecutar lógica de aplicación**.
 
-Pero mira cómo se llega hasta él: `http://localhost:8080`. Una dirección que solo existe en tu ordenador y un puerto que no es el de la web. Nadie escribe eso en un navegador. Y hay más: los ficheros del front se están sirviendo de cualquier manera, sin comprimir, sin decirle al navegador qué puede guardar en caché, y con un fichero de configuración que has usado sin abrir. Hoy toca la pieza que faltaba: **qué hace exactamente el programa que atiende las peticiones**, cómo consigue servir dos sitios distintos desde una sola máquina, y cómo se llega hasta él escribiendo un nombre.
+En esta sesión incorporaremos Nginx delante de una aplicación web y utilizaremos dos sitios distintos para estudiar raíces de documentos, hosts virtuales, compresión, caché y resolución de nombres. El reenvío de peticiones dinámicas aparecerá únicamente como conexión con el backend; su funcionamiento se estudiará en la siguiente sesión.
 
 ---
 
-## 🗂️ Qué hace exactamente un servidor web
+## 🗂️ 1. Qué hace un servidor web
 
-Un servidor web es un programa que escucha en un puerto, recibe peticiones HTTP y devuelve respuestas HTTP. Su trabajo principal, el que hace millones de veces al día, es **traducir una URL en un recurso** y entregarlo con las cabeceras correctas.
+Un **servidor web** es un programa que escucha peticiones HTTP y devuelve respuestas HTTP. Cuando sirve contenido estático, su trabajo fundamental consiste en relacionar una URL con un recurso del sistema de ficheros y entregarlo con las cabeceras adecuadas.
 
-Esa traducción no es magia. Hay una carpeta del disco designada como **raíz de documentos**, y todo lo que llega se busca dentro de ella:
+Una configuración suele definir una **raíz de documentos**:
 
-| El navegador pide | El servidor busca | Y si no está |
+| El navegador pide | El servidor busca | Si no está |
 |---|---|---|
-| `/` | el fichero índice de la raíz | `403` si no hay índice y no se permite listar |
-| `/estilos.css` | `<raíz>/estilos.css` | `404` |
+| `/` | el fichero índice de la raíz | normalmente `403` si no hay índice y no se permite listar |
+| `/css/estilos.css` | `<raíz>/css/estilos.css` | `404` |
 | `/img/logo.png` | `<raíz>/img/logo.png` | `404` |
 
-La raíz de documentos marca **el punto desde el que el servidor busca lo que puede servir**. Eso no significa que todo lo que haya dentro tenga que ser accesible —las reglas de configuración y los permisos pueden restringir rutas concretas, y en la sesión 8 vas a proteger una—, pero sí que todo lo que esté ahí es candidato a servirse. La consecuencia práctica la vas a aplicar hoy: en la raíz de documentos no se deja nada que no quieras publicar —copias de seguridad, `.env`, ficheros `.sql`, notas—, porque lo único que separa ese fichero del mundo es que nadie haya probado esa URL.
+La raíz marca el punto desde el que el servidor busca los recursos que puede publicar. Eso no significa que absolutamente todo su contenido tenga que ser accesible, porque las reglas pueden restringir rutas concretas, pero sí convierte esos ficheros en candidatos a ser servidos.
 
-Y ahora lo que **no** hace: un servidor web no ejecuta la lógica de tu aplicación. No sabe qué es un producto ni cómo se consulta una base de datos. Entrega ficheros tal cual están en el disco. Cuando la respuesta hay que calcularla, el servidor web se la pide a otro programa y se limita a llevar y traer, que es justamente la sesión que viene.
-
-!!! tip "Estático y dinámico, otra vez"
-    En la primera sesión distinguiste contenido estático de contenido dinámico. Aquí se ve la consecuencia arquitectónica: el front de Escaparate —HTML, CSS, JavaScript e imágenes— lo sirve el servidor web directamente desde el disco, rapidísimo y sin gastar casi nada. Lo dinámico lo produce la API. Que sean dos cosas separadas no es un capricho de diseño: es lo que permite servir cada una con la herramienta adecuada.
-
----
-
-## ⚙️ Apache y Nginx
-
-**Apache** y **Nginx** son los dos servidores web maduros que se reparten la mayor parte de la web. Los dos sirven contenido estático, los dos pueden hacer de proxy y los dos funcionan perfectamente en producción.
-
-La diferencia de origen está en cómo atienden a muchos visitantes a la vez. Apache es extremadamente modular y admite **distintos modelos de procesamiento** —sus MPM: `prefork`, `worker` y `event`—, de modo que se puede configurar desde un proceso por conexión hasta un modelo asíncrono. Nginx nació directamente con una arquitectura **orientada a eventos**: unos pocos procesos trabajadores que atienden miles de conexiones simultáneas sin bloquearse esperando a ninguna. Es la razón por la que se popularizó sirviendo estáticos y como pieza de entrada delante de otros servidores.
-
-En este módulo trabajarás con **Nginx**, y no por ser mejor: es el que ya forma parte de tu despliegue, y usando una sola herramienta cubres el contenido estático de hoy, los hosts virtuales, el proxy inverso de la sesión que viene y el cifrado de la siguiente. Administrar dos servidores en paralelo costaría el doble sin enseñar nada nuevo. De Apache interesa reconocerlo cuando te lo encuentres —que te lo vas a encontrar— y saber en qué se diferencia.
-
-!!! info "Para saber más: en qué se notan las diferencias"
-    | | Apache | Nginx |
-    |---|---|---|
-    | Procesamiento | Configurable mediante MPM, incluido uno asíncrono | Orientado a eventos desde el diseño |
-    | Configuración | Central y además por directorio, con `.htaccess` | Solo central |
-    | Módulos | Catálogo muy amplio, cargables en caliente | Menos módulos, compilados o dinámicos |
-    | Se le suele ver | Detrás, ejecutando aplicaciones | Delante, sirviendo estáticos y repartiendo |
-
-    El `.htaccess` es la diferencia más visible en el día a día: permite que cada carpeta lleve su propia configuración, algo imprescindible cuando alojas cien clientes que no pueden tocar la configuración global. El precio es que el servidor comprueba en **cada petición** si hay un `.htaccess` en cada nivel de la ruta. Nginx no ofrece nada equivalente, y esa ausencia es deliberada.
-
----
-
-## 🧾 Tipos MIME, índices y permisos
-
-Tres detalles que parecen menores y que provocan la mitad de las incidencias de esta sesión.
-
-**El tipo MIME** es la cabecera `Content-Type` con la que el servidor anuncia qué está enviando: `text/html`, `text/css`, `application/javascript`, `image/png`. El navegador se guía por ella, no por la extensión. Si un `.css` llega anunciado como `text/plain`, el navegador puede interpretarlo mal o directamente rechazarlo, y la página aparece sin estilos; la pestaña de red y la consola del navegador te enseñan qué `Content-Type` ha llegado y por qué se ha descartado el recurso. Nginx deduce el tipo con una tabla de extensiones y aplica un valor por defecto cuando no conoce la extensión.
-
-**El índice** es el fichero que se sirve cuando la URL apunta a un directorio, normalmente `index.html`. Si no existe, hay dos comportamientos posibles: devolver un `403` o **listar el contenido de la carpeta**. Ese listado automático es utilísimo para publicar informes generados —hoy lo vas a usar— y es un problema serio en cualquier otro sitio: enseña nombres de fichero que nadie debería conocer.
-
-**Los permisos** son la tercera pata. El proceso trabajador de Nginx no corre como administrador: usa un usuario sin privilegios, exactamente por lo mismo que en la sesión 4 le quitaste privilegios a Escaparate. Ese usuario tiene que poder **leer** los ficheros y **atravesar** los directorios que los contienen. Cuando montas una carpeta de tu equipo dentro del contenedor, los permisos que viajan son los del anfitrión, y un `403` en un fichero que existe y se ve perfectamente en tu editor casi siempre es esto.
-
-!!! warning "Los tres errores del día, y cómo se distinguen"
-    - **`403` con el fichero existiendo**: permisos, o directorio sin índice y sin listado permitido.
-    - **`404` con el fichero existiendo**: la raíz de documentos no es la que crees, o el montaje no ha llegado donde pensabas. Compruébalo desde dentro del contenedor.
-    - **Página en crudo o sin estilos**: tipo MIME. Mira la consola y la pestaña de red del navegador.
-
----
-
-## 🗜️ Entregar bien: comprimir y cachear
-
-Un servidor web hace más que entregar ficheros, y lo hace mediante módulos. Dos de ellos resuelven problemas que ya tienes.
-
-**Compresión.** El HTML, el CSS y el JavaScript son texto, y el texto se comprime muchísimo: reducciones del setenta u ochenta por ciento son normales. Si el navegador anuncia que la acepta con `Accept-Encoding`, el servidor comprime al vuelo y responde con `Content-Encoding: gzip`. Se activa con dos o tres líneas y es probablemente la mejora de rendimiento más barata que existe. Ojo con lo que **no** hay que comprimir: las imágenes JPEG o PNG ya vienen comprimidas y volver a hacerlo solo gasta procesador.
-
-**Cabeceras de caché.** Cada vez que alguien vuelve a tu sitio, el navegador pide otra vez todos los ficheros. Con `Cache-Control` le dices durante cuánto tiempo puede reutilizar lo que ya tiene sin preguntar. El criterio es la volatilidad: el HTML cambia a menudo y se cachea poco o nada; los estilos, los scripts y las imágenes cambian con cada versión y se pueden cachear mucho tiempo. El peaje aparece cuando despliegas: si dijiste que el CSS valía un año, quien lo tenga guardado seguirá viendo el antiguo. La solución habitual es cambiar el nombre del fichero en cada versión, y de eso se encargan las herramientas de construcción del front.
-
-Todo esto se comprueba, no se supone, y hay que usar la herramienta adecuada para cada cosa. Para ver **qué cabeceras** devuelve el servidor:
-
-```bash
-curl -I -H "Accept-Encoding: gzip" http://escaparate.127.0.0.1.nip.io/estilos.css
-```
-
-`-I` pide únicamente la cabecera de respuesta. `-H` añade una cabecera a la petición: aquí anunciamos que aceptamos contenido comprimido, porque si no lo anunciamos el servidor no comprimirá y parecerá que la configuración no funciona. En la respuesta hay que buscar el código de estado, el `Content-Type`, el `Content-Encoding` y el `Cache-Control`.
-
-Ahora bien, `-I` envía un `HEAD`: **pide las cabeceras y no descarga el cuerpo**, así que no sirve para medir cuántos bytes viajan. Para eso hay que pedir el recurso entero dos veces, cambiando lo que se anuncia:
-
-```bash
-curl -s -H "Accept-Encoding: identity" -o /dev/null \
-  -w "sin comprimir: %{size_download} bytes\n" http://escaparate.127.0.0.1.nip.io/estilos.css
-
-curl -s -H "Accept-Encoding: gzip" -o /dev/null \
-  -w "comprimido:   %{size_download} bytes\n" http://escaparate.127.0.0.1.nip.io/estilos.css
-```
-
-`-s` calla el indicador de progreso, `-o /dev/null` tira el contenido porque no queremos verlo, y `-w` imprime un dato concreto de la transferencia: `%{size_download}` son los bytes del cuerpo que han llegado de verdad. `identity` significa «no me comprimas nada». La diferencia entre las dos cifras es el ahorro real.
-
-!!! info "Para saber más: reescritura de URL"
-    El navegador pide `/productos/42` y en el disco no hay ninguna carpeta `productos` ni ningún fichero `42`. La **reescritura** traduce la URL que ve el usuario a la ruta real, y es lo que permite tener direcciones legibles y compartibles sin que la estructura del disco tenga que parecerse a ellas. En Nginx el mecanismo cotidiano es `try_files`: prueba varias rutas en orden y se queda con la primera que exista, lo que resuelve de una línea el caso de un front que gestiona su propia navegación. No es exigible hoy, pero lo tienes propuesto como ampliación en la actividad.
-
----
-
-## 🏠 Hosts virtuales: varios sitios en una máquina
-
-Ahora la pieza central del día. Una sola máquina, una sola dirección IP, un solo puerto 80, y **dos sitios web completamente distintos**.
-
-Esto funciona gracias a algo que ya conoces desde la primera sesión: la cabecera `Host`. Cuando escribes una dirección en el navegador, el nombre se convierte en una IP y la conexión se abre contra esa IP, pero el nombre **viaja también dentro de la petición**:
+Por eso no deben aparecer accidentalmente en una raíz pública:
 
 ```text
-GET /informes/ HTTP/1.1
-Host: docs.127.0.0.1.nip.io
+.env
+copias de seguridad
+scripts SQL
+credenciales
+notas internas
 ```
 
-El servidor lee esa cabecera y decide con ella qué configuración aplicar. Cada configuración de ese tipo es un **host virtual por nombre**: su propio nombre, su propia raíz de documentos, sus propios logs y sus propias reglas.
+Un servidor web tampoco sustituye a la aplicación. Nginx no ejecuta por sí mismo la lógica de negocio de una aplicación. Para contenido dinámico necesita reenviar la petición al proceso que sí puede generarlo.
+
+En esta sesión la separación será:
+
+```text
+HTML, CSS, JS, imágenes
+→ Nginx los lee del disco
+
+/api/...
+→ la aplicación genera la respuesta
+```
+
+---
+
+## ⚙️ 2. Apache y Nginx
+
+**Apache HTTP Server** y **Nginx** son dos servidores web maduros capaces de servir contenido estático, aplicar reglas HTTP y actuar como proxy.
+
+Su diseño histórico es diferente. Apache es muy modular y admite varios modelos de procesamiento mediante sus MPM. Nginx nació con una arquitectura orientada a eventos y se popularizó especialmente como servidor de estáticos y como punto de entrada delante de otras aplicaciones.
+
+En este módulo trabajaremos con **Nginx** porque una sola herramienta nos permitirá estudiar progresivamente:
+
+```text
+sesión 6 → contenido estático y hosts virtuales
+sesión 7 → proxy inverso y balanceo
+sesión 8 → HTTPS y control de acceso
+sesión 9 → registro del tráfico
+```
+
+No se trata de afirmar que Nginx sea universalmente mejor. Apache sigue siendo una opción perfectamente válida y muy extendida.
+
+!!! info "Para saber más: diferencias habituales"
+    | | Apache | Nginx |
+    |---|---|---|
+    | Procesamiento | Configurable mediante varios MPM | Orientado a eventos desde el diseño |
+    | Configuración | Central y, si se habilita, por directorio con `.htaccess` | Central |
+    | Módulos | Ecosistema muy amplio | Módulos integrados o dinámicos |
+    | Uso frecuente | Hosting, aplicaciones, servidor general | Estáticos, proxy y punto de entrada |
+
+---
+
+## 🧱 3. Incorporar Nginx al despliegue
+
+Nginx no estaba en el despliegue del Tema 2. En esta sesión lo añadiremos como un nuevo servicio de Compose.
+
+### 3.1. Servicio, configuración y contenido
+
+Un esquema simplificado será:
+
+```yaml
+services:
+  web:
+    image: nginx:1.30.4-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - <configuracion>:/etc/nginx/conf.d:ro
+      - <sitio-web>:/srv/www/web:ro
+      - <documentacion>:/srv/www/docs:ro
+```
+
+Hay tres ideas importantes:
+
+- **La imagen de Nginx es genérica.** No necesitamos construir una nueva para cambiar un sitio durante esta sesión.
+- **La configuración entra desde fuera** mediante un montaje de solo lectura.
+- **El contenido estático también puede montarse desde fuera**, de forma que Nginx se limite a servirlo.
+
+!!! info "La raíz predeterminada de la imagen oficial"
+    La imagen oficial de Nginx trae preparado `/usr/share/nginx/html` como directorio web predeterminado. Es una convención de la imagen, no una ruta obligatoria. Podemos utilizar raíces propias como `/srv/www/web` y `/srv/www/docs`; la directiva `root` de cada bloque `server` decide qué contenido sirve cada sitio.
+
+La aplicación `app` continúa existiendo, pero deja de publicar su puerto 8080 hacia el anfitrión. El único puerto público del conjunto será el 80 de `web`.
 
 ```mermaid
 flowchart LR
-    N["🌐 Navegador"] -->|"Host: escaparate…"| S["Nginx :80"]
-    N2["🌐 Navegador"] -->|"Host: docs…"| S
-    S --> A["sitio: catálogo<br/>raíz /usr/share/nginx/html"]
-    S --> B["sitio: documentación<br/>raíz /srv/docs"]
+    C["Navegador"] --> N["Nginx<br/>web"]
+    N --> E["Contenido<br/>estático"]
+    N --> A["Aplicación<br/>app"]
+    A --> D[("Base de datos<br/>bd")]
 ```
 
-En Nginx cada sitio es un bloque `server` con su `server_name`:
+El frontend integrado que todavía contiene la imagen de `app` no desaparece físicamente, pero deja de ser la copia que recibe el navegador. Desde esta sesión, los ficheros públicos los sirve Nginx.
+
+### 3.2. Validar y recargar antes de aplicar
+
+La configuración de un servidor web es código de infraestructura. Un error de sintaxis puede impedir que el servicio arranque o que una recarga se aplique.
+
+Nginx puede validar su configuración:
+
+```bash
+nginx -t
+```
+
+En un contenedor Compose:
+
+```bash
+docker compose exec web nginx -t
+```
+
+Si la validación es correcta, se puede pedir a Nginx que recargue la configuración:
+
+```bash
+docker compose exec web nginx -s reload
+```
+
+La secuencia profesional es:
+
+```text
+editar
+↓
+validar
+↓
+recargar
+↓
+comprobar
+```
+
+Reiniciar el contenedor entero para aplicar cada cambio funciona, pero oculta una capacidad importante del servidor: **puede recargar su configuración sin sustituir el proceso por un despliegue completamente nuevo**.
+
+---
+
+## 🧾 4. Tipos MIME, índices y permisos
+
+Tres detalles pequeños explican muchos fallos al servir ficheros.
+
+**Tipo MIME.** La respuesta incluye una cabecera `Content-Type`, por ejemplo:
+
+```text
+text/html
+text/css
+application/javascript
+image/png
+```
+
+El navegador utiliza ese tipo para decidir cómo interpretar el contenido. Si un fichero CSS llega con un tipo incorrecto, la página puede aparecer sin estilos aunque el fichero exista.
+
+**Índice.** Cuando se pide un directorio, el servidor suele buscar un fichero como `index.html`. Si no existe, puede devolver `403` o, si se configura expresamente, mostrar un listado de los ficheros mediante `autoindex`.
+
+**Permisos.** Nginx no necesita ejecutar como administrador para servir un sitio. Su proceso debe poder:
+
+```text
+leer los ficheros
++
+atravesar los directorios que los contienen
+```
+
+Esto es especialmente importante con montajes del anfitrión.
+
+!!! warning "Tres síntomas que conviene distinguir"
+    - `403` con el recurso existente: revisa permisos o si has pedido un directorio sin índice ni listado habilitado.
+    - `404` con el recurso existente: revisa la raíz configurada y el montaje dentro del contenedor.
+    - Página sin estilos o recurso rechazado: revisa `Content-Type` en las herramientas del navegador.
+
+---
+
+## 🏠 5. Hosts virtuales por nombre
+
+Una misma dirección IP y un mismo puerto pueden servir varios sitios diferentes.
+
+### 5.1. La cabecera `Host` decide qué sitio responde
+
+Cuando escribes:
+
+```text
+http://docs.ejemplo.test/informes/
+```
+
+primero el nombre se resuelve a una dirección IP. Después el nombre también viaja dentro de la petición HTTP:
+
+```http
+GET /informes/ HTTP/1.1
+Host: docs.ejemplo.test
+```
+
+Nginx puede utilizar `Host` para escoger un bloque `server`:
 
 ```nginx
 server {
     listen 80;
-    server_name docs.127.0.0.1.nip.io;
-    root /srv/docs;
+    server_name docs.ejemplo.test;
+
+    root /srv/www/docs;
+    index index.html;
 
     location /informes/ {
         autoindex on;
@@ -137,76 +224,218 @@ server {
 }
 ```
 
-`listen 80` dice en qué puerto atiende este bloque. `server_name` es el nombre con el que se selecciona: si la cabecera `Host` de la petición coincide, manda este bloque. `root` fija la raíz de documentos del sitio. Y `location /informes/` abre un bloque de reglas que solo se aplican a las URL que empiezan por esa ruta; dentro, `autoindex on` permite el listado automático de la carpeta.
+Las directivas principales son:
 
-Dos detalles que hay que conocer antes de empezar:
+| Directiva | Función |
+|---|---|
+| `listen 80` | puerto en el que atiende el bloque |
+| `server_name` | nombre o nombres que seleccionan el sitio |
+| `root` | raíz de documentos |
+| `index` | fichero que se busca al pedir un directorio |
+| `location` | reglas aplicadas a determinadas rutas |
+| `autoindex on` | permite listar un directorio sin índice |
 
-- Si ningún `server_name` coincide, Nginx no devuelve un error: responde con el **servidor por defecto**, que es el primero declarado salvo que marques otro con `default_server`. Por eso, cuando un host virtual «no funciona», lo que sueles estar viendo es el otro sitio.
-- Un mismo bloque puede responder a varios nombres y también admite comodines. Lo que debes evitar es declarar **el mismo nombre de forma conflictiva para la misma dirección y puerto**, porque una de las configuraciones no se utilizará como esperas.
+Así pueden coexistir:
 
----
+```text
+web.ejemplo.test
+→ sitio principal
 
-## 🧭 Veinte minutos de nombres: A, CNAME y TTL
-
-Los hosts virtuales van por nombre, así que hace falta que ese nombre lleve a alguna parte. Vamos a lo justo para trabajar; en la sesión 8 volverá con el certificado.
-
-Cuando una aplicación necesita convertir un nombre en una dirección, no pregunta al DNS directamente: se lo pide al **resolutor del sistema operativo**, que puede consultar varias fuentes. En un Linux habitual, la primera de ellas es el fichero `/etc/hosts`: si el nombre está ahí, se resuelve localmente y no se consulta a nadie más. Si no está, el resolutor pregunta al servidor DNS configurado, que buscará la respuesta y la devolverá.
-
-Ese fichero local es un atajo potente y peligroso a la vez: sirve para probar un sitio antes de publicarlo, y también para que un equipo entero vea una cosa distinta que el resto del mundo. Si algo resuelve donde no debe, es el primer sitio donde mirar.
-
-Y aquí hay que separar bien dos herramientas que se confunden constantemente: **`dig` pregunta directamente a un servidor DNS y no consulta `/etc/hosts`**. Por eso un nombre añadido solo al fichero de hosts funciona en el navegador y `dig` te dirá que no existe. No es un fallo: es que cada uno está mirando en un sitio distinto.
-
-Los registros que vas a manejar son dos:
-
-| Registro | Qué contiene | Cuándo se usa |
-|---|---|---|
-| **A** | Una dirección IP (`AAAA` para IPv6) | El nombre apunta directamente a una máquina |
-| **CNAME** | Otro nombre | El nombre es un alias de otro que ya existe |
-
-La diferencia básica es sencilla: un registro **A relaciona un nombre con una dirección IPv4**, mientras que un **CNAME convierte un nombre en alias de otro nombre**. El alias resulta especialmente útil al apuntar a servicios gestionados —un balanceador, una CDN— que proporcionan un nombre estable aunque las direcciones que haya detrás cambien: mientras el nombre siga siendo el mismo, tú no tienes que tocar nada.
-
-El **TTL** es el tiempo que un resolutor puede guardar la respuesta antes de volver a preguntar. Es el compromiso de siempre: un TTL alto reduce consultas y acelera; un TTL bajo permite cambiar rápido. Y de ahí sale una norma de oficio que se aprende cara: **antes de una migración se baja el TTL con antelación**, porque bajarlo el mismo día no sirve de nada —los resolutores siguen usando la copia que se llevaron con el TTL antiguo—.
-
-La herramienta para mirar todo esto es `dig`:
-
-```bash
-dig escaparate.127.0.0.1.nip.io
-dig +short escaparate.127.0.0.1.nip.io
+docs.ejemplo.test
+→ documentación e informes
 ```
 
-La primera forma devuelve la respuesta completa: la sección de pregunta, la de respuesta con el tipo de registro y su TTL, y quién ha contestado. La segunda devuelve solo el valor, que es lo cómodo para comprobaciones rápidas. En la salida completa, fíjate en el número que aparece antes del tipo de registro: ese es el TTL. Si el servidor al que preguntas está reutilizando una respuesta guardada, verás cómo el TTL restante disminuye entre consultas; lo importante es entender qué representa, no que siempre baje en pantalla.
+Los dos nombres pueden apuntar a la misma dirección IP, utilizar el puerto 80 y terminar en el mismo servidor Nginx.
 
-!!! tip "Nombres reales sin registrar nada: `nip.io`"
-    `nip.io` es un servicio DNS comodín: cualquier nombre que **contenga una IP** resuelve a esa IP. Así, `escaparate.127.0.0.1.nip.io` devuelve `127.0.0.1` y `docs.127.0.0.1.nip.io` también. No hay que registrar nada ni editar ningún fichero, y —esto es lo importante para hoy— **es DNS de verdad**: `dig` te enseñará un registro A auténtico con su TTL. Cuando en la sesión 7 el servicio salga a una instancia en la nube, el mismo truco funcionará con su IP pública, que cambia cada semana.
+### 5.2. Qué ocurre cuando ningún nombre coincide
 
-!!! info "Para saber más: otros registros y delegación"
-    Una zona DNS contiene bastante más: `MX` para el correo, `TXT` para verificaciones y políticas, `NS` para decir qué servidores son autoritativos de un subdominio. Esa última es la que permite **delegar** un trozo del dominio a otro responsable, y es exactamente lo que hay detrás del subdominio con el que emitirás tu certificado en la sesión 8.
+Si ningún `server_name` coincide, Nginx utiliza un servidor por defecto. Si no se declara explícitamente, el comportamiento puede sorprender porque uno de los sitios configurados termina respondiendo a nombres que no eran suyos.
+
+Es preferible expresar la decisión:
+
+```nginx
+server {
+    listen 80 default_server;
+    server_name _;
+    return 404;
+}
+```
+
+Ahora la política es clara:
+
+```text
+nombre conocido
+→ sitio correspondiente
+
+nombre desconocido
+→ 404
+```
 
 ---
 
-## 🧱 Dónde encaja todo esto en tu despliegue
+## 🗜️ 6. Compresión y caché de contenido estático
 
-Nada de lo anterior es un servidor nuevo: es el que ya tienes. En tu `compose.yaml`, el servicio `front` es un Nginx que hasta hoy has usado con la configuración que se te dio. A partir de esta sesión, esa configuración es tuya: la escribes, la montas en el contenedor y la versionas con el proyecto, igual que el resto del despliegue.
+Un servidor web también puede optimizar cómo entrega los ficheros.
 
-Dos consecuencias prácticas:
+### 6.1. Compresión
 
-- La configuración se monta **de solo lectura**. Es configuración, no datos: el contenedor no tiene por qué poder modificarla, y así un cambio siempre pasa por el repositorio.
-- Nginx puede **recargar** su configuración sin cortar las conexiones en curso. Es la diferencia entre aplicar un cambio y reiniciar el servicio, y en un servidor con visitas no es un matiz. Antes de recargar, conviene pedirle que **valide** el fichero: un error de sintaxis detectado antes de aplicar vale por diez minutos de incidencia.
+HTML, CSS y JavaScript son texto y suelen comprimirse muy bien.
 
-Y una advertencia sobre lo que hoy **no** se toca. En ese fichero hay un bloque `location /api` con una directiva `proxy_pass` que hace que el front alcance a la API sin que la API publique ningún puerto. Sigue siendo caja negra una semana más: déjalo tal cual, funciona. La sesión que viene se abre entero, y para entonces tendrá tres réplicas detrás.
+El cliente anuncia qué codificaciones acepta:
+
+```http
+Accept-Encoding: gzip
+```
+
+Si Nginx decide comprimir la respuesta, devuelve:
+
+```http
+Content-Encoding: gzip
+```
+
+La compresión se realiza **al servir la respuesta**. El fichero guardado en disco no cambia. El navegador recibe los bytes comprimidos y los descomprime automáticamente.
+
+No tiene sentido aplicar gzip indiscriminadamente a formatos como JPEG o PNG, que ya están comprimidos.
+
+Para inspeccionar cabeceras:
+
+```bash
+curl -I -H "Accept-Encoding: gzip" \
+  http://web.ejemplo.test/css/estilos.css
+```
+
+Pero `-I` realiza una petición `HEAD`, por lo que no descarga el cuerpo. Para medir bytes reales necesitas una petición completa:
+
+```bash
+curl -s -H "Accept-Encoding: identity" -o /dev/null \
+  -w "sin comprimir: %{size_download} bytes\n" \
+  http://web.ejemplo.test/css/estilos.css
+
+curl -s -H "Accept-Encoding: gzip" -o /dev/null \
+  -w "comprimido:   %{size_download} bytes\n" \
+  http://web.ejemplo.test/css/estilos.css
+```
+
+### 6.2. Caché del navegador
+
+`Cache-Control` indica durante cuánto tiempo puede reutilizar el navegador una respuesta.
+
+No todos los recursos tienen la misma volatilidad:
+
+```text
+HTML
+→ cambia con frecuencia
+→ caché corta o revalidación
+
+CSS, JS, imágenes versionadas
+→ cambian menos
+→ caché más larga
+```
+
+En Nginx una configuración puede aplicar reglas por extensión. Por ejemplo:
+
+```nginx
+location ~* \.(css|js|png|jpg|jpeg|svg|webp)$ {
+    expires 7d;
+}
+```
+
+La directiva `expires` genera cabeceras de expiración y una política `Cache-Control` coherente con el plazo indicado.
+
+El inconveniente de una caché larga aparece al publicar una versión nueva. Si un fichero mantiene el mismo nombre, un navegador podría conservar la copia anterior. Por eso en frontends reales es habitual generar nombres versionados o con huellas de contenido.
+
+---
+
+## 🧭 7. DNS: convertir nombres en direcciones
+
+Los hosts virtuales funcionan por nombre, pero antes ese nombre debe conducir a la máquina correcta.
+
+### 7.1. Resolución del sistema y `dig`
+
+Una aplicación normal pregunta al **resolutor del sistema operativo**. Este puede consultar varias fuentes. En Linux, `/etc/hosts` puede proporcionar una respuesta local antes de acudir al DNS configurado.
+
+Por eso esta línea:
+
+```text
+127.0.0.1 ejemplo.local
+```
+
+puede hacer que el navegador encuentre `ejemplo.local` sin que exista ningún registro DNS real.
+
+`dig` funciona de otra forma: consulta DNS directamente. No utiliza `/etc/hosts` para resolver el nombre solicitado.
+
+Así pueden darse simultáneamente estas dos situaciones:
+
+```text
+navegador
+→ nombre funciona por /etc/hosts
+
+dig
+→ el DNS dice que ese nombre no existe
+```
+
+No hay contradicción. Están consultando fuentes diferentes.
+
+### 7.2. Registros A, CNAME, TTL y `nip.io`
+
+Los dos registros que necesitas reconocer ahora son:
+
+| Registro | Contiene | Uso típico |
+|---|---|---|
+| `A` | una dirección IPv4 | nombre que apunta directamente a una dirección |
+| `CNAME` | otro nombre | alias de un nombre existente |
+
+El **TTL** indica durante cuánto tiempo puede conservarse una respuesta DNS en caché antes de volver a consultarla.
+
+Un TTL alto reduce consultas, pero hace más lenta una migración. Por eso, si se sabe que un nombre va a cambiar de destino, el TTL se reduce **antes** de la migración, con tiempo suficiente para que caduquen las respuestas antiguas.
+
+Puedes inspeccionar una respuesta con:
+
+```bash
+dig web.127.0.0.1.nip.io
+dig +short web.127.0.0.1.nip.io
+```
+
+Para el laboratorio utilizaremos `nip.io`, un servicio DNS comodín que permite codificar una dirección IP dentro de un nombre. Así:
+
+```text
+web.127.0.0.1.nip.io
+docs.127.0.0.1.nip.io
+```
+
+pueden resolver a `127.0.0.1` sin registrar un dominio propio.
+
+Esto nos permite practicar simultáneamente:
+
+```text
+DNS real
++
+hosts virtuales por nombre
++
+una sola máquina
+```
+
+En la siguiente sesión aplicarás la misma idea sobre la dirección pública de una instancia remota.
 
 ---
 
 ## 🎯 Qué debes saber hacer al salir de esta sesión
 
-- Servir un directorio de ficheros con Nginx, fijando su raíz de documentos y comprobando qué se sirve desde dónde.
-- Configurar **dos hosts virtuales por nombre** en el mismo servidor, cada uno con su raíz, y demostrar que el nombre es lo que decide cuál responde.
-- Permitir el listado automático de un directorio cuando interesa, y saber por qué no interesa en el resto.
-- Activar compresión y cabeceras de caché, **comprobar con `curl -I` que están activas** y **medir aparte** cuántos bytes se ahorran.
-- Resolver un nombre con `dig`, identificar su tipo de registro y su TTL, y explicar por qué `dig` puede no ver un nombre que sí funciona en el navegador.
-- Diagnosticar un `403`, un `404` y una página sin estilos distinguiendo permisos, raíz de documentos y tipo MIME.
+- Explicar qué responsabilidad tiene un servidor web y qué sigue perteneciendo a la aplicación.
+- Incorporar Nginx como servidor web delante de una aplicación.
+- Servir un directorio de contenido estático mediante una raíz de documentos.
+- Montar configuración y contenido de Nginx desde Compose en modo de solo lectura.
+- Validar la configuración antes de recargarla.
+- Configurar dos hosts virtuales por nombre sobre una misma dirección y puerto.
+- Declarar un servidor por defecto que no publique accidentalmente otro sitio.
+- Permitir el listado de un directorio cuando interesa y reconocer los riesgos de hacerlo.
+- Diagnosticar problemas de permisos, raíz de documentos y tipos MIME.
+- Activar compresión y demostrar su efecto midiendo los bytes transferidos.
+- Aplicar políticas distintas de caché según el tipo de recurso.
+- Resolver un nombre con `dig`, reconocer un registro A y un CNAME y explicar qué representa el TTL.
+- Explicar por qué `/etc/hosts` puede afectar al navegador sin afectar a una consulta `dig`.
 
-Lo que basta con reconocer: las diferencias internas entre Apache y Nginx, la reescritura de URL, y el resto de tipos de registro DNS.
+Lo que basta con reconocer: los detalles internos de los MPM de Apache, otros tipos de registros DNS y técnicas avanzadas de reescritura de URL.
 
 ---
 
@@ -214,23 +443,18 @@ Lo que basta con reconocer: las diferencias internas entre Apache y Nginx, la re
 
 ??? tip "Abrir resumen"
 
-    - Un servidor web traduce una URL en un fichero dentro de la **raíz de documentos** y lo entrega con sus cabeceras. Que algo esté dentro no lo hace forzosamente accesible, pero sí lo convierte en candidato: ahí no se deja nada que no quieras publicar.
-    - Apache es muy modular y admite varios modelos de procesamiento, incluido uno asíncrono; Nginx nació orientado a eventos. Usamos Nginx porque con una sola herramienta cubrimos estáticos, hosts virtuales, proxy y TLS.
-    - El `Content-Type` lo decide el servidor y el navegador se guía por él: un tipo MIME equivocado hace que el recurso se interprete mal o se rechace, y eso se ve en la consola del navegador.
-    - Sin fichero índice, un directorio devuelve `403` o se lista entero. El listado es útil para publicar informes y un riesgo en cualquier otro sitio.
-    - El proceso de Nginx no corre como administrador: necesita permiso de lectura sobre los ficheros y de paso sobre sus directorios. Es la causa habitual del `403` sobre un fichero que existe.
-    - La compresión de texto es la mejora de rendimiento más barata que hay; `Cache-Control` decide cuánto puede reutilizar el navegador sin preguntar, según lo volátil que sea cada tipo de fichero.
-    - `curl -I` enseña las cabeceras pero **no descarga el cuerpo**: para medir el ahorro real de la compresión hay que pedir el recurso entero y comparar los bytes transferidos.
-    - Un **host virtual por nombre** se selecciona con la cabecera `Host` de la petición. Varios sitios, una IP, un puerto. Si ningún nombre coincide, responde el servidor por defecto.
-    - Un registro **A** relaciona un nombre con una dirección IPv4; un **CNAME** lo convierte en alias de otro nombre, que es lo habitual al apuntar a servicios gestionados.
-    - El **TTL** es cuánto tiempo se guarda una respuesta DNS. Se baja **antes** de una migración, no durante: quien ya se llevó la respuesta antigua seguirá usándola.
-    - El resolutor del sistema puede responder desde `/etc/hosts` antes de preguntar al DNS. `dig` pregunta al DNS directamente y no mira ese fichero: por eso un nombre puede funcionar en el navegador y no aparecer en `dig`.
-    - La configuración del servidor web es parte del despliegue: se versiona con el proyecto, se monta de solo lectura y se valida antes de recargar.
+    - Nginx puede convertirse en la puerta HTTP del sistema y servir directamente recursos estáticos.
+    - Nginx puede servir directamente contenido estático y reenviar las rutas dinámicas hacia un backend interno.
+    - El servidor web puede ser la única puerta publicada, mientras aplicación y base de datos permanecen accesibles solo dentro de la red interna.
+    - Un servidor web relaciona URL, raíz de documentos y cabeceras HTTP. Un `404`, un `403` y un tipo MIME incorrecto apuntan a problemas diferentes.
+    - La configuración se versiona y se monta de solo lectura. Antes de aplicarla se valida con `nginx -t` y después se recarga.
+    - Un host virtual por nombre se selecciona mediante la cabecera `Host`. Varios sitios pueden compartir dirección IP y puerto.
+    - Un servidor `default_server` explícito evita que un nombre desconocido termine mostrando por accidente uno de los sitios reales.
+    - Gzip reduce los bytes enviados para contenido textual. `curl -I` permite inspeccionar cabeceras, pero para medir bytes hay que descargar el cuerpo.
+    - La caché debe adaptarse a la volatilidad del recurso. Una política larga sobre un nombre de fichero estable puede dejar clientes usando una versión antigua.
+    - Un registro A relaciona nombre e IPv4; un CNAME crea un alias. El TTL determina cuánto puede reutilizarse una respuesta DNS.
+    - El resolutor del sistema puede consultar `/etc/hosts`. `dig` consulta DNS directamente, por lo que ambos pueden mostrar resultados diferentes.
 
 ---
 
-Con esto ya tienes las piezas para la **Actividad 3.1**. Vas a convertir el Nginx que arrastras desde la sesión 5 en un servidor con dos sitios: el catálogo de Escaparate en un nombre, y en otro distinto la documentación y los informes de pruebas que se generaron al compilar la aplicación y que hasta ahora no habían tenido dónde vivir. Los dos, en la misma máquina y en el mismo puerto.
-
-Por el camino dejarás de escribir `localhost:8080` para escribir un nombre, comprobarás con `dig` qué hay detrás de ese nombre, y verás por las cabeceras que la compresión está activa antes de medir aparte cuántos bytes te ahorra. Al terminar, tu despliegue se parecerá bastante más a algo publicable: un nombre, el puerto de la web, y la configuración del servidor versionada junto al código.
-
-Lo que todavía no tendrás es capacidad de aguantar una avería. Hay una sola copia de la aplicación, y si se para, se acabó. La semana que viene ese mismo servidor, además de servir los ficheros del front, pasará a **repartir** las peticiones de la API entre varias copias —y de paso, el stack se muda del portátil a una máquina de verdad—.
+En la actividad aplicarás estos patrones al proyecto del módulo: dos sitios sobre un mismo Nginx, nombres distintos, servidor por defecto y políticas de entrega de contenido estático. El reenvío de `/api/` se mantendrá como una caja negra hasta la siguiente sesión.

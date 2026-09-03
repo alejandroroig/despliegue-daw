@@ -5,15 +5,15 @@
 
 ---
 
-En la primera sesión hiciste la lista de todo lo que le falta a Escaparate para salir de tu ordenador, y el segundo punto decía: *que arranque en otra máquina con las mismas versiones, y que siga siendo repetible dentro de seis meses*. En la segunda sesión pusiste el código en un repositorio, con su rama de trabajo, su primera etiqueta `v0.1.0` y sus secretos fuera.
+En las primeras sesiones has separado dos problemas: **versionar el proyecto** y conseguir que pueda ejecutarse de forma reproducible fuera del equipo donde se desarrolló. Git resuelve el primero, pero no instala runtimes, bases de datos, bibliotecas ni prepara por sí solo el entorno de ejecución.
 
-Pero un repositorio guarda **el código**, no el entorno donde ese código funciona. Si mañana clonas Escaparate en un ordenador recién formateado, no arranca: falta Java 21, falta PostgreSQL, faltan las variables, falta la carpeta de imágenes con los permisos correctos. El repositorio te da la receta; nadie te da la cocina. Hoy vas a ver la herramienta que resuelve exactamente eso, y por qué se ha convertido en la forma estándar de empaquetar aplicaciones para desplegarlas.
+Hoy aparece la herramienta que aborda ese segundo problema: los contenedores. La idea es empaquetar software y dependencias de forma que el mismo artefacto pueda ejecutarse de manera equivalente en distintos entornos.
 
 ---
 
 ## 🧳 1. Lo que hay que mover no es el código
 
-Vuelve a la tabla de las cinco piezas de la primera sesión y quédate con la segunda fila: **artefacto y runtime**. Para que el sistema Escaparate funcione en otra máquina hace falta el `.war`, sí, pero también una versión concreta de Java, un PostgreSQL compatible, unas variables de entorno, unos directorios y unos permisos.
+Vuelve a la tabla de las cinco piezas de la primera sesión y quédate con **artefacto y runtime**. Una aplicación puede necesitar su ejecutable, una versión concreta del runtime, servicios auxiliares, variables de entorno, directorios y permisos. Copiar solo el código no reproduce ese conjunto.
 
 Contenerizar no significa meter todo eso dentro de un único contenedor. Cada pieza puede empaquetarse por separado: una imagen para PostgreSQL, otra para la aplicación, otra para un servidor web si hiciera falta. Después las conectaremos entre sí. Esa separación será importante durante todo el módulo.
 
@@ -35,14 +35,7 @@ La diferencia está en **qué se virtualiza**.
 
 ```mermaid
 flowchart TB
-    subgraph VM["💻 Máquinas virtuales"]
-        direction TB
-        HW1["Hardware"] --> SO1["Sistema operativo anfitrión"]
-        SO1 --> HV["Hipervisor"]
-        HV --> G1["SO invitado 1<br/>+ app A"]
-        HV --> G2["SO invitado 2<br/>+ app B"]
-    end
-    subgraph CT["📦 Contenedores"]
+ subgraph CT["📦 Contenedores"]
         direction TB
         HW2["Hardware"] --> SO2["Sistema operativo anfitrión"]
         SO2 --> DE["Motor de contenedores"]
@@ -50,6 +43,14 @@ flowchart TB
         DE --> C2["Contenedor B"]
         DE --> C3["Contenedor C"]
     end
+    subgraph VM["💻 Máquinas virtuales"]
+        direction TB
+        HW1["Hardware"] --> SO1["Sistema operativo anfitrión"]
+        SO1 --> HV["Hipervisor"]
+        HV --> G1["SO invitado 1<br/>+ app A"]
+        HV --> G2["SO invitado 2<br/>+ app B"]
+    end
+   
 ```
 
 Una **máquina virtual** virtualiza el hardware: el hipervisor presenta un ordenador virtual completo y dentro se instala un sistema operativo invitado con su propio núcleo, servicios y gestión de memoria. El aislamiento es fuerte, pero también aumenta el consumo de recursos y el tiempo de arranque.
@@ -79,13 +80,13 @@ Un **contenedor** utiliza el núcleo del sistema anfitrión y aísla procesos, r
 
 Una **imagen** es un paquete de solo lectura que contiene el sistema base, el software instalado, tu aplicación y su configuración de fábrica. Es **inmutable**: una vez construida no se modifica; si algo tiene que cambiar, se construye otra.
 
-Aquí está el cambio de mentalidad de este módulo. Puede que hayas visto Docker presentado como «una forma cómoda de tener una base de datos sin instalarla». Eso es cierto y es útil, pero es lo de menos. En despliegue, **la imagen es el artefacto**: es aquello que la primera sesión llamaba «el paquete de la aplicación», el objeto que se construye una vez, se guarda con un número de versión y se ejecuta idéntico en el portátil del desarrollador, en el servidor de pruebas y en producción.
+Aquí está el cambio de mentalidad de este módulo. Puede que hayas visto Docker presentado como «una forma cómoda de tener una base de datos sin instalarla». Eso es cierto y es útil, pero es lo de menos. En despliegue, **la imagen es el artefacto**: es aquello que la primera sesión llamaba «el paquete de la aplicación», el objeto que se construye una vez, se guarda con un número de versión y se ejecuta idéntico en el ordenador del desarrollador, en el servidor de pruebas y en producción.
 
 ### 3.2. Contenedor: una instancia de la imagen
 
 Un **contenedor** es una instancia creada a partir de una imagen. Puede estar creado, en ejecución o detenido. Cuando está en ejecución mantiene uno o varios procesos aislados, con su propio sistema de ficheros, configuración y red.
 
-De una misma imagen puedes crear tantos contenedores como quieras. Cada uno tiene su propia capa de escritura y su propio estado, aunque todos partan exactamente del mismo contenido de solo lectura. Recuérdalo, porque más adelante vas a ejecutar varias copias de Escaparate a partir de la misma imagen y repartir tráfico entre ellas.
+De una misma imagen puedes crear tantos contenedores como quieras. Cada uno tiene su propia capa de escritura y su propio estado, aunque todos partan exactamente del mismo contenido de solo lectura. Esta propiedad permite, por ejemplo, ejecutar varias copias equivalentes de una misma aplicación y repartir tráfico entre ellas.
 
 ### 3.3. Registro: dónde viaja
 
@@ -102,7 +103,7 @@ El nombre completo de una imagen tiene cuatro partes: `registro/usuario/nombre:e
 
 ```mermaid
 flowchart LR
-    R[("📦 Registro")] -- descarga --> I["Imagen<br/>escaparate:1.0.0"]
+    R[("📦 Registro")] -- descarga --> I["Imagen<br/>mi-app:1.0.0"]
     I -- arranque --> C1["Contenedor 1"]
     I -- arranque --> C2["Contenedor 2"]
     C1 -. lo que debe sobrevivir .-> V[("💾 Volumen")]
@@ -254,7 +255,10 @@ Docker ofrece dos formas de sacar datos de esa capa condenada:
 | **Portabilidad** | Alta: no depende de la estructura de carpetas de la máquina | Baja: la ruta tiene que existir en cada máquina |
 | **Se comparte entre contenedores** | Sí, montando el mismo volumen | Sí, pero atado a esa máquina |
 
-La regla práctica: **volumen para los datos, montaje de carpeta para meter configuración desde fuera**. Y una advertencia que vas a ver cumplirse dentro de unas semanas: un dato importante que vive en la capa de escritura de un contenedor es una bomba de relojería. Recuerda que Escaparate guarda las fotos de los productos en una carpeta del disco de la máquina donde corre. De momento funciona. Anótalo igualmente.
+La regla práctica: **volumen para los datos que deben sobrevivir, montaje de carpeta para introducir ficheros del anfitrión**. Un dato importante que vive únicamente en la capa de escritura de un contenedor desaparecerá cuando ese contenedor sea sustituido y tampoco será visible desde otras copias de la aplicación.
+
+!!! info "Conexión con Escaparate"
+    Más adelante observarás este problema con los ficheros subidos por la aplicación. Por ahora basta con recordar que **contenedor y dato persistente tienen ciclos de vida distintos**.
 
 ---
 
@@ -335,17 +339,16 @@ Imagina:
 repositorio/
 ├── material/
 │   └── ejemplo.txt
-└── practicas/
-    └── docker/
-        └── demo/
-            └── Dockerfile
+└── docker/
+└── demo/
+    └── Dockerfile
 ```
 
 Si te sitúas en `repositorio/`, puedes construir con:
 
 ```bash
 docker build \
-  -f practicas/docker/demo/Dockerfile \
+  -f docker/demo/Dockerfile \
   -t ejemplo:1.0.0 \
   .
 ```
@@ -413,16 +416,12 @@ docker logout ghcr.io
 
 El flujo completo es:
 
-```text
-Dockerfile
-   ↓ docker build
-imagen local
-   ↓ docker tag
-nombre del registro
-   ↓ docker push
-GHCR
-   ↓ docker pull
-otra máquina
+```mermaid
+flowchart LR
+    I["Imagen local"] --> T["Etiquetar"]
+    T --> R["Registro<br/>GHCR"]
+    R --> P["Pull"]
+    P --> S["Otra máquina"]
 ```
 
 ---
@@ -463,6 +462,5 @@ Lo que basta con reconocer: el detalle de cómo se apilan las capas, el papel de
 
 ---
 
-Con esto ya tienes las piezas para la **Actividad 2.1**. Primero vas a ejecutar imágenes ajenas hasta que el ciclo de vida te salga solo: arrancar, inspeccionar, entrar por la shell, leer los logs y limpiar lo que dejes atrás. Verás con tus ojos qué desaparece cuando eliminas un contenedor y qué no, que es la lección que más caro se paga cuando se aprende en producción.
 
-Y después darás el paso al otro lado: construirás y publicarás una imagen de base de datos que se inicializa sola con el esquema de Escaparate y sus datos de ejemplo la primera vez que arranca, con las credenciales entrando desde fuera. Para hacerlo ya conoces el patrón mínimo `FROM` + `COPY`, cómo elegir el contexto de construcción y cómo etiquetar y publicar una imagen. En la sesión 4 profundizarás en esa receta: capas, caché, `.dockerignore`, construcción multietapa y usuario sin privilegios.
+En la actividad aplicarás estos conceptos al ciclo de vida, almacenamiento, construcción mínima y publicación de imágenes. La sesión siguiente profundizará en cómo construir una imagen de aplicación de forma eficiente y segura.

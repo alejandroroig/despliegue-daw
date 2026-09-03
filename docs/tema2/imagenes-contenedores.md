@@ -5,9 +5,9 @@
 
 ---
 
-En la sesión anterior construiste tu primera imagen con un `Dockerfile` mínimo: `FROM` para elegir una base y `COPY` para añadir los scripts de Escaparate. Funcionó porque partías de una imagen que ya traía PostgreSQL instalado y preparado para arrancar.
+En la sesión anterior construiste una primera imagen con un `Dockerfile` mínimo: `FROM` para elegir una base y `COPY` para añadir contenido propio. Eso era suficiente porque la imagen base ya contenía el software principal.
 
-Empaquetar Escaparate es otra historia. Ahora hay que compilar una aplicación Java, quedarse con el artefacto y construir una imagen preparada para ejecutarlo. Hoy vas a profundizar en la receta y comprobarás que conseguir que una imagen funcione es fácil; conseguir que sea **reproducible, rápida de reconstruir, pequeña y razonablemente segura** exige tomar varias decisiones.
+Empaquetar una aplicación que debe **compilarse** añade nuevas decisiones. Hay que fabricar el artefacto, aprovechar la caché, evitar contenido innecesario y dejar en la imagen final solo lo necesario para ejecutar. Hoy estudiarás esos patrones con una aplicación Java/Maven.
 
 ---
 
@@ -29,7 +29,7 @@ Un **Dockerfile** es un fichero de texto que describe cómo construir una imagen
 | `ENTRYPOINT` | Define el proceso principal por defecto | Suele fijar el ejecutable de la aplicación |
 | `LABEL` | Añade metadatos | Puede indicar versión, autoría o repositorio |
 
-Un primer intento de empaquetar Escaparate podría ser:
+Un primer intento de empaquetar una aplicación Java podría ser:
 
 ```dockerfile
 FROM maven:3.9.16-eclipse-temurin-21-alpine
@@ -43,14 +43,12 @@ Sustituye `<artefacto>` por el nombre real generado por Maven, que puedes identi
 
 La idea es sencilla:
 
-```text
-imagen con Maven + JDK
-        ↓
-copiar proyecto
-        ↓
-compilar
-        ↓
-arrancar el WAR
+```mermaid
+flowchart LR
+    C["Código fuente"] --> B["Construcción<br/>Maven + JDK"]
+    B --> I["Imagen"]
+    
+    I -. contiene .-> M["Maven + JDK<br/>+ aplicación"]
 ```
 
 Este enfoque puede funcionar, pero tiene varios problemas: envía demasiado contenido al motor, invalida la caché con facilidad y deja dentro de la imagen final herramientas que solo eran necesarias para compilar.
@@ -65,7 +63,7 @@ Este enfoque puede funcionar, pero tiene varios problemas: envía demasiado cont
 En un comando como:
 
 ```bash
-docker build -t escaparate:prueba .
+docker build -t mi-app:prueba .
 ```
 
 el último argumento no indica dónde está el Dockerfile. Indica el **contexto de construcción**: el conjunto de ficheros que Docker puede utilizar durante la construcción.
@@ -84,19 +82,19 @@ La opción `-f` permite indicar la ruta del Dockerfile:
 
 ```bash
 docker build \
-  -f practicas/docker/app/Dockerfile.ingenuo \
-  -t escaparate:ingenua \
-  escaparate/
+  -f docker/Dockerfile.ingenuo \
+  -t mi-app:ingenua \
+  app/
 ```
 
 Si ejecutas este comando desde la raíz de `daw-despliegue`:
 
 ```text
 Dockerfile
-→ practicas/docker/app/Dockerfile.ingenuo
+→ docker/Dockerfile.ingenuo
 
 contexto
-→ escaparate/
+→ app/
 ```
 
 Por tanto, dentro del Dockerfile:
@@ -106,9 +104,9 @@ COPY pom.xml .
 COPY src ./src
 ```
 
-esas rutas se buscan en `escaparate/`, **no** junto al Dockerfile.
+esas rutas se buscan en `app/`, **no** junto al Dockerfile.
 
-Esta separación es útil: los ficheros técnicos de despliegue pueden vivir en `practicas/`, mientras el contexto sigue siendo el código real de la aplicación.
+Esta separación permite mantener los ficheros técnicos de despliegue fuera del código de la aplicación sin cambiar qué ficheros puede utilizar `COPY`.
 
 ---
 
@@ -119,7 +117,7 @@ Si el contexto contiene compilaciones anteriores, configuración del IDE, ficher
 Para eso existe `.dockerignore`, situado en la raíz del contexto. En nuestro caso:
 
 ```text
-escaparate/
+app/
 └── .dockerignore
 ```
 
@@ -200,7 +198,7 @@ Si solo cambia una clase Java, Docker puede reutilizar la parte relacionada con 
 
 ### 3.2. Medir antes de afirmar que algo mejora
 
-En la actividad compararás dos cosas distintas:
+Para evaluar una mejora conviene comparar dos cosas distintas:
 
 1. **tiempo de construcción**;
 2. **tamaño lógico de la imagen**.
@@ -214,13 +212,13 @@ time docker build ...
 Y consultar después la imagen con:
 
 ```bash
-docker image ls escaparate:ingenua
+docker image ls mi-app:ingenua
 ```
 
 o:
 
 ```bash
-docker image ls escaparate:optimizada
+docker image ls mi-app:optimizada
 ```
 
 Utiliza siempre el mismo procedimiento para que las mediciones sean comparables.
@@ -234,14 +232,14 @@ Utiliza siempre el mismo procedimiento para que las mediciones sean comparables.
 
 ## 🪆 4. Construcción multietapa: compilar no es ejecutar
 
-Para **compilar** Escaparate hacen falta Maven, el JDK, el código fuente y las dependencias de construcción.
+Para **compilar** una aplicación Java/Maven hacen falta Maven, el JDK, el código fuente y las dependencias de construcción.
 
 Para **ejecutarlo** necesitamos mucho menos:
 
 ```text
 runtime de Java
 +
-WAR de Escaparate
+WAR de la aplicación
 ```
 
 Una construcción multietapa permite utilizar una imagen completa para fabricar el artefacto y una segunda imagen más pequeña para ejecutarlo.
@@ -270,19 +268,11 @@ ENTRYPOINT ["java", "-jar", "/app/app.war"]
 
 La frontera importante está en el segundo `FROM`:
 
-```text
-ETAPA BUILD
-Maven
-JDK
-código fuente
-repositorio local de Maven
-WAR generado
-        │
-        │ COPY --from=build
-        ▼
-ETAPA RUNTIME
-JRE
-WAR
+```mermaid
+flowchart LR
+    B["Etapa build<br/>Maven + JDK"] -->|"genera"| A["WAR"]
+    A -->|"COPY --from=build"| R["Etapa runtime<br/>Java"]
+    R --> I["Imagen de producción"]
 ```
 
 `COPY --from=build` copia únicamente el artefacto que queremos conservar.
@@ -290,7 +280,7 @@ WAR
 La imagen final ya no contiene Maven, el compilador, el código fuente ni el repositorio local utilizado durante la construcción.
 
 !!! note "Las dependencias de ejecución no desaparecen"
-    Las bibliotecas Java que Escaparate necesita para funcionar siguen formando parte del artefacto generado. Lo que eliminamos de la imagen final son las **herramientas y materiales de construcción** que no son necesarios en producción.
+    Las bibliotecas que la aplicación necesita para funcionar siguen formando parte del artefacto generado. Lo que eliminamos de la imagen final son las **herramientas y materiales de construcción** que no son necesarios en producción.
 
 Este cambio explica la reducción de tamaño. La mejora de tiempo al reconstruir después de tocar código procede principalmente de la **caché** del apartado anterior. Son dos optimizaciones relacionadas, pero no son la misma.
 
@@ -311,7 +301,7 @@ COPY --from=build /app/target/site ./
 docker build --target informes --output type=local,dest=./informes .
 ```
 
-No necesitas utilizar esta técnica en la actividad de hoy. Quédate con la idea: **una construcción puede producir varios resultados y no todos tienen que viajar dentro de la imagen que ejecuta la aplicación**.
+No necesitas utilizar esta técnica para dominar el patrón principal. Quédate con la idea: **una construcción puede producir varios resultados y no todos tienen que viajar dentro de la imagen que ejecuta la aplicación**.
 
 ---
 
@@ -324,27 +314,27 @@ Si no declaras otro usuario, el proceso del contenedor suele ejecutarse como `ro
 El patrón básico es:
 
 ```dockerfile
-RUN addgroup -S escaparate \
-    && adduser -S escaparate -G escaparate
+RUN addgroup -S app \
+    && adduser -S app -G app
 
-USER escaparate
+USER app
 ```
 
 Pero quitar privilegios introduce una consecuencia importante: **la aplicación deja de poder escribir en cualquier sitio**.
 
-Escaparate guarda imágenes de productos en el filesystem. Por tanto, la imagen debe preparar explícitamente una ruta escribible y comunicar a la aplicación dónde está.
+Si una aplicación necesita escribir ficheros en runtime, la imagen debe preparar explícitamente una ruta escribible y comunicar a la aplicación dónde está.
 
 Un patrón sería:
 
 ```dockerfile
-RUN addgroup -S escaparate \
-    && adduser -S escaparate -G escaparate \
+RUN addgroup -S app \
+    && adduser -S app -G app \
     && mkdir -p /data/uploads \
-    && chown -R escaparate:escaparate /data
+    && chown -R app:app /data
 
 ENV APP_STORAGE_PATH=/data/uploads
 
-USER escaparate
+USER app
 ```
 
 Ahora las responsabilidades quedan claras:
@@ -355,9 +345,9 @@ imagen
 → asigna propietario
 
 APP_STORAGE_PATH
-→ informa a Escaparate de dónde escribir
+→ informa a la aplicación de dónde escribir
 
-USER escaparate
+USER app
 → impide escribir fuera de los lugares permitidos
 ```
 
@@ -417,17 +407,17 @@ Una misma imagen puede tener varias etiquetas.
 Por ejemplo:
 
 ```text
-ghcr.io/usuario/escaparate:sesion-04
-ghcr.io/usuario/escaparate:latest
+ghcr.io/usuario/mi-app:1.0.0
+ghcr.io/usuario/mi-app:latest
 ```
 
-En el módulo utilizaremos dos ideas:
+Conviene distinguir dos ideas:
 
-- una **etiqueta fija por convención**, como `sesion-04`, que no reutilizaremos para otro resultado;
+- una **etiqueta fija por convención**, como `1.0.0`, que no debería reutilizarse para otro resultado;
 - una **etiqueta móvil**, como `latest`, que puede moverse a una imagen distinta.
 
 !!! warning "Una etiqueta no es técnicamente inmutable"
-    Aunque decidamos no reutilizar `sesion-04`, un registro permite volver a publicar otra imagen con el mismo nombre de etiqueta. La referencia realmente ligada al contenido es el **digest**, por ejemplo `sha256:...`.
+    Aunque decidamos no reutilizar `1.0.0`, un registro permite volver a publicar otra imagen con el mismo nombre de etiqueta. La referencia realmente ligada al contenido es el **digest**, por ejemplo `sha256:...`.
 
 Esto explica por qué un procedimiento reproducible debe evitar depender únicamente de etiquetas móviles:
 
@@ -435,14 +425,14 @@ Esto explica por qué un procedimiento reproducible debe evitar depender únicam
 latest
 → puede cambiar
 
-sesion-04
-→ estable por nuestra convención
+1.0.0
+→ estable por convención
 
 digest
 → identifica contenido exacto
 ```
 
-Más adelante, cuando trabajes con releases reales de Escaparate, aparecerán versiones como `1.0.0` y `2.0.0`. En esta actividad `sesion-04` identifica simplemente el resultado validado de la práctica.
+Una etiqueta fija como `1.0.0` identifica una versión concreta por convención; una etiqueta móvil como `latest` puede cambiar de destino. Cuando necesites identificar contenido exacto, el digest es la referencia más precisa.
 
 ### 7.2. Publicar en GHCR
 
@@ -457,19 +447,19 @@ Utiliza la credencial configurada para GHCR, no tu contraseña normal de GitHub.
 Después, publicar consiste en etiquetar la imagen con su nombre completo y enviarla al registro:
 
 ```bash
-docker tag escaparate:optimizada \
-  ghcr.io/<tu-usuario>/escaparate:sesion-04
+docker tag mi-app:1.0.0 \
+  ghcr.io/<tu-usuario>/mi-app:1.0.0
 
-docker push ghcr.io/<tu-usuario>/escaparate:sesion-04
+docker push ghcr.io/<tu-usuario>/mi-app:1.0.0
 ```
 
 La misma imagen puede recibir además otra etiqueta:
 
 ```bash
-docker tag escaparate:optimizada \
-  ghcr.io/<tu-usuario>/escaparate:latest
+docker tag mi-app:1.0.0 \
+  ghcr.io/<tu-usuario>/mi-app:latest
 
-docker push ghcr.io/<tu-usuario>/escaparate:latest
+docker push ghcr.io/<tu-usuario>/mi-app:latest
 ```
 
 La imagen no se duplica conceptualmente por tener dos nombres: son dos referencias al mismo contenido mientras ambas etiquetas apunten al mismo digest.
@@ -484,7 +474,7 @@ La imagen no se duplica conceptualmente por tener dos nombres: son dos referenci
 - Ordenar instrucciones para aprovechar la caché y explicar qué se invalida cuando cambia el código.
 - Distinguir la mejora de **tiempo de reconstrucción** de la reducción del **tamaño final**.
 - Construir una imagen multietapa.
-- Ejecutar Escaparate con un usuario sin privilegios y preparar una ruta escribible para `APP_STORAGE_PATH`.
+- Ejecutar una aplicación con un usuario sin privilegios y preparar las rutas que necesite escribir.
 - Medir de forma consistente tiempo y tamaño.
 - Publicar una misma imagen con una etiqueta fija por convención y una etiqueta móvil.
 
@@ -504,14 +494,11 @@ Lo que basta con reconocer: extracción de artefactos con `--target`, bases sin 
     - Una construcción multietapa puede compilar con Maven y JDK y ejecutar después únicamente con JRE + WAR.
     - Las dependencias Java necesarias para ejecutar siguen dentro del artefacto; lo que desaparece son herramientas y materiales de construcción.
     - Ejecutar como usuario sin privilegios obliga a preparar explícitamente los directorios que la aplicación necesita escribir.
-    - En Escaparate, `APP_STORAGE_PATH` debe apuntar a una ruta escribible por ese usuario.
+    - Si una aplicación escribe en runtime, esas rutas deben pertenecer o ser escribibles por el usuario no privilegiado.
     - Compara imágenes siempre con la misma métrica: tiempo de construcción y tamaño del contenido, no uso global de disco.
-    - `latest` es móvil. Una etiqueta como `sesion-04` será fija por convención durante la práctica, pero solo el digest identifica técnicamente un contenido exacto.
+    - `latest` es móvil. Una etiqueta como `1.0.0` puede tratarse como fija por convención, pero solo el digest identifica técnicamente un contenido exacto.
 
 ---
 
-Con esto tienes las piezas para la **Actividad 2.2**. Construirás Escaparate primero de forma ingenua y después de forma optimizada, utilizando el mismo contexto y midiendo qué cambia en tiempo y tamaño.
 
-Después modificarás el código para observar la caché, separarás construcción y ejecución mediante varias etapas, retirarás privilegios al proceso y prepararás su almacenamiento escribible. Finalmente publicarás la imagen en GHCR con una etiqueta fija para la sesión y otra móvil.
-
-La actividad no te dará el Dockerfile completo. Tendrás que reconocer y combinar los patrones que acabas de estudiar.
+En la actividad aplicarás estos patrones al proyecto del módulo: partirás de una imagen funcional y la mejorarás utilizando contexto reducido, caché, construcción multietapa y un usuario sin privilegios.

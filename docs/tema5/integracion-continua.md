@@ -46,7 +46,7 @@ Nosotros usaremos **GitHub Actions**, porque tu repositorio ya está ahí, tus i
 La pieza que más cuesta interiorizar es el **ejecutor**. Cada vez que se dispara el workflow, la plataforma te da una máquina virtual nueva y efímera: **sin tu repositorio, sin tus dependencias descargadas, sin tus variables y sin tu configuración**. La imagen que GitHub usa trae bastante herramienta preinstalada —Git, Docker, incluso Maven—, pero apoyarse en eso es apoyarse en la casualidad: lo que hoy viene puede no venir dentro de seis meses, y la versión que traiga no tiene por qué ser la tuya. Por eso el workflow **declara explícitamente las versiones críticas de su entorno**, empezando por Java 21. Cuando el job termina, la máquina se destruye con todo lo que hubiera dentro.
 
 !!! example "La máquina que no te conoce"
-    Piensa en el ejecutor como en un compañero nuevo al que le pides que compile el proyecto: tendrá sus herramientas, pero no tiene tu portátil, ni tus variables de entorno, ni «esa carpeta que yo ya tenía». Si el proyecto solo compila en tu máquina, en la suya no compilará. El pipeline convierte en error visible lo que hasta ahora era «pues a mí me funciona».
+    Piensa en el ejecutor como en un compañero nuevo al que le pides que compile el proyecto: tendrá sus herramientas, pero no tiene tu ordenador, ni tus variables de entorno, ni «esa carpeta que yo ya tenía». Si el proyecto solo compila en tu máquina, en la suya no compilará. El pipeline convierte en error visible lo que hasta ahora era «pues a mí me funciona».
 
 Esto no te pilla desprevenido, aunque no te lo dijera entonces: la construcción multietapa de la sesión 4 ya obligaba a que el proyecto se compilara dentro de un contenedor limpio, sin nada tuyo. Aquel Dockerfile ya era, sin saberlo, un ensayo de esto.
 
@@ -203,7 +203,7 @@ Y con esto se cierra un argumento que llevaba once sesiones abierto. Desde septi
 !!! tip "La protección se pone después de que el workflow funcione"
     Si activas la exigencia del check antes de que el workflow haya corrido nunca, te encuentras con un pull request bloqueado por una comprobación que la plataforma todavía no conoce. Primero haz que el workflow se ejecute y se ponga en verde una vez; después exígelo.
 
-Fíjate en lo que ha cambiado hoy y en lo que no. `main` ha dejado de ser «lo que yo he probado en mi portátil» para ser «lo que ha atravesado la puerta». Eso es integración continua, y no incluye desplegar: al terminar la sesión tu servicio se seguirá levantando a mano, como cada viernes. La imagen se construye, se comprueba y se tira. Esa última pieza —que lo que entra en `main` llegue solo hasta la instancia— es la sesión 13.
+Fíjate en lo que ha cambiado hoy y en lo que no. `main` ha dejado de ser «lo que yo he probado en mi ordenador» para ser «lo que ha atravesado la puerta». Eso es integración continua, y no incluye desplegar: al terminar la sesión tu servicio se seguirá levantando a mano, como cada viernes. La imagen se construye, se comprueba y se tira. Esa última pieza —que lo que entra en `main` llegue solo hasta la instancia— es la sesión 13.
 
 ---
 

@@ -1,190 +1,428 @@
-# 🔒 3. Seguridad web y HTTPS
+# 🔒 Seguridad web y HTTPS
 
-!!!info "Descarga de diapositivas"
+!!! info "Descarga de diapositivas"
     [Descarga las diapositivas](diapositivas/seguridad-web-https.pptx){target="_blank" rel="noopener"}
 
 ---
 
-Desde la semana pasada tienes un servicio de verdad: publicado en internet, con una sola puerta, tres copias de la aplicación repartiéndose el trabajo y capaz de aguantar la caída de una de ellas. Funciona, y cualquiera puede llegar a él escribiendo un nombre.
+Publicar una aplicación no consiste solo en conseguir que responda desde Internet. En cuanto existe una entrada pública aparecen dos preguntas nuevas: **quién puede acceder a cada recurso** y **qué puede observar o modificar alguien que se encuentre entre el cliente y el servidor**.
 
-Ese «cualquiera» es justo el problema de hoy. Tu servicio no distingue entre quien tiene que entrar y quien no, y los informes de pruebas que publicaste en la sesión 6 están abiertos al mundo entero. Y lo más grave no se ve: **todo lo que va y viene viaja en texto plano**. Cada petición, cada respuesta y cada cosa que alguien escriba en un formulario puede leerla, y modificarla, quien esté en cualquier punto del camino. Hoy vas a cerrar las dos cosas, y en este orden: primero decides quién entra, después demuestras por qué HTTP no basta, y al final conviertes el servicio en un despliegue cifrado que se mantiene solo.
-
----
-
-## 🚧 Lo barato primero: quién entra y quién no
-
-Antes del cifrado hay una pregunta más simple: **¿toda tu web tiene que ser pública?** Casi nunca. Los informes de pruebas, un panel de administración o una zona interna no lo son, y para eso no hace falta programar nada: el propio servidor web puede exigir credenciales en una ruta concreta.
-
-La **autenticación básica** funciona así: cuando llega una petición a una zona protegida, el servidor responde con un `401` y una cabecera diciendo que ahí hace falta identificarse; el cliente reenvía entonces la petición con la cabecera `Authorization`, que contiene el usuario y la contraseña separados por dos puntos y codificados en `Base64`. Y `Base64` **no es cifrado**: es una codificación reversible que cualquiera deshace en un segundo, cosa que vas a comprobar tú mismo dentro de un rato.
-
-De ahí sale la regla práctica, que es corta:
-
-> Autenticación básica **sobre HTTPS**. Nunca sin él.
-
-Las contraseñas no se guardan en claro en ningún fichero: se genera un fichero de credenciales donde cada línea lleva el usuario y el resumen de su contraseña, y ese fichero no se versiona, igual que el `.env`.
-
-!!! warning "Proteger la ruta, no el fichero"
-    Si proteges `/informes/` pero el mismo contenido es alcanzable por otra ruta —un alias, un enlace simbólico, una barra final distinta—, la protección no sirve de nada. Después de configurar cualquier restricción, la comprobación obligatoria es intentar entrar: sin credenciales debe dar `401`, con credenciales malas también, y solo con las buenas debe dar `200`.
-
-!!! info "Para saber más: otros controles de acceso"
-    Existe la **autenticación digest**, que en lugar de mandar la contraseña envía un resumen calculado con un valor aleatorio del servidor. Hoy no se usa: obliga al servidor a guardar las contraseñas de forma poco robusta y resuelve un problema que TLS resuelve entero y mejor.
-
-    La otra herramienta es la **restricción por origen**: permitir o denegar por dirección IP, útil para zonas que solo deben verse desde la red de la empresa. Tiene una trampa que ya conoces: detrás de un proxy, todas las peticiones parecen venir del proxy, así que sin la cabecera con la dirección original cualquier filtro por IP es un adorno. Las dos se pueden combinar exigiendo **ambas** condiciones o dando por buena **cualquiera** de las dos, y elegir mal ahí es la forma silenciosa de dejar una puerta abierta.
+En esta sesión estudiaremos esas dos capas por separado. Primero limitaremos el acceso a una zona desde el propio servidor web. Después veremos por qué esa autenticación no es suficiente mientras el transporte siga siendo HTTP. A partir de ahí introduciremos TLS, certificados, ACME, terminación TLS en un proxy y algunas cabeceras que endurecen la entrega HTTP.
 
 ---
 
-## 🕵️ Lo que se ve en el cable
+## 1. Control de acceso en el servidor web
 
-Aquí es donde se entiende TLS, y no se entiende leyendo: se entiende mirando. Si capturas el tráfico de tu propio servicio mientras alguien se identifica en esa zona protegida, verás la petición entera en texto legible, con su cabecera `Authorization`, y descodificar ese valor es cuestión de un comando.
+### 1.1. Autenticación básica
 
-Esto no es una demostración de laboratorio. Cualquiera que comparta camino con el tráfico —la red del local en el que estás, un equipo intermedio, el proveedor— puede hacer lo mismo. Y no solo leer: puede **modificar** la respuesta antes de que llegue, insertando lo que le apetezca en una página que el visitante cree tuya.
+Un servidor web puede proteger una ruta sin modificar la aplicación que hay detrás. Una de las formas más sencillas es **HTTP Basic Authentication**.
 
-Esa es la razón de que hoy el navegador marque como «no seguro» todo lo que no vaya cifrado, de que ciertas funciones del navegador directamente no existan sin HTTPS, y de que el cifrado haya pasado de ser una opción para el formulario de pago a ser el suelo mínimo de cualquier sitio publicado.
+El intercambio básico es:
 
----
+```text
+cliente pide /privado/
+        ↓
+servidor responde 401
++ WWW-Authenticate
+        ↓
+cliente reintenta
++ Authorization: Basic ...
+```
 
-## 🔐 Qué garantiza TLS y qué no
+La cabecera `Authorization` contiene una representación en Base64 de:
 
-**TLS** es el protocolo que envuelve la conexión HTTP. Cuando HTTP viaja dentro de TLS lo llamamos HTTPS, y ese envoltorio da tres garantías, ni una más:
+```text
+usuario:contraseña
+```
 
-| Garantía | Qué significa |
+Base64 **no cifra**. Solo transforma bytes a una representación textual que puede revertirse inmediatamente.
+
+Los tres casos que conviene saber reconocer son:
+
+| Petición | Resultado habitual |
 |---|---|
-| **Confidencialidad** | Quien esté en medio ve bytes ilegibles, no el contenido |
-| **Integridad** | Si alguien modifica algo por el camino, se detecta y la conexión se corta |
-| **Autenticidad del servidor** | Tienes una prueba de estar hablando con quien dice el nombre, no con un impostor |
+| Sin credenciales | `401 Unauthorized` |
+| Credenciales incorrectas | `401 Unauthorized` |
+| Credenciales correctas | la petición continúa y puede terminar en `200` |
 
-Y ahora lo que **no** garantiza, que es igual de importante y se confunde constantemente:
+En Nginx, el patrón general es:
 
-- **No dice que el sitio sea honesto.** Una página fraudulenta puede tener un certificado perfectamente válido: el candado dice «estás hablando con el dueño de este nombre», no «este señor es de fiar».
-- **No protege tu aplicación.** Un fallo de programación se explota igual de bien por HTTPS.
-- **No protege los datos en destino.** Cifra el trayecto; lo que pase al llegar es otro asunto.
-- **No esconde con quién hablas.** La dirección IP de destino y el nombre del sitio que pides son visibles para quien observe la conexión, igual que el volumen y el ritmo del tráfico. Lo que se oculta es el contenido.
+```nginx
+location /privado/ {
+    auth_basic "Zona restringida";
+    auth_basic_user_file /etc/nginx/auth/usuarios.htpasswd;
+}
+```
 
-!!! example "El sobre cerrado"
-    TLS es meter la carta en un sobre opaco y precintado en lugar de mandar una postal. Nadie puede leerla ni cambiarla sin que se note, y el remite está verificado. Pero el cartero sigue sabiendo a qué dirección va, cuántas cartas mandas y con qué frecuencia. Y que el sobre esté bien cerrado no dice absolutamente nada sobre si lo que va dentro es verdad.
+El primer parámetro define el *realm* que verá el cliente. El segundo indica dónde está el fichero que contiene los usuarios y los resúmenes de sus contraseñas.
 
----
+### 1.2. El fichero de credenciales también es un secreto
 
-## 📜 Certificados y cadena de confianza
+Nginx admite ficheros con este formato:
 
-Para que el cifrado sirva de algo hay que resolver antes un problema: cómo sabes que la clave pública que te está dando el servidor es realmente la del dueño de ese nombre, y no la de quien se ha puesto en medio.
+```text
+usuario:resumen-de-la-contraseña
+```
 
-La respuesta es un **certificado**: un fichero que asocia un nombre de dominio con una clave pública, y que está **firmado** por una autoridad de certificación. Tu sistema operativo y tu navegador vienen con una lista de autoridades en las que confían de fábrica —el almacén de confianza—, y la validación consiste en comprobar que la firma del certificado encadena hasta una de ellas.
+No necesitamos guardar la contraseña en claro. Por ejemplo, `openssl passwd` puede generar un resumen compatible con este mecanismo:
 
-Rara vez es una firma directa. Lo normal es una cadena: tu certificado lo firma un certificado **intermedio**, y a este lo firma el **raíz** que está en el almacén. Por eso el servidor no envía solo tu certificado, sino tu certificado **y los intermedios**: si te olvidas de estos últimos, funcionará en tu navegador —que a lo mejor ya los tenía guardados— y fallará en otros clientes, que es de los errores más molestos que hay porque parece intermitente.
+```bash
+openssl passwd -apr1
+```
 
-Tres formas de conseguir un certificado, con tres usos distintos:
+La contraseña se introduce de forma interactiva y el comando devuelve únicamente el resumen.
 
-| Cómo se obtiene | Quién lo firma | Qué ocurre en el navegador | Para qué sirve |
-|---|---|---|---|
-| **Autofirmado** | Tú mismo | Aviso a pantalla completa | Entender el mecanismo, pruebas internas |
-| **CA comercial** | Una autoridad de pago | Candado normal | Certificados con validación de organización o extendida |
-| **ACME** (Let's Encrypt) | Una autoridad gratuita y automatizada | Candado normal | Prácticamente todo lo demás, hoy |
+Aunque el fichero no contenga la contraseña en claro, **no debe versionarse**. Facilita ataques offline contra las contraseñas y forma parte de la configuración sensible del servicio.
 
-Un certificado autofirmado **cifra exactamente igual de bien**: la conexión es igual de confidencial e igual de íntegra. Lo único que falta es la tercera garantía, la autenticidad, porque nadie en quien el navegador confíe respalda que ese nombre sea tuyo. Verás uno en clase, emitido en directo, con su aviso a pantalla completa y su emisor apuntándose a sí mismo. Fíjate bien en esa pantalla, porque explica de golpe por qué existen las autoridades de certificación: acostumbrar a los usuarios a saltarse ese aviso es exactamente lo contrario de lo que se pretende, y por eso un certificado autofirmado sirve para aprender y para tráfico interno, pero nunca para un servicio público.
-
----
-
-## 🤖 ACME: certificados que se piden y se renuevan solos
-
-**ACME** es el protocolo que convirtió la emisión de certificados en algo automático y gratuito. La idea es que la autoridad no necesita conocerte: le basta con comprobar que **controlas el nombre** para el que pides el certificado.
-
-El proceso, tal como lo vas a vivir hoy:
-
-1. Tu cliente ACME genera un par de claves y pide un certificado para tu subdominio.
-2. La autoridad le devuelve un **desafío**: pon este contenido concreto en esta ruta concreta de ese nombre.
-3. El cliente coloca el fichero y avisa. La autoridad **entra desde internet por el puerto 80** y comprueba que está.
-4. Si lo encuentra, emite el certificado. El cliente lo guarda junto a su clave privada.
-
-De aquí salen dos consecuencias prácticas que explican decisiones de configuración que si no parecen arbitrarias. La primera: **el puerto 80 tiene que seguir abierto** aunque redirijas todo a HTTPS, porque la validación empieza siempre por ahí. En nuestro despliegue, además, dejaremos la ruta del desafío accesible directamente por HTTP en lugar de redirigirla, para que el procedimiento sea sencillo y explícito —la autoridad puede seguir ciertas redirecciones, pero no complicamos algo que no lo necesita—. La segunda: tu nombre tiene que resolver **a esta máquina** desde internet en el momento de pedirlo, así que el registro DNS es un requisito previo, no un detalle posterior.
-
-Los certificados públicos suelen tener una **validez limitada**, y la tendencia actual es reducirla. Let's Encrypt emite hoy por defecto certificados de noventa días, y esa duración va camino de acortarse todavía más. El dato que hay que retener no es el número: es que un plazo corto **obliga a automatizar la renovación**, y una renovación automatizada es una renovación que no se olvida el día que la persona que la hacía a mano está de vacaciones.
-
-Y aquí conviene separar dos cosas que se confunden constantemente, porque hacen falta las dos:
-
-| | Qué demuestra | Qué no demuestra |
-|---|---|---|
-| **Ejecución en seco** de la renovación | Que el procedimiento se completaría sin errores: el nombre resuelve, el desafío es alcanzable y el cliente sabe escribir el certificado | Que alguien vaya a ejecutarlo |
-| **Mecanismo periódico** que lanza la renovación | Que se intentará a tiempo, sin que nadie se acuerde | Que vaya a funcionar el día que toque |
-
-Tener solo lo primero es tener un procedimiento correcto que nadie ejecuta; tener solo lo segundo es tener un reloj que ejecuta algo roto. La combinación de ambas es lo que permite escribir en un procedimiento de despliegue la frase «para renovar el certificado: nada», y que sea verdad. Un despliegue con HTTPS que caduca sin que nadie se entere es un incidente con fecha programada.
-
-!!! danger "Empieza siempre por el entorno de pruebas"
-    Las autoridades de certificación aplican **límites de emisión y de validaciones fallidas** para evitar errores automatizados y abuso. Por eso se depura siempre contra el **entorno de pruebas**, que emite certificados no válidos para el navegador pero por lo demás idénticos y con límites mucho más permisivos, y solo cuando el proceso completo funciona se repite contra el de producción. Si una validación falla, diagnostica la causa antes de volver a intentarlo: reintentar a ciegas es la forma más rápida de quedarte sin poder emitir.
-
-!!! info "Para saber más: el desafío por DNS"
-    Existe otra forma de demostrar el control del nombre: publicar un registro `TXT` con el valor que te dan. Es más lenta —hay que esperar a la propagación— pero no necesita que el servidor sea alcanzable desde internet, y es la única que permite certificados **comodín**, válidos para todos los subdominios de un nivel. Es lo que se usa en máquinas internas que no publican nada.
+!!! warning "Autenticar no sustituye a cifrar"
+    La autenticación básica permite decidir quién entra, pero no protege la cabecera `Authorization` mientras viaje por HTTP. Por eso Basic Authentication solo debe utilizarse sobre HTTPS.
 
 ---
 
-## 🚪 Dónde se cifra: terminación TLS en el proxy
+## 2. Qué puede ocurrir cuando usamos HTTP
 
-El certificado no se instala en las tres copias de Escaparate. Se instala **en el proxy**, que es la única pieza que habla con el exterior:
+HTTP por sí solo no aporta confidencialidad ni integridad al transporte.
+
+Si alguien puede observar el tráfico en un punto situado entre cliente y servidor, puede leer peticiones y respuestas:
 
 ```mermaid
 flowchart LR
-    N["🌐 Navegador"] -->|"HTTPS · certificado"| P["Nginx :443"]
-    subgraph RED["red interna"]
-        P -->|"HTTP"| A1["api-1"]
-        P -->|"HTTP"| A2["api-2"]
-        P -->|"HTTP"| A3["api-3"]
-    end
+    C["Cliente"] --> R["Red"] --> S["Servidor"]
+    O["Observador en el camino"] -. puede leer .-> R
 ```
 
-Esto se llama **terminación TLS**: el cifrado se deshace en el proxy y de ahí para dentro el tráfico va en claro, por una red que no sale de la máquina. Las ventajas son grandes: un solo certificado que renovar, un solo sitio donde configurar, y los backends sin saber nada de criptografía. El peaje también hay que nombrarlo: todo lo que esté dentro de esa red ve el tráfico sin cifrar. Aceptable cuando la red es interna y de confianza; inaceptable cuando esas copias están en máquinas distintas y el tráfico cruza una red que no controlas, y ahí se cifra también por dentro.
+En una petición HTTP pueden aparecer:
 
-Con el cifrado en el proxy, dos cosas encajan por fin:
+```text
+rutas
+cabeceras
+cookies
+credenciales Basic
+cuerpo de formularios
+respuestas del servidor
+```
 
-- La cabecera `X-Forwarded-Proto` que pusiste la semana pasada **ahora sirve de algo**: la aplicación recibe peticiones en claro y esa cabecera es lo único que le dice que el visitante venía por HTTPS.
-- La **redirección de 80 a 443** deja de ser opcional. Quien escriba el nombre sin protocolo llegará al 80, y ahí lo único que debe recibir es una redirección permanente al puerto seguro. Con la excepción, ya dicha, de la ruta del desafío.
+El problema no se limita a **leer**. Un intermediario activo también puede modificar tráfico sin que HTTP proporcione al cliente una prueba criptográfica de que la respuesta recibida es exactamente la que envió el servidor.
+
+Esto es lo que suele resumirse como un ataque de **man-in-the-middle (MITM)**: alguien situado en el camino puede observar y, si controla suficientemente ese punto, alterar la comunicación.
+
+No hace falta explotar ningún fallo de la aplicación para demostrarlo. Capturar tráfico propio de laboratorio es suficiente para ver una cabecera Basic y descodificarla.
 
 ---
 
-## 🧱 Cabeceras de seguridad y HSTS
+## 3. HTTPS: HTTP protegido por TLS
 
-Con el candado puesto queda un flanco: **la petición que sale en claro** porque alguien ha tecleado el nombre sin protocolo. Esa conexión puede ser interceptada antes de que la redirección llegue a aplicarse.
+**TLS** protege una conexión entre dos extremos. Cuando HTTP circula dentro de TLS hablamos de **HTTPS**.
 
-**HSTS** evita que esa situación se repita **una vez que el navegador ha visitado correctamente el sitio por HTTPS**. Es una cabecera con la que el servidor le dice: *para este nombre, durante este tiempo, no vuelvas a conectarte por HTTP ni aunque te lo pidan*. A partir de ahí el navegador convierte las peticiones a HTTPS antes de salir a la red.
+Las tres garantías principales son:
 
-Ojo con el matiz, porque es donde casi todo el mundo se equivoca: **la primerísima visita a un nombre que el navegador no conoce sigue dependiendo de la redirección**, porque todavía no ha recibido la política. Existen mecanismos de precarga en los propios navegadores para cubrir también ese primer contacto, pero quedan fuera de esta sesión.
-
-Las cabeceras que conviene conocer, con lo que resuelve cada una:
-
-| Cabecera | Qué problema resuelve |
+| Garantía | Qué aporta |
 |---|---|
-| `Strict-Transport-Security` | Que las conexiones posteriores vuelvan a salir por HTTP, una vez aprendida la política |
-| `X-Content-Type-Options` | Que el navegador adivine el tipo de un fichero e interprete como código lo que no lo es |
-| `Referrer-Policy` | Que se filtren rutas internas al enlazar a sitios de fuera |
-| `Content-Security-Policy` | Que se ejecute código de orígenes que tú no has autorizado |
-| `X-Frame-Options` | Que tu página se incruste en otra para engañar al usuario |
+| **Confidencialidad** | El contenido viaja cifrado y no puede leerse directamente desde la red |
+| **Integridad** | Una modificación del tráfico se detecta |
+| **Autenticidad del servidor** | El cliente puede comprobar que el certificado presentado es válido para el nombre al que se conecta |
 
-Las tres primeras son las que vas a poner hoy, y las tres se resuelven con una línea cada una. Las dos últimas conviene reconocerlas: la política de contenidos es la más potente de todas y también la más delicada, porque depende de qué scripts, estilos e imágenes cargue exactamente tu front, y escrita a ciegas rompe la página. Su efecto se comprueba con las mismas herramientas de la sesión 6: pedir las cabeceras antes y después. Hay además servicios públicos que analizan un sitio y devuelven una calificación, muy útiles para ver de un vistazo qué falta.
+### 3.1. Qué ocurre al iniciar una conexión TLS
 
-!!! danger "HSTS es difícil de deshacer"
-    Cuando un navegador se ha guardado esa instrucción, **no hay forma de que tú se la retires**: la respetará hasta que expire el plazo que anunciaste, y si tu HTTPS deja de funcionar en ese tiempo, ese visitante no puede acceder a tu sitio ni volviendo a HTTP. Por eso se empieza con un plazo corto, se sube cuando el certificado y su renovación llevan semanas funcionando, y no se activa nunca en un nombre en el que no vayas a mantener HTTPS.
+Sin entrar en los detalles criptográficos, el proceso puede entenderse así:
+
+```mermaid
+flowchart TB
+    A["Cliente inicia TLS"] --> B["Servidor presenta certificado"]
+    B --> C["Cliente valida nombre, fechas y cadena"]
+    C --> D["Ambos acuerdan claves de sesión"]
+    D --> E["HTTP viaja cifrado"]
+```
+
+En TLS moderno el certificado **no se utiliza para cifrar cada petición HTTP con la clave pública del servidor**. El certificado permite autenticar al servidor durante el establecimiento de la conexión y el protocolo acuerda claves simétricas de sesión, mucho más eficientes, para proteger después el tráfico.
+
+La clave privada asociada al certificado permanece en el servidor y debe mantenerse secreta.
+
+### 3.2. Lo que HTTPS no garantiza
+
+Un candado válido no significa que una aplicación sea segura ni que su propietario sea honesto.
+
+HTTPS no evita:
+
+- vulnerabilidades de programación;
+- contraseñas débiles;
+- una autorización mal diseñada;
+- dependencias vulnerables;
+- que un servidor comprometido lea los datos una vez descifrados;
+- que un usuario entregue voluntariamente datos a un sitio fraudulento cuyo dominio tenga un certificado válido.
+
+El certificado demuestra una relación entre una clave y un **nombre**, no una valoración moral del sitio.
 
 ---
 
-## 🛡️ Lo que el cifrado no cubre
+## 4. Certificados y cadena de confianza
 
-Conviene cerrar con lo que hoy **no** queda resuelto, porque el candado da una falsa sensación de haber terminado. HTTPS protege el transporte y la autenticación básica protege una ruta. Ninguna de las dos cosas dice nada sobre **el software que estás ejecutando**.
+Un certificado X.509 contiene, entre otros datos:
 
-Dos de las tres defensas del artefacto ya las tienes desde la sesión 4, aunque entonces no las llamamos seguridad: la aplicación no corre como administrador y la imagen parte de una base mínima. La tercera es el **escaneo de vulnerabilidades**: herramientas que analizan una imagen y listan los fallos conocidos de todo lo que hay dentro —base, bibliotecas del sistema y dependencias de tu proyecto—, cada uno con su identificador público, su gravedad y la versión donde se corrigió. Ante cada hallazgo solo hay tres respuestas posibles: actualizar, sustituir, o aceptar **documentando por qué**.
+- uno o varios nombres para los que es válido;
+- una clave pública;
+- fechas de validez;
+- información del emisor;
+- una firma criptográfica del emisor.
 
-Ese trabajo tiene su sitio natural y no es hoy: llega en la sesión 12, cuando el pipeline construya y publique la imagen por ti, porque ahí el escaneo deja de ser una comprobación manual y pasa a ser un paso automático que puede bloquear una publicación. Quédate hoy con las dos ideas que condicionan el resto: la inmensa mayoría de los hallazgos no vienen de tu código sino de la base, y **una imagen no se vuelve más segura con el tiempo, sino menos**, porque cada semana se descubren fallos en software que ya estaba dentro.
+Un mismo certificado puede ser válido para varios nombres DNS. Esos nombres aparecen normalmente en la extensión **Subject Alternative Name (SAN)**.
+
+```text
+certificado
+├── web.ejemplo.test
+└── docs.ejemplo.test
+```
+
+La **clave privada no forma parte del certificado público**. Debe permanecer únicamente en los sistemas que terminan TLS.
+
+### 4.1. Por qué el navegador confía
+
+Los sistemas operativos y navegadores mantienen un almacén de autoridades raíz de confianza. Lo habitual es que el certificado del sitio no esté firmado directamente por una raíz, sino por una autoridad intermedia.
+
+```mermaid
+flowchart TB
+    S["Certificado del sitio"] --> I["CA intermedia"]
+    I --> R["CA raíz de confianza"]
+```
+
+El servidor entrega su certificado y los intermedios necesarios. El cliente comprueba que puede construir una cadena válida hasta una raíz que ya confía, además de verificar el nombre solicitado y las fechas.
+
+### 4.2. Autofirmado frente a certificado de una CA pública
+
+Un certificado **autofirmado** puede proteger la confidencialidad y la integridad del tráfico, pero el navegador no tiene una autoridad externa que respalde la asociación entre esa clave y ese nombre. Por eso muestra una advertencia salvo que incorporemos explícitamente ese certificado o su CA al almacén de confianza.
+
+Un certificado emitido por una **CA pública** reconocida puede validarse sin instalar confianza adicional en cada cliente.
+
+!!! info "ACME no es una autoridad de certificación"
+    ACME es un protocolo para automatizar la validación, emisión y renovación. Let's Encrypt es una CA pública que utiliza ACME. Otras autoridades también pueden ofrecer ACME.
+
+---
+
+## 5. ACME y el desafío HTTP-01
+
+Para emitir un certificado público no basta con pedirlo. La autoridad necesita comprobar que quien lo solicita **controla el nombre**.
+
+Con el desafío **HTTP-01**, el proceso general es:
+
+```mermaid
+flowchart LR
+    A["Cliente ACME"] -->|"escribe token"| W["Webroot ACME"]
+    C["CA"] -->|"HTTP :80"| N["Servidor web"]
+    N --> W
+    A -->|"solicita certificado"| C
+    C -->|"emite"| A
+```
+
+El cliente ACME coloca un token bajo una ruta de este tipo:
+
+```text
+/.well-known/acme-challenge/<token>
+```
+
+La CA resuelve públicamente el nombre y realiza una petición al **puerto 80**. Si recupera el contenido correcto, considera demostrado el control del nombre y puede emitir el certificado.
+
+Por eso HTTP-01 necesita:
+
+```text
+DNS público correcto
++
+puerto 80 alcanzable
++
+ruta del desafío servida correctamente
+```
+
+Un DNS que solo exista dentro de una red privada no basta: la CA valida desde Internet.
+
+### 5.1. HTTP y HTTPS pueden convivir durante la validación
+
+Un sitio puede redirigir sus visitas normales de HTTP a HTTPS y mantener una excepción explícita para el desafío:
+
+```nginx
+location ^~ /.well-known/acme-challenge/ {
+    root /var/www/acme;
+}
+
+location / {
+    return 301 https://$host$request_uri;
+}
+```
+
+Let's Encrypt puede seguir determinadas redirecciones durante HTTP-01, pero mantener la ruta del desafío explícita hace el flujo más fácil de observar y diagnosticar.
+
+### 5.2. Probar antes de emitir
+
+Las autoridades aplican límites de emisión y de validaciones fallidas. Los clientes ACME permiten utilizar un **entorno de pruebas** para comprobar el flujo sin consumir una emisión de producción.
+
+Con Certbot, una ejecución de `certonly` con `--dry-run` utiliza el entorno de pruebas y no guarda un certificado de producción.
+
+La regla operativa es:
+
+```text
+probar validación
+      ↓
+corregir errores
+      ↓
+emitir en producción una sola vez
+```
+
+### 5.3. Renovar también forma parte del despliegue
+
+Los certificados tienen una validez limitada. Por eso una configuración correcta no termina al conseguir el primer certificado.
+
+Hay que distinguir dos cosas:
+
+| Comprobación | Qué demuestra |
+|---|---|
+| **Ejecución en seco** de `renew` | El procedimiento de renovación puede completarse |
+| **Planificador periódico** | Alguien intentará renovarlo sin intervención manual |
+
+Además, un proxy que ya tiene el certificado cargado debe **recargar su configuración** después de que los ficheros hayan cambiado.
+
+```text
+renovar certificado
+        ↓
+ficheros nuevos en disco
+        ↓
+recargar proxy
+        ↓
+certificado nuevo servido
+```
+
+Tener solo el `dry-run` no programa nada. Tener solo el planificador no demuestra que la renovación vaya a funcionar.
+
+!!! info "Otros desafíos"
+    DNS-01 demuestra el control publicando un registro DNS `TXT`. Permite certificados comodín y funciona aunque el servidor web no sea accesible desde Internet, pero requiere poder automatizar cambios en el DNS. En esta sesión basta con reconocerlo.
+
+---
+
+## 6. Terminación TLS en un proxy inverso
+
+Cuando existe un único proxy público, una estrategia habitual consiste en terminar TLS en esa pieza.
+
+```mermaid
+flowchart LR
+    C["Cliente"] -->|"HTTPS"| P["Proxy :443"]
+    P -->|"HTTP interno"| A1["backend-1"]
+    P -->|"HTTP interno"| A2["backend-2"]
+```
+
+El proxy:
+
+1. presenta el certificado;
+2. descifra la conexión exterior;
+3. selecciona un backend;
+4. reenvía internamente la petición.
+
+Los backends no necesitan gestionar certificados.
+
+Un bloque TLS mínimo en Nginx tiene esta forma:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name web.ejemplo.test;
+
+    ssl_certificate     /etc/letsencrypt/live/mi-cert/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/mi-cert/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+
+    # contenido o proxy
+}
+```
+
+Esta arquitectura presupone que la red entre proxy y backend es **interna y de confianza**. Si ese tráfico atraviesa redes o máquinas que no controlamos, puede ser necesario cifrar también la comunicación interna.
+
+La cabecera `X-Forwarded-Proto` cobra aquí especial importancia. El backend recibe HTTP desde el proxy, pero puede necesitar saber que el cliente original llegó por HTTPS.
+
+---
+
+## 7. Redirección a HTTPS y cabeceras de seguridad
+
+### 7.1. Redirigir HTTP a HTTPS
+
+Una vez disponible HTTPS, el puerto 80 puede quedar como puerta de transición:
+
+```text
+http://web.ejemplo.test/recurso
+        ↓ 301
+https://web.ejemplo.test/recurso
+```
+
+Mantener el puerto 80 abierto y responder con una redirección es preferible a dejar simplemente una conexión rechazada para un sitio web público. Si utilizamos HTTP-01, la ruta del desafío debe seguir siendo alcanzable.
+
+### 7.2. HSTS
+
+**HTTP Strict Transport Security (HSTS)** permite que un servidor HTTPS indique al navegador que, durante un tiempo, ese nombre debe utilizar exclusivamente HTTPS.
+
+```http
+Strict-Transport-Security: max-age=300
+```
+
+El primer contacto con un nombre que el navegador todavía no conoce sigue dependiendo de HTTPS o de una redirección HTTP. HSTS empieza a proteger **después de que el navegador haya recibido correctamente la política por HTTPS**.
+
+Durante pruebas conviene utilizar un `max-age` corto. Cuando la infraestructura y la renovación llevan tiempo validadas puede aumentarse.
+
+HSTS puede retirarse enviando:
+
+```http
+Strict-Transport-Security: max-age=0
+```
+
+pero esa instrucción debe llegar mediante una conexión HTTPS válida. Si HTTPS ya está roto, no podemos utilizar HTTP para anular de forma segura la política que el navegador conserva.
+
+### 7.3. Otras cabeceras útiles
+
+Tres cabeceras sencillas que podemos aplicar desde el servidor web son:
+
+```nginx
+add_header Strict-Transport-Security "max-age=300" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+```
+
+| Cabecera | Objetivo |
+|---|---|
+| `Strict-Transport-Security` | Evitar conexiones HTTP posteriores mientras la política esté vigente |
+| `X-Content-Type-Options: nosniff` | Evitar que el navegador intente adivinar tipos de contenido distintos al declarado |
+| `Referrer-Policy` | Controlar cuánta información del URL de origen se envía al navegar hacia otro sitio |
+
+Existen políticas más potentes como **Content-Security-Policy**, pero requieren conocer con detalle qué scripts, estilos, imágenes y orígenes necesita cada frontend. Aplicarlas a ciegas puede romper la aplicación.
+
+---
+
+## 8. Qué queda fuera de HTTPS
+
+HTTPS protege el **transporte**. Una estrategia de seguridad completa tiene más capas:
+
+```text
+transporte       → TLS
+acceso           → autenticación y autorización
+secreto          → gestión de credenciales y claves
+aplicación       → validación y programación segura
+artefacto        → dependencias y vulnerabilidades
+infraestructura  → puertos, permisos y actualizaciones
+```
+
+Una imagen de contenedor puede contener vulnerabilidades conocidas aunque viaje por HTTPS. Las herramientas de escaneo permiten detectar esos componentes y encajan especialmente bien en un pipeline de integración continua, donde la comprobación puede automatizarse antes de publicar una imagen.
 
 ---
 
 ## 🎯 Qué debes saber hacer al salir de esta sesión
 
-- Proteger una zona del sitio con credenciales y demostrar los tres casos: sin credenciales, con credenciales incorrectas y con las correctas.
-- Enseñar, capturando el tráfico, que esas credenciales viajan legibles sin cifrado, y explicar por qué `Base64` no es cifrado.
-- Conseguir un certificado real por ACME para tu subdominio y terminarlo en el proxy, sabiendo qué comprobó la autoridad antes de emitirlo.
-- **Dejar automatizada** la renovación y comprobar con una ejecución en seco que el procedimiento se completa, distinguiendo qué demuestra cada una de las dos cosas.
-- Redirigir el tráfico del puerto 80 al seguro sin dejar sin acceso la ruta del desafío, y añadir HSTS y dos cabeceras más, midiendo el antes y el después.
-- Explicar qué garantiza TLS y qué no, y qué le falta a un certificado autofirmado respecto de uno emitido por una autoridad.
+- Explicar qué hace HTTP Basic Authentication y por qué `Base64` no es cifrado.
+- Proteger una ruta con `auth_basic` y mantener el fichero de credenciales fuera del repositorio.
+- Explicar qué puede leer o modificar un intermediario cuando el tráfico utiliza HTTP.
+- Distinguir confidencialidad, integridad y autenticidad del servidor como garantías de TLS.
+- Explicar de forma general cómo se valida un certificado y una cadena de confianza.
+- Distinguir un certificado autofirmado de uno emitido por una CA pública.
+- Explicar qué es ACME y cómo funciona el desafío HTTP-01.
+- Entender por qué HTTP-01 necesita DNS público y el puerto 80 accesible.
+- Distinguir una prueba de renovación de un mecanismo que la ejecute periódicamente.
+- Configurar conceptualmente la terminación TLS en un proxy inverso.
+- Redirigir HTTP a HTTPS manteniendo accesible el desafío ACME.
+- Explicar el objetivo y las precauciones de HSTS, `nosniff` y `Referrer-Policy`.
 
-Lo que basta con reconocer: la autenticación digest, la restricción por IP, el desafío por DNS, los certificados comodín, la política de contenidos y el escaneo de imágenes.
+Lo que basta con reconocer: DNS-01, certificados comodín, Content-Security-Policy y escaneo de vulnerabilidades de imágenes.
 
 ---
 
@@ -192,23 +430,18 @@ Lo que basta con reconocer: la autenticación digest, la restricción por IP, el
 
 ??? tip "Abrir resumen"
 
-    - Antes de cifrar hay una pregunta más simple: qué partes del sitio no deberían ser públicas. El servidor web puede exigir credenciales por ruta sin tocar la aplicación.
-    - La autenticación básica manda las credenciales en `Base64`, que es codificación reversible, no cifrado. Solo es aceptable sobre HTTPS.
-    - TLS garantiza confidencialidad, integridad y autenticidad del servidor. No garantiza que el sitio sea honesto, ni que la aplicación esté bien hecha, ni oculta con quién hablas.
-    - Un certificado asocia un nombre con una clave pública y lo firma una autoridad. La validación encadena hasta una raíz del almacén de confianza, y hay que servir también los intermedios.
-    - Un certificado autofirmado cifra igual de bien; lo que le falta es que alguien de confianza respalde el nombre. Vale para aprender y para tráfico interno, no para un servicio público.
-    - ACME emite certificados comprobando que controlas el nombre: coloca un desafío y lo verifica desde internet empezando por el puerto 80, que por eso no se cierra.
-    - Los certificados públicos tienen una validez limitada y cada vez más corta, así que la renovación debe estar automatizada.
-    - Automatizar la renovación son dos cosas distintas: un **mecanismo periódico** que la intente a tiempo y una **ejecución en seco** que demuestre que el procedimiento se completaría. Con una sola de las dos, el certificado sigue siendo una bomba de relojería.
-    - La terminación TLS se hace en el proxy: un solo certificado que renovar y backends que no saben de cifrado, a cambio de que el tráfico interno vaya en claro.
-    - HSTS impide que las conexiones **posteriores** salgan por HTTP, una vez que el navegador ha aprendido la política. La primera visita sigue dependiendo de la redirección.
-    - HSTS es difícil de deshacer: plazo corto al principio, plazo largo cuando lleve semanas funcionando.
-    - El cifrado protege el transporte, no el artefacto. La seguridad de la imagen se trabaja con el pipeline, en la sesión 12.
+    - Basic Authentication decide quién accede a una ruta, pero sus credenciales son reversibles desde `Base64`; necesita HTTPS.
+    - HTTP no proporciona confidencialidad ni integridad frente a alguien situado en el camino.
+    - TLS aporta confidencialidad, integridad y autenticidad del servidor.
+    - El certificado vincula nombres y una clave pública; la clave privada debe permanecer secreta.
+    - La confianza se construye desde el certificado del sitio, pasando por intermedios, hasta una raíz confiada por el cliente.
+    - ACME automatiza la validación, emisión y renovación; Let's Encrypt es una CA que implementa ese protocolo.
+    - HTTP-01 valida desde Internet a través del puerto 80 y necesita un nombre públicamente resoluble.
+    - Probar una renovación y programarla periódicamente son controles diferentes y hacen falta los dos.
+    - Terminar TLS en el proxy centraliza certificados, pero deja el tráfico interno sin cifrar si no se añade otra capa.
+    - HSTS solo se aprende después de una respuesta HTTPS válida y debe probarse inicialmente con un plazo corto.
+    - HTTPS protege el trayecto, no corrige vulnerabilidades de aplicación ni de las imágenes desplegadas.
 
 ---
 
-Con esto ya tienes las piezas para la **Actividad 3.3**, que cierra la entrega conjunta con el módulo de nube pública.
-
-Vas a empezar protegiendo con credenciales la zona de informes que publicaste en la sesión 6 y **capturando tu propio tráfico** para ver esas credenciales legibles: esa captura es el argumento de todo lo que viene después. Después emitirás un certificado de verdad por ACME para el subdominio de tu equipo, primero contra el entorno de pruebas y luego contra el bueno, lo terminarás en el proxy y montarás encima la redirección y las cabeceras. Y cerrarás mirando **quién va a renovar ese certificado cuando tú no estés**, que es lo que separa un despliegue que dura de uno que caduca.
-
-Al terminar tendrás un servicio publicado, repartido, cifrado con un certificado en el que confía cualquier navegador y con una zona privada de verdad. Lo que no tendrás es la menor idea de qué está pasando dentro: cuántas peticiones llegan, cuáles fallan, cuál de las tres copias las atiende o si alguien está probando esa zona protegida contraseña a contraseña. Esa es la última sesión del tema.
+En la actividad aplicarás estos patrones al despliegue del proyecto: protegerás una zona concreta, observarás el riesgo de HTTP, obtendrás un certificado público para los nombres del servicio, terminarás TLS en Nginx y dejarás preparada su renovación.
