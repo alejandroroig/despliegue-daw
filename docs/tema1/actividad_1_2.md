@@ -1,7 +1,7 @@
 # 🧪 Actividad 1.2: Tu repositorio como herramienta de despliegue
 
 !!! warning "Descarga el material"
-    Para esta actividad necesitas la aplicación `escaparate-integrado.zip`.
+    Para esta actividad necesitas la aplicación [`escaparate-integrado.zip`](descargas/escaparate-integrado.zip){target="_blank" rel="noopener"}.
 
 ## Contexto
 
@@ -26,6 +26,7 @@ El repositorio que prepares hoy se seguirá utilizando durante el módulo.
 - Distinguir **directorio de trabajo**, **área de preparación (*staging*)** e **historial**.
 - Recuperarte de errores distintos utilizando la operación adecuada.
 - Trabajar con ramas y Pull Requests.
+- Interpretar el resultado de una comprobación automática asociada a una Pull Request.
 - Crear una etiqueta para identificar un estado concreto del repositorio.
 
 ## Requisitos previos
@@ -38,13 +39,8 @@ El repositorio que prepares hoy se seguirá utilizando durante el módulo.
 !!! danger "Fuera de carpetas sincronizadas"
     Trabaja fuera de OneDrive, iCloud, Google Drive u otras carpetas sincronizadas.
 
-!!! info "Tiempo orientativo"
-    - Pasos 1 a 4: 40 min.
-    - Pasos 5 y 6: 30 min.
-    - Pasos 7 y 8: 25 min.
-
-!!! info "Capturas durante los primeros pasos"
-    Hasta que crees la rama `sesion-02` en el paso 7, guarda las capturas de esta actividad en una carpeta temporal **fuera del repositorio**. Así podrás practicar los distintos estados de Git sin que las imágenes pendientes aparezcan continuamente en `git status`. En el paso 7 las incorporarás al repositorio junto con el Markdown de la actividad.
+!!! info "Evidencias de esta actividad"
+    No necesitas capturar cada paso. Conserva únicamente las evidencias que se indican expresamente en el enunciado. Hasta que crees la rama `sesion-02`, guarda cualquier captura temporal **fuera del repositorio**.
 
 ---
 
@@ -83,7 +79,6 @@ git status
 !!! question "Observa"
     `entregas/tema1/` todavía está vacía. ¿Aparece en `git status`? ¿Qué te dice eso sobre cómo trata Git los directorios vacíos?
 
-**Captura:** estado inicial del repositorio.
 
 ---
 
@@ -128,7 +123,7 @@ git check-ignore -v escaparate/uploads/prueba.png
 
 **Comprueba:** las rutas anteriores quedan ignoradas y los ficheros necesarios de Escaparate siguen apareciendo como candidatos a ser versionados.
 
-**Captura:** el `.gitignore` creado, las comprobaciones realizadas y `git status`.
+**Evidencia 1:** una captura donde se vea `git check-ignore -v` funcionando sobre alguna de las rutas de prueba y el estado final del repositorio.
 
 !!! question "Reflexiona"
     Si un fichero ya hubiese entrado en un commit y después añadieras su nombre a `.gitignore`, ¿desaparecería del historial?
@@ -225,55 +220,159 @@ Añade después como **colaborador** al usuario de GitHub del profesor, de forma
 - `escaparate/` contiene el proyecto recibido;
 - no hay secretos ni artefactos locales en el repositorio.
 
-**Captura:** portada del repositorio en GitHub sin mostrar el PAT ni ninguna otra información sensible.
 
 !!! info "Privado durante el curso, publicable al final"
     El repositorio se mantendrá privado mientras realizas las actividades para que el trabajo no quede expuesto al resto de la clase. Al final del módulo, después de revisar que no contiene secretos, credenciales ni datos personales, podrás cambiarlo a público y conservarlo como muestra de tu trabajo técnico.
 
----
+### 3.3 Deja preparada la primera comprobación automática
 
-## Paso 4: Incorpora lo de la semana pasada
-
-La actividad 1.1 la entregaste comprimida en Aules porque este repositorio todavía no existía. Recupera la carpeta `actividad-1.1/`, colócala completa dentro de `entregas/tema1/` y regístrala con un commit propio.
-
-La estructura resultante será la siguiente:
+A partir de esta sesión las Pull Requests tendrán una pequeña comprobación automática. Antes de pasar a los ejercicios de recuperación, déjala ya versionada en `main`. Crea:
 
 ```text
-daw-despliegue/
-└── entregas/
-    └── tema1/
-        └── actividad-1.1/
-            ├── actividad-1.1.md
-            └── img/
+.github/
+└── workflows/
+    └── validar.yml
 ```
 
-**Captura:** fichero y commit que lo incorporó.
+con este contenido:
+
+```yaml
+name: Validar repositorio
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  estructura:
+    name: Comprobar repositorio
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Comprobar estructura básica
+        run: |
+          test -f escaparate/pom.xml
+          test -f escaparate/mvnw
+          test -f practicas/README.md
+
+      - name: Comprobar ficheros que no deben versionarse
+        shell: bash
+        run: |
+          prohibidos="$(
+            git ls-files \
+              | grep -E '(^|/)\.env($|\.)|(^|/)target/|\.class$' \
+              | grep -vE '(^|/)\.env\.example$' \
+              || true
+          )"
+
+          if [ -n "$prohibidos" ]; then
+            echo "Se han encontrado ficheros que no deberían estar versionados:"
+            echo "$prohibidos"
+            exit 1
+          fi
+```
+
+No necesitas estudiar todavía la sintaxis del workflow. De momento quédate con su intención: GitHub comprobará en un equipo limpio que existe la estructura básica del repositorio y que no has registrado determinados ficheros que deberían permanecer fuera del historial.
+
+Registra y publica este fichero en `main`. Todavía no verás la comprobación en acción: aparecerá cuando abras la Pull Request de `sesion-02` al final de la actividad.
+
 
 ---
 
-## Paso 5: Tres maneras de estropearlo y tres de arreglarlo
+## Paso 4: Empieza a trabajar como lo harás durante el módulo
 
-Aquí está el núcleo de la sesión. Vas a provocar tres situaciones y a resolver cada una eligiendo tú la operación adecuada. **No se indica qué comando usar**: eso debes decidirlo tú.
+Hasta este punto has preparado el repositorio base y lo has publicado en `main`. A partir de ahora el trabajo normal no se hará directamente sobre la rama principal.
 
-Después de cada situación anota:
+Crea y publica la rama de esta sesión:
 
-- qué zona de Git estaba afectada;
-- qué operación utilizaste;
-- por qué esa operación era adecuada.
+```bash
+git switch -c sesion-02
+git push -u origin sesion-02
+```
+
+Comprueba:
+
+```bash
+git branch --show-current
+git status
+```
+
+Debe aparecer `sesion-02`.
+
+!!! info "Por qué publicamos ya la rama"
+    Más adelante vas a provocar un error que llegará al repositorio remoto. Queremos estudiar cómo corregir un historial **ya compartido**, pero sin ensuciar deliberadamente `main`.
 
 ---
+
+## Paso 5: Recupera la actividad 1.1 y dale formato Markdown
+
+La actividad 1.1 se escribió como texto sencillo porque todavía no habías trabajado Markdown. Ahora vas a darle un formato mínimo y a incorporarla al repositorio.
+
+Recupera la carpeta completa `actividad-1.1/` y colócala en:
+
+```text
+entregas/
+└── tema1/
+    └── actividad-1.1/
+        ├── actividad-1.1.md
+        └── img/
+```
+
+Sin reescribir su contenido, mejora `actividad-1.1.md` utilizando únicamente lo que has visto en teoría:
+
+- títulos y subtítulos;
+- listas cuando ayuden a ordenar información;
+- código en línea para comandos, nombres de ficheros o cabeceras;
+- imágenes mediante rutas relativas.
+
+Por ejemplo:
+
+```markdown
+## Cabeceras
+
+### Web de apuntes
+
+Código observado: `200`.
+
+![Cabeceras de la web de apuntes](img/cabeceras-apuntes.png)
+```
+
+!!! warning "No cambies las conclusiones"
+    El objetivo no es rehacer la Actividad 1.1, sino **presentar mejor la misma evidencia**. No modifiques tus resultados para que coincidan con los de otra persona.
+
+Registra la incorporación de la actividad con un commit propio.
+
+**Comprueba:** al abrir `actividad-1.1.md` desde GitHub, los títulos y las imágenes se renderizan correctamente.
+
+---
+
+## Paso 6: Tres maneras de estropearlo y tres de arreglarlo
+
+Aquí está el núcleo de la sesión. Vas a provocar tres situaciones y a resolver cada una eligiendo tú la operación adecuada. **No se indica qué comando usar**: debes decidirlo a partir del estado en que se encuentra el cambio.
+
+Después de cada situación anota en `actividad-1.2.md`:
+
+```text
+Zona de Git afectada:
+Operación utilizada:
+Por qué era adecuada:
+```
 
 ### Situación 1: Cambio que todavía no has preparado
 
 Escribe tres párrafos en el `README.md` de la carpeta raíz y déjalos a medias. No te convencen. Decides descartarlos por completo y quieres volver al contenido que tenía el fichero en el último commit, sin editarlo manualmente.
 
-**Comprueba:** el cambio desaparece y el repositorio vuelve a estar limpio.
-
----
+**Comprueba:** el cambio desaparece y el repositorio vuelve al estado anterior.
 
 ### Situación 2: Cambio preparado que quieres conservar
 
-Modifica otra vez el `README.md`, esta vez con contenido válido que sí quieres conservar. Prepáralo para el siguiente commit. Después decides que todavía no quieres incluir ese fichero en el próximo commit. Sácalo del área de preparación **sin perder lo escrito**.
+Modifica otra vez el `README.md`, esta vez con contenido válido que sí quieres conservar. Prepáralo para el siguiente commit. Después decides que todavía no quieres incluir ese fichero en el próximo commit.
+
+Sácalo del área de preparación **sin perder lo escrito**.
 
 **Comprueba:**
 
@@ -281,15 +380,13 @@ Modifica otra vez el `README.md`, esta vez con contenido válido que sí quieres
 - el contenido permanece;
 - el cambio ya no está preparado.
 
-!!! warning "Antes de seguir"
-
-    El contenido era válido. Regístralo ahora en un commit normal y publícalo para que la siguiente situación empiece desde un estado limpio.
-
----
+El contenido era válido. Regístralo ahora en un commit normal y publícalo para que la siguiente situación empiece desde un estado limpio.
 
 ### Situación 3: El error ya está publicado
 
-Añade al `README.md` una línea claramente equivocada, regístrala en un commit y **publícala**. Ahora el error ya forma parte del historial compartido: está en el servidor y cualquiera puede haberlo descargado. 
+Añade al `README.md` una línea claramente equivocada, regístrala en un commit y **publícala en `sesion-02`**.
+
+Ahora el error ya forma parte de un historial compartido: está en GitHub y otra persona podría haberlo descargado.
 
 Deshaz su efecto de forma que:
 
@@ -299,36 +396,16 @@ Deshaz su efecto de forma que:
 
 Publica también la corrección.
 
-**Captura:** historial final y README corregido.
+**Evidencia 2:** una captura del historial donde se vean el commit erróneo y el commit posterior que lo corrige.
 
 !!! question "Reflexiona"
-    Podrías haber hecho desaparecer el commit original reescribiendo el historial y forzando después el `push`.
-
-    ¿Qué problema tendría alguien que hubiese descargado tu rama durante ese intervalo?
-
-    ¿Qué información de trazabilidad puede perderse cuando se cambian commits que ya habían sido publicados?
+    ¿Por qué en esta tercera situación interesa conservar el commit original en el historial? ¿Qué problema podría provocar reescribir una rama que otra persona ya hubiese descargado?
 
 ---
 
-## Paso 6: La tabla de decisión
+## Paso 7: Documenta la sesión y completa el README
 
-Sin ejecutar nada más, completa esta tabla razonando a partir de lo que acabas de practicar. La incorporarás al Markdown de la actividad en el paso 7:
-
-| Situación | Qué harías | Por qué esa y no otra |
-|---|---|---|
-| Has escrito algo que no te gusta y aún no lo has preparado | | |
-| Has preparado un fichero de más y quieres conservar los cambios | | |
-| El commit erróneo ya está publicado | | |
-
----
-
-## Paso 7: La rama y la documentación de la sesión
-
-El trabajo normal del módulo se realizará mediante ramas. Crea una rama llamada `sesion-02` para trabajar en ella.
-
-### 7.1 Documenta la actividad
-
-Ahora crea dentro del repositorio:
+Crea:
 
 ```text
 entregas/
@@ -338,83 +415,160 @@ entregas/
         └── img/
 ```
 
-Mueve a `img/` las capturas que has guardado durante los pasos anteriores e insértalas en `actividad-1.2.md` utilizando rutas relativas.
+Mueve a `img/` las evidencias de esta actividad e insértalas en `actividad-1.2.md` mediante rutas relativas.
 
-El Markdown debe recoger, de forma ordenada:
+El documento debe ser breve. Utiliza esta estructura:
 
-- las explicaciones sobre `.gitignore`;
-- las respuestas y reflexiones solicitadas durante la actividad;
-- las tres situaciones del paso 5, indicando qué zona de Git estaba afectada, qué operación utilizaste y por qué;
-- la tabla de decisión del paso 6;
-- las capturas solicitadas.
+```markdown
+# Actividad 1.2
+
+## Qué he decidido excluir del repositorio
+
+Explica las decisiones principales de `.gitignore`.
+
+## Recuperación de errores
+
+### Cambio no preparado
+
+Zona de Git afectada:
+Operación utilizada:
+Por qué era adecuada:
+
+### Cambio preparado
+
+Zona de Git afectada:
+Operación utilizada:
+Por qué era adecuada:
+
+### Commit publicado
+
+Zona de Git afectada:
+Operación utilizada:
+Por qué era adecuada:
+
+## Reflexiones
+
+Incluye las respuestas pedidas durante la actividad.
+
+## Evidencias
+
+Inserta aquí las capturas solicitadas.
+```
 
 !!! tip "No dupliques los ficheros técnicos"
     `actividad-1.2.md` documenta lo que has hecho. Los ficheros reales del proyecto, como `.gitignore`, `README.md` o el contenido de `escaparate/`, permanecen en su ubicación normal dentro del repositorio.
 
-### 7.2 Completa el README del repositorio
+### Completa el README del repositorio
 
-En esta misma rama, amplía el `README.md` de la raíz para que una persona que no haya estado en clase pueda entender:
+Amplía ahora el `README.md` de la raíz. Puedes partir de este esqueleto:
 
-- qué es el repositorio;
-- qué contiene;
-- qué herramientas básicas hacen falta;
-- cómo se trabaja: ramas `sesion-NN`;
-- que los cambios llegan a `main` mediante **Pull Request (PR)**;
-- un índice de entregas que enlace las actividades 1.1 y 1.2;
-- un apartado `Puesta en marcha`, que por ahora puede indicar que se completará más adelante.
+```markdown
+# DAW - Despliegue de Aplicaciones Web
 
-Registra los cambios de la rama y publícala. **Abre en GitHub una Pull Request** hacia la rama principal con una descripción que indique:
+Breve descripción del repositorio.
+
+## Estructura
+
+Explica qué contienen las carpetas principales.
+
+## Requisitos
+
+Indica las herramientas básicas necesarias.
+
+## Flujo de trabajo
+
+Explica el uso de ramas `sesion-NN` y Pull Requests hacia `main`.
+
+## Puesta en marcha
+
+Se completará en sesiones posteriores.
+
+## Entregas
+
+Enlaza las actividades 1.1 y 1.2 mediante rutas relativas.
+```
+
+No conviertas el README en un diario de clase. Debe servir para que otra persona entienda el repositorio y pueda localizar la información importante.
+
+---
+
+## Paso 8: Revisa el trabajo mediante una Pull Request
+
+Registra los cambios pendientes de `sesion-02` y publícalos.
+
+Abre en GitHub una Pull Request:
+
+```text
+sesion-02 → main
+```
+
+La descripción debe responder brevemente a:
 
 1. qué has cambiado;
 2. por qué;
 3. cómo has comprobado que el repositorio queda en buen estado.
 
-Abre la Pull Request con `Create pull request`.
+En la PR aparecerá la comprobación:
 
-Antes de fusionarla, haz una captura de la PR abierta y del README renderizado. Guarda ambas en `entregas/tema1/actividad-1.2/img/`, enlázalas desde `actividad-1.2.md` y registra y publica esos últimos cambios.
+```text
+Comprobar repositorio  ✓
+```
 
-Comprueba que la Pull Request se actualiza automáticamente con el nuevo commit.
+Si aparece en rojo, abre su detalle, identifica qué ha fallado, corrige el problema en `sesion-02`, crea otro commit y publícalo. La misma PR se actualizará automáticamente.
 
-Cuando toda la documentación esté incluida, fusiónala utilizando **Create a merge commit**, de forma que la bifurcación y la posterior integración puedan verse en el historial. Después, actualiza tu `main` local.
+**No fusiones mientras haya una comprobación pendiente o fallida.**
 
-**Comprueba:**
+**Evidencia 3:** captura de la Pull Request antes de fusionarla, con la comprobación automática en verde.
 
-- la PR aparece fusionada;
-- `entregas/tema1/actividad-1.2/` está en `main`;
-- el README actualizado está en `main`;
-- el grafo permite identificar la rama y su fusión.
+Cuando todo esté correcto, fusiónala mediante **Create a merge commit**.
+
+Después actualiza tu rama principal local:
+
+```bash
+git switch main
+git pull --ff-only
+```
+
+Comprueba:
+
+```bash
+git log --graph --oneline --all --decorate
+```
+
+Debe poder identificarse la rama de trabajo y su posterior integración en `main`.
 
 !!! question "Reflexiona"
-    Hoy has revisado tu propia PR y apenas existen comprobaciones automáticas. ¿Qué podría aparecer en esa página más adelante para convertirla en una auténtica puerta de entrada a `main`?
+    Hoy la comprobación automática solo revisa aspectos básicos del repositorio. ¿Qué otras cosas tendría sentido comprobar antes de permitir que una aplicación llegara a desplegarse?
 
 ---
 
-## Paso 8: La primera versión identificable
+## Paso 9: Marca el primer estado identificable
 
-Sobre la rama principal ya integrada, marca la versión `v0.1.0` con una **etiqueta anotada**. Añade un mensaje que describa qué contiene este primer estado identificable de **tu repositorio del módulo** y publica la etiqueta.
+Sobre `main` ya integrado, crea una **etiqueta anotada**:
+
+```text
+v0.1.0
+```
+
+Añade un mensaje que describa qué contiene este primer estado identificable del repositorio y publica la etiqueta.
 
 !!! note "Dos cosas diferentes"
-    Esta etiqueta identifica un estado de `daw-despliegue`. No necesitas relacionarla con ninguna posible versión interna de las herramientas o aplicaciones que contiene el repositorio.
+    `v0.1.0` identifica un estado concreto de `daw-despliegue`. No tiene por qué coincidir con ninguna versión interna de Escaparate.
 
-**Comprueba:**
+Comprueba:
 
-- `v0.1.0` aparece en GitHub;
-- es una etiqueta anotada;
-- apunta al mismo commit que `main` en este momento.
+```bash
+git tag -n
+git show v0.1.0 --no-patch
+git log --graph --oneline --all --decorate
+```
 
-### Comprueba qué se mueve
+En este momento `main` y `v0.1.0` apuntan al mismo estado. En próximas sesiones `main` seguirá avanzando, mientras que la etiqueta continuará identificando este punto concreto.
 
-Haz ahora un **commit vacío temporal solo en local**. No lo publiques.
-
-Vuelve a observar `main`, `origin/main` y `v0.1.0`.
-
-- ¿Cuál se ha movido?
-- ¿Cuáles permanecen en el commit anterior?
-
-Cuando termines la comprobación, elimina ese commit temporal y deja tu `main` local otra vez exactamente en `origin/main`.
+**Evidencia 4:** salida o vista de GitHub donde se vea `v0.1.0` asociada al estado actual.
 
 !!! question "Reflexiona"
-    ¿Por qué un procedimiento de despliegue reproducible debería señalar una **versión concreta y estable (por ejemplo, una etiqueta publicada)** y no limitarse a decir "despliega lo que haya ahora mismo en `main`"?
+    ¿Por qué un procedimiento de despliegue reproducible debería poder señalar una versión concreta y estable, en lugar de limitarse a decir "despliega lo que haya ahora mismo en `main`"?
 
 ---
 
@@ -452,6 +606,7 @@ ls entregas/tema1/
 test -f escaparate/pom.xml && echo "pom.xml OK"
 test -f escaparate/mvnw && echo "Maven Wrapper OK"
 test -f practicas/README.md && echo "practicas/README.md OK"
+test -f .github/workflows/validar.yml && echo "workflow OK"
 ```
 
 Debe observarse:
@@ -459,10 +614,11 @@ Debe observarse:
 - rama principal `main`;
 - ningún `.env`, fichero de `target/` o `.class` registrado en el historial;
 - ningún repositorio Git anidado dentro de `escaparate/`;
-- el commit erróneo y el commit que lo deshace;
+- el commit erróneo de `sesion-02` y el commit posterior que lo deshace;
 - la fusión de `sesion-02`;
 - `v0.1.0` como etiqueta anotada;
 - actividades 1.1 y 1.2 en `entregas/tema1/`;
+- la Actividad 1.1 correctamente formateada en Markdown y con imágenes relativas;
 - Escaparate con su `pom.xml` y Maven Wrapper.
 
 La Pull Request se comprobará también en GitHub.
@@ -474,10 +630,10 @@ La Pull Request se comprobará también en GitHub.
 - [ ] Repositorio privado `daw-despliegue` con el profesor añadido como colaborador.
 - [ ] `escaparate-integrado` incorporado como carpeta `escaparate/`.
 - [ ] `.gitignore` del repositorio y análisis del `.gitignore` recibido con Escaparate.
-- [ ] Actividad 1.1 completa en `entregas/tema1/actividad-1.1/`.
-- [ ] `entregas/tema1/actividad-1.2/actividad-1.2.md` con respuestas, reflexiones y tabla de decisión.
-- [ ] `entregas/tema1/actividad-1.2/img/` con las capturas enlazadas mediante rutas relativas.
-- [ ] Las tres situaciones de recuperación documentadas.
+- [ ] Actividad 1.1 incorporada en `entregas/tema1/actividad-1.1/`, formateada en Markdown y con sus imágenes enlazadas mediante rutas relativas.
+- [ ] `entregas/tema1/actividad-1.2/actividad-1.2.md` con las decisiones sobre `.gitignore`, las tres situaciones de recuperación y las reflexiones solicitadas.
+- [ ] `entregas/tema1/actividad-1.2/img/` con las cuatro evidencias solicitadas.
+- [ ] `.github/workflows/validar.yml` versionado y comprobación automática correcta en la PR.
 - [ ] Pull Request `sesion-02 → main` fusionada.
 - [ ] README actualizado.
 - [ ] Etiqueta anotada `v0.1.0`.
@@ -491,8 +647,8 @@ La Pull Request se comprobará también en GitHub.
 
 Ya tienes preparado el repositorio que utilizarás como base durante el módulo. Dentro conviven la aplicación, la documentación, tus entregas y el espacio donde irás incorporando las distintas configuraciones de despliegue. Además, el historial empieza limpio: has decidido qué debe versionarse, qué debe quedarse fuera y has marcado un primer estado identificable con `v0.1.0`.
 
-Durante la práctica has comprobado que Git no guarda simplemente "versiones de ficheros". Un cambio puede encontrarse en el directorio de trabajo, en el área de preparación o formando ya parte del historial, y **la forma correcta de deshacerlo depende de dónde se encuentre y de si ese historial se ha compartido**. También has visto que una rama puede seguir avanzando mientras una etiqueta permanece señalando un punto concreto.
+Durante la práctica has comprobado que Git no guarda simplemente "versiones de ficheros". Un cambio puede encontrarse en el directorio de trabajo, en el área de preparación o formando ya parte del historial, y **la forma correcta de deshacerlo depende de dónde se encuentre y de si ese historial se ha compartido**. También has convertido la evidencia de la sesión anterior en documentación Markdown integrada en el repositorio y has visto cómo una etiqueta identifica un estado concreto aunque `main` siga avanzando en sesiones posteriores.
 
-Parte del flujo de hoy (crear una rama trabajando solo, abrir una Pull Request que tú mismo fusionas o etiquetar un repositorio que todavía no despliega nada) puede parecer innecesario. Más adelante dejará de serlo: las Pull Requests incorporarán comprobaciones automáticas, las etiquetas y releases de la aplicación permitirán saber exactamente qué versión se está desplegando y el historial servirá para reconstruir qué ocurrió cuando algo falle.
+Parte del flujo de hoy (crear una rama trabajando solo, abrir una Pull Request que tú mismo fusionas o etiquetar un repositorio que todavía no despliega nada) puede parecer innecesario. Más adelante dejará de serlo: la pequeña comprobación automática que has visto irá creciendo, las etiquetas y releases de la aplicación permitirán saber exactamente qué versión se está desplegando y el historial servirá para reconstruir qué ocurrió cuando algo falle.
 
 A partir de la próxima sesión el repositorio deja de ser solo organización. Empezarás a utilizarlo para **construir, ejecutar y desplegar Escaparate de forma reproducible**, comenzando por aislar la aplicación y sus dependencias del equipo concreto en el que se ejecuta.

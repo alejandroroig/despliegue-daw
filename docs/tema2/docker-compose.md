@@ -164,6 +164,8 @@ Fíjate además en `5432`. Entre contenedores de la misma red se utiliza el **pu
 
 No hace falta publicarlo en el anfitrión para que otro contenedor pueda utilizarlo.
 
+Una comprobación especialmente útil es esta: si una aplicación se comunica correctamente con su base de datos mediante `bd:5432` mientras la base de datos no publica ningún puerto hacia el anfitrión, ya has demostrado que la comunicación ocurre por la red interna del proyecto.
+
 !!! example "Dentro y fuera son espacios distintos"
     El nombre `bd` puede resolverse desde otro contenedor conectado a la red de Compose, pero tu navegador o tu terminal en el anfitrión no tienen por qué saber qué significa `bd`.
 

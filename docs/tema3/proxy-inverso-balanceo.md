@@ -5,9 +5,9 @@
 
 ---
 
-En la sesión anterior Nginx actuó como servidor web y puerta de entrada. Ahora añadiremos un segundo papel: **reenviar peticiones a aplicaciones internas**. Cuando un servidor recibe tráfico público y lo dirige hacia uno o varios backends hablamos de proxy inverso.
+En la sesión anterior Nginx actuó como servidor web y puerta de entrada. Ahora añadiremos un segundo papel: **reenviar peticiones a aplicaciones internas**. Cuando un servidor recibe tráfico y lo dirige hacia uno o varios backends hablamos de proxy inverso.
 
-Si existen varias copias equivalentes del backend, el mismo punto de entrada puede repartir entre ellas las peticiones. Esto introduce dos problemas que estudiaremos juntos: detectar copias que dejan de responder y evitar que datos necesarios queden encerrados en el almacenamiento local de una sola réplica.
+Si existen varias copias equivalentes del backend, el mismo punto de entrada puede repartir entre ellas las peticiones. Esto introduce dos problemas que estudiaremos juntos: qué ocurre cuando una copia deja de responder y qué pasa si una réplica guarda localmente datos que después necesita cualquiera de las demás.
 
 ---
 
@@ -41,14 +41,15 @@ GET /api/productos
 
 Para el navegador sigue existiendo un único origen. No necesita saber el nombre interno de la aplicación ni el puerto 8080.
 
-Conviene distinguirlo de un proxy directo:
+Conviene reconocer la diferencia:
 
 | | Proxy directo | Proxy inverso |
 |---|---|---|
-| Lo utiliza | el cliente o su organización | quien publica el servicio |
-| Representa | al cliente | al servidor |
-| Oculta | quién navega | qué infraestructura hay detrás |
-| Ejemplo | filtro de salida de una organización | Nginx delante de una aplicación |
+| Se coloca | del lado del cliente | delante de los servidores |
+| Representa | al cliente | al servicio publicado |
+| Ejemplo | proxy de salida de una organización | Nginx delante de una aplicación |
+
+En esta sesión trabajaremos únicamente con **proxy inverso**.
 
 ### 1.2. Una sola puerta permite separar responsabilidades
 
@@ -139,9 +140,9 @@ upstream backend_pool {
     zone backend_pool 64k;
     resolver 127.0.0.11 valid=5s ipv6=off;
 
-    server backend-1:8080 resolve;
-    server backend-2:8080 resolve;
-    server backend-3:8080 resolve;
+    server app-1:8080 resolve;
+    server app-2:8080 resolve;
+    server app-3:8080 resolve;
 }
 ```
 
@@ -150,9 +151,9 @@ La parte importante se puede leer así:
 ```mermaid
 flowchart LR
     C["Cliente"] --> N["Nginx"]
-    N --> A1["backend-1"]
-    N --> A2["backend-2"]
-    N --> A3["backend-3"]
+    N --> A1["app-1"]
+    N --> A2["app-2"]
+    N --> A3["app-3"]
 ```
 
 `upstream` simplemente da un nombre al grupo. Si no indicamos otro método, Nginx reparte las peticiones por turnos entre sus miembros.
@@ -167,7 +168,7 @@ para poder ver qué copia ha respondido.
 
 ### 3.2. Por qué aparecen `zone`, `resolver` y `resolve`
 
-Docker Compose nos permite hablar de `backend-1`, `backend-2` y `backend-3` por nombre. Esos nombres son estables, pero la dirección IP interna de un contenedor puede cambiar cuando se detiene o se recrea.
+Docker Compose nos permite hablar de `app-1`, `app-2` y `app-3` por nombre. Esos nombres son estables, pero la dirección IP interna de un contenedor puede cambiar cuando se detiene o se recrea.
 
 Queremos que Nginx siga los **nombres**, no una dirección antigua.
 
@@ -227,19 +228,19 @@ prueba otra copia
 
 Nginx utiliza aquí una comprobación **pasiva**: no pregunta continuamente si las copias están sanas. Descubre un problema cuando intenta enviarles tráfico.
 
-Si `backend-2` se detiene:
+Si `app-2` se detiene:
 
 ```text
-backend-1  ✅
-backend-2  ❌
-backend-3  ✅
+app-1  ✅
+app-2  ❌
+app-3  ✅
 ```
 
-una petición puede intentar primero `backend-2`. Como hemos reducido el tiempo de conexión, Nginx no espera un minuto: abandona ese intento rápidamente y puede probar otra copia.
+una petición puede intentar primero `app-2`. Como hemos reducido el tiempo de conexión, Nginx no espera un minuto: abandona ese intento rápidamente y puede probar otra copia.
 
 Las peticiones siguientes se siguen repartiendo entre los destinos disponibles.
 
-Cuando `backend-2` vuelve, `resolver` + `resolve` permiten que Nginx vuelva a localizarla por su nombre y la reincorpore al grupo sin tener que reiniciar el proxy.
+Cuando `app-2` vuelve, `resolver` + `resolve` permiten que Nginx vuelva a localizarla por su nombre y la reincorpore al grupo sin tener que reiniciar el proxy.
 
 ### 4.1. No es lo mismo que el `healthcheck` de Compose
 
@@ -274,9 +275,9 @@ Sin un volumen compartido, `/data/uploads` pertenece a cada contenedor:
 
 ```mermaid
 flowchart LR
-    N["Nginx"] --> A1["backend-1"]
-    N --> A2["backend-2"]
-    N --> A3["backend-3"]
+    N["Nginx"] --> A1["app-1"]
+    N --> A2["app-2"]
+    N --> A3["app-3"]
 
     A1 --> F1["Ficheros A"]
     A2 --> F2["Ficheros B"]
@@ -289,15 +290,15 @@ Así puede ocurrir:
 
 ```text
 POST fichero
-→ backend-1
-→ fichero guardado en backend-1
+→ app-1
+→ fichero guardado en app-1
 
 GET fichero
-→ backend-2
+→ app-2
 → 404
 
 GET fichero
-→ backend-1
+→ app-1
 → 200
 ```
 
@@ -309,15 +310,15 @@ Mientras las tres copias viven en el mismo host Docker, podemos montar un **volu
 
 ```yaml
 services:
-  backend-1:
+  app-1:
     volumes:
       - uploads-compartidos:/data/uploads
 
-  backend-2:
+  app-2:
     volumes:
       - uploads-compartidos:/data/uploads
 
-  backend-3:
+  app-3:
     volumes:
       - uploads-compartidos:/data/uploads
 
@@ -348,114 +349,60 @@ Este volumen resuelve el problema **porque las tres réplicas están en la misma
 
 ---
 
-## ☁️ 6. El mismo despliegue en una instancia remota
+## 🚪 6. Una sola puerta facilita el siguiente paso
 
-### 6.1. En producción no compilamos en el servidor
-
-El servidor de destino no necesita las herramientas de compilación ni el código fuente para ejecutar una imagen ya construida.
-
-El flujo es:
+El proxy inverso concentra el tráfico de entrada en un único componente:
 
 ```text
-equipo de desarrollo
-    ↓
-construye imagen
-    ↓
-registro de contenedores
-    ↓
-servidor remoto
-    ↓
-docker compose pull / up
+cliente
+  │
+  ▼
+Nginx
+  │
+  ├── app-1
+  ├── app-2
+  └── app-3
+       │
+       ▼
+   base de datos
 ```
 
-El servidor descarga del registro una imagen ya construida y ejecuta exactamente ese artefacto. La compilación queda fuera del servidor de producción.
+Los servicios internos no necesitan publicar sus puertos hacia el anfitrión para comunicarse dentro de la red de Docker.
 
-El repositorio sigue siendo necesario porque contiene la **descripción reproducible del despliegue**: Compose, configuración del proxy y documentación operativa. Código, configuración de despliegue e imágenes publicadas cumplen funciones distintas.
+Esta concentración tendrá una consecuencia importante en la siguiente sesión: cuando el sistema se despliegue en una máquina accesible desde Internet, podremos aplicar **HTTPS y control de acceso en Nginx** sin configurar esas responsabilidades de forma independiente en cada réplica.
 
-### 6.2. Una puerta pública significa una superficie real
-
-En local:
+El principio general es:
 
 ```text
-80:80
+una puerta pública
+→ una política común de entrada
 ```
-
-solo exponía Nginx hacia tu equipo y tu red.
-
-En una máquina con IP pública, ese mismo puerto puede quedar accesible desde Internet. Por eso el resultado debe seguir siendo:
-
-```text
-Internet
-   │
-   │ 80
-   ▼
- Nginx
-   │
-   ├── backend-1:8080
-   ├── backend-2:8080
-   ├── backend-3:8080
-   └── bd:5432
-
-solo Nginx publica puerto
-```
-
-Los puertos internos no necesitan publicarse para que los servicios se comuniquen mediante la red de Compose.
-
----
-
-## 🌐 7. Nombres que sobreviven al cambio de IP
-
-La instancia del laboratorio puede recibir una dirección pública diferente en otra sesión. `nip.io` permite construir nombres a partir de la dirección actual:
-
-```text
-web.203.0.113.25.nip.io
-docs.203.0.113.25.nip.io
-```
-
-Si escribiéramos esa dirección dentro de `server_name`, tendríamos que modificar la configuración cada vez.
-
-Nginx admite nombres comodín al final. Podemos aprovecharlo:
-
-```nginx
-server_name web.*;
-```
-
-y:
-
-```nginx
-server_name docs.*;
-```
-
-El mismo bloque acepta así:
-
-```text
-web.127.0.0.1.nip.io
-web.203.0.113.25.nip.io
-web.<otra-ip>.nip.io
-```
-
-Esto no cambia el DNS. `nip.io` sigue siendo quien convierte cada nombre en su dirección. El comodín solo evita que Nginx tenga que conocer por adelantado el fragmento variable del nombre.
-
-El servidor por defecto configurado en la sesión anterior continúa siendo útil para cualquier nombre que no encaje en los dos patrones previstos.
 
 ---
 
 ## 🎯 Qué debes saber hacer al salir de esta sesión
 
+Al terminar, deberías poder:
+
 - Explicar la diferencia entre servir contenido y actuar como proxy inverso.
 - Predecir qué ruta recibirá el backend según la forma de `proxy_pass`.
-- Reenviar correctamente nombre, IP y protocolo originales.
-- Declarar un `upstream` con tres copias y demostrar el reparto mediante `/api/instancia`.
-- Explicar por qué Nginx debe volver a resolver los nombres de los contenedores.
-- Explicar qué ocurre cuando una réplica deja de responder y cómo el proxy prueba otra.
-- Diferenciar el `healthcheck` de Compose de la detección de fallos del proxy.
-- Diagnosticar por qué un fichero local aparece y desaparece al balancear.
-- Resolver ese estado compartiendo un volumen entre réplicas del mismo host.
-- Desplegar desde imágenes públicas y configuración versionada sin compilar en el servidor.
-- Mantener una única puerta pública.
-- Utilizar nombres `nip.io` variables sin incrustar cada IP nueva en la configuración de Nginx.
+- Explicar por qué el backend necesita recibir información de la petición original mediante cabeceras reenviadas.
+- Declarar un `upstream` con varias copias y comprobar el reparto mediante un endpoint que identifique la réplica.
+- Explicar por qué Nginx debe poder volver a resolver los nombres de los contenedores.
+- Comprobar qué ocurre cuando una réplica deja de responder y cómo el proxy puede probar otra.
+- Diferenciar el `healthcheck` de Compose de la detección pasiva de fallos del proxy.
+- Diagnosticar por qué un fichero local puede aparecer y desaparecer cuando varias réplicas atienden peticiones.
+- Resolver ese problema compartiendo almacenamiento entre réplicas del mismo host.
+- Explicar por qué un volumen Docker compartido deja de ser suficiente si las réplicas viven en máquinas distintas.
+- Mantener una única puerta publicada hacia el anfitrión.
 
-Lo que basta con reconocer: existen otros algoritmos de balanceo, comprobaciones activas y soluciones de almacenamiento compartido entre hosts.
+Lo que basta con **reconocer**:
+
+- la diferencia general entre proxy directo y proxy inverso;
+- que existen otros algoritmos de balanceo;
+- que existen comprobaciones activas de salud;
+- que un sistema distribuido entre varios hosts necesita soluciones de almacenamiento compartido distintas de un volumen local de Docker;
+- los detalles de `zone`, `resolver`, `resolve` y las directivas de reintento.
 
 ---
 
@@ -463,20 +410,21 @@ Lo que basta con reconocer: existen otros algoritmos de balanceo, comprobaciones
 
 ??? tip "Abrir resumen"
 
-    - En la sesión 6 Nginx ya reenviaba `/api/`, pero el bloque era una caja negra. Ahora entiendes y escribes `proxy_pass` y las cabeceras reenviadas.
-    - Sin URI final en `proxy_pass`, una ruta como `/api/...` puede conservarse completa; añadir una URI al destino puede modificar lo que recibe el backend.
-    - El backend habla directamente con el proxy, no con el navegador. Por eso Nginx debe reconstruir información de la petición original.
-    - Un `upstream` permite dar un único nombre a `backend-1`, `backend-2` y `backend-3`.
-    - `/api/instancia` permite observar qué réplica ha procesado cada petición.
-    - `resolver` y `resolve` permiten seguir utilizando el nombre de un contenedor aunque cambie su IP interna.
-    - Un tiempo de conexión corto y el reintento sobre otra copia evitan esperas largas cuando una réplica cae.
-    - El `healthcheck` de Compose y la detección del proxy tienen objetivos distintos.
-    - Tres contenedores no comparten su filesystem. Una clave guardada en la base de datos puede apuntar a un fichero que solo existe en una réplica.
-    - Un volumen común resuelve ese problema mientras las réplicas viven en el mismo host.
-    - En el servidor de destino no se recompila la aplicación: se descargan imágenes ya construidas desde un registro.
-    - Solo Nginx debe publicar un puerto al exterior.
-    - Un `server_name` con comodín puede evitar reescribir la configuración cuando cambia la parte variable de un nombre `nip.io`.
+    - Un proxy inverso recibe peticiones del cliente y las reenvía hacia aplicaciones internas.
+    - `location` decide qué peticiones se reenvían y `proxy_pass` determina el destino.
+    - Una `/` final en `proxy_pass` puede modificar la URI que recibe el backend.
+    - El backend habla directamente con Nginx, no con el navegador; por eso pueden reenviarse `Host`, la IP observada y el protocolo original.
+    - Un `upstream` agrupa varias réplicas detrás de un único nombre.
+    - Si no se indica otro algoritmo, Nginx reparte las peticiones entre los miembros del grupo.
+    - Los nombres de los servicios son estables, pero las IP internas de los contenedores pueden cambiar; por eso interesa resolver de nuevo esos nombres.
+    - La detección de fallos usada aquí es pasiva: Nginx descubre que una réplica falla al intentar utilizarla.
+    - Un timeout corto y el reintento permiten probar otra copia sin bloquear demasiado tiempo la petición.
+    - Varias réplicas no comparten automáticamente su filesystem.
+    - Si cualquier réplica debe poder recuperar un dato, ese dato no puede vivir únicamente dentro de una de ellas.
+    - Un volumen común resuelve el problema mientras las réplicas comparten host.
+    - Nginx sigue siendo la única puerta publicada; las réplicas y la base de datos permanecen en la red interna.
+
 
 ---
 
-En la actividad aplicarás este patrón general al proyecto del módulo: varias réplicas detrás de Nginx, detección pasiva de fallos, resolución de nombres de Docker y almacenamiento compartido entre copias del mismo host.
+En la actividad aplicarás este patrón general al proyecto del módulo: varias réplicas detrás de Nginx, detección pasiva de fallos y almacenamiento compartido entre copias del mismo host. El despliegue en una máquina pública se reserva para la siguiente sesión, donde esa nueva situación será necesaria para trabajar HTTPS y certificados.

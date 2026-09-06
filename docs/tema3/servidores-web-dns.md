@@ -9,6 +9,18 @@ Un servidor web puede asumir la entrada HTTP de un sistema y servir directamente
 
 En esta sesión incorporaremos Nginx delante de una aplicación web y utilizaremos dos sitios distintos para estudiar raíces de documentos, hosts virtuales, compresión, caché y resolución de nombres. El reenvío de peticiones dinámicas aparecerá únicamente como conexión con el backend; su funcionamiento se estudiará en la siguiente sesión.
 
+La idea central será separar dos responsabilidades:
+
+```text
+recursos estáticos
+→ el servidor web los lee y los entrega
+
+respuestas dinámicas
+→ la aplicación las genera cuando recibe la petición
+```
+
+A partir de esa separación veremos por qué un servidor web puede aplicar políticas específicas de entrega, como compresión o caché, sin confundirlas con el comportamiento de la aplicación.
+
 ---
 
 ## 🗂️ 1. Qué hace un servidor web
@@ -155,11 +167,13 @@ Reiniciar el contenedor entero para aplicar cada cambio funciona, pero oculta un
 
 ---
 
-## 🧾 4. Tipos MIME, índices y permisos
+## 🧾 4. Diagnóstico básico al servir ficheros
 
-Tres detalles pequeños explican muchos fallos al servir ficheros.
+Cuando un sitio está correctamente montado pero no se muestra como esperas, tres detalles explican muchos fallos.
 
-**Tipo MIME.** La respuesta incluye una cabecera `Content-Type`, por ejemplo:
+### Tipo MIME
+
+La respuesta HTTP incluye una cabecera `Content-Type`, por ejemplo:
 
 ```text
 text/html
@@ -168,11 +182,21 @@ application/javascript
 image/png
 ```
 
-El navegador utiliza ese tipo para decidir cómo interpretar el contenido. Si un fichero CSS llega con un tipo incorrecto, la página puede aparecer sin estilos aunque el fichero exista.
+El navegador utiliza ese valor para interpretar el recurso. Un CSS puede existir y descargarse, pero no aplicarse correctamente si llega con un tipo inesperado.
 
-**Índice.** Cuando se pide un directorio, el servidor suele buscar un fichero como `index.html`. Si no existe, puede devolver `403` o, si se configura expresamente, mostrar un listado de los ficheros mediante `autoindex`.
+### Índice
 
-**Permisos.** Nginx no necesita ejecutar como administrador para servir un sitio. Su proceso debe poder:
+Cuando se solicita un directorio, el servidor suele buscar un fichero como:
+
+```text
+index.html
+```
+
+Si no existe, puede devolver `403` o, si se ha configurado expresamente, mostrar el listado del directorio mediante `autoindex`.
+
+### Permisos y rutas
+
+Nginx debe poder:
 
 ```text
 leer los ficheros
@@ -180,12 +204,14 @@ leer los ficheros
 atravesar los directorios que los contienen
 ```
 
-Esto es especialmente importante con montajes del anfitrión.
+Con montajes desde el anfitrión también conviene comprobar que la ruta configurada con `root` coincide con la ruta que realmente existe dentro del contenedor.
 
-!!! warning "Tres síntomas que conviene distinguir"
-    - `403` con el recurso existente: revisa permisos o si has pedido un directorio sin índice ni listado habilitado.
-    - `404` con el recurso existente: revisa la raíz configurada y el montaje dentro del contenedor.
-    - Página sin estilos o recurso rechazado: revisa `Content-Type` en las herramientas del navegador.
+!!! tip "Tres síntomas que conviene reconocer"
+    - `404` con el recurso aparentemente existente → revisa `root`, la ruta solicitada y el montaje.
+    - `403` sobre un directorio → revisa permisos, fichero índice o si el listado está permitido.
+    - Página sin estilos o recurso rechazado → revisa la URL del recurso y su `Content-Type`.
+
+No es necesario memorizar todas las causas posibles. Lo importante es relacionar el síntoma con el primer lugar que conviene inspeccionar.
 
 ---
 
@@ -247,6 +273,26 @@ docs.ejemplo.test
 
 Los dos nombres pueden apuntar a la misma dirección IP, utilizar el puerto 80 y terminar en el mismo servidor Nginx.
 
+La secuencia completa puede visualizarse así:
+
+```text
+docs.ejemplo.test
+      │
+      │ DNS
+      ▼
+  203.0.113.10
+      │
+      │ petición HTTP
+      │ Host: docs.ejemplo.test
+      ▼
+    Nginx
+   ┌──┴───┐
+   ▼      ▼
+  web    docs
+```
+
+DNS permite llegar hasta la máquina correcta. La cabecera HTTP `Host` permite después decidir qué sitio debe responder.
+
 ### 5.2. Qué ocurre cuando ningún nombre coincide
 
 Si ningún `server_name` coincide, Nginx utiliza un servidor por defecto. Si no se declara explícitamente, el comportamiento puede sorprender porque uno de los sitios configurados termina respondiendo a nombres que no eran suyos.
@@ -292,6 +338,14 @@ Si Nginx decide comprimir la respuesta, devuelve:
 ```http
 Content-Encoding: gzip
 ```
+
+Una configuración habitual incluye también:
+
+```nginx
+gzip_vary on;
+```
+
+Esto añade la cabecera `Vary: Accept-Encoding`, útil para que una caché pueda distinguir entre la variante comprimida y la no comprimida de una misma respuesta.
 
 La compresión se realiza **al servir la respuesta**. El fichero guardado en disco no cambia. El navegador recibe los bytes comprimidos y los descomprime automáticamente.
 
@@ -344,7 +398,35 @@ La directiva `expires` genera cabeceras de expiración y una política `Cache-Co
 
 El inconveniente de una caché larga aparece al publicar una versión nueva. Si un fichero mantiene el mismo nombre, un navegador podría conservar la copia anterior. Por eso en frontends reales es habitual generar nombres versionados o con huellas de contenido.
 
+### 6.3. Estático y dinámico no se entregan igual
+
+La separación entre servidor web y aplicación también ayuda a decidir cómo tratar cada respuesta:
+
+| Recurso | Quién genera la respuesta | Tratamiento habitual |
+|---|---|---|
+| `/css/app.css` | Nginx lee un fichero | buen candidato a gzip y caché larga |
+| `/img/logo.png` | Nginx lee un fichero | buen candidato a caché; gzip aporta poco |
+| `/index.html` | Nginx lee un fichero | suele recibir una caché más corta |
+| `/api/productos` | la aplicación genera la respuesta | la política depende del dato y de cuánto puede cambiar |
+
+La regla importante no es:
+
+```text
+dinámico
+→ nunca se cachea
+```
+
+sino:
+
+```text
+cada respuesta
+→ necesita una política coherente con su naturaleza
+```
+
+Una API también puede utilizar caché, pero no conviene aplicar automáticamente a sus respuestas la misma política larga que a un CSS, JavaScript o una imagen versionada.
+
 ---
+
 
 ## 🧭 7. DNS: convertir nombres en direcciones
 
@@ -378,12 +460,13 @@ No hay contradicción. Están consultando fuentes diferentes.
 
 ### 7.2. Registros A, CNAME, TTL y `nip.io`
 
-Los dos registros que necesitas reconocer ahora son:
+En esta sesión trabajarás principalmente con registros `A`, que relacionan un nombre con una dirección IPv4:
 
 | Registro | Contiene | Uso típico |
 |---|---|---|
 | `A` | una dirección IPv4 | nombre que apunta directamente a una dirección |
-| `CNAME` | otro nombre | alias de un nombre existente |
+
+También debes **reconocer** un registro `CNAME`: no contiene una dirección, sino otro nombre y se utiliza como alias. No necesitas configurarlo en esta práctica.
 
 El **TTL** indica durante cuánto tiempo puede conservarse una respuesta DNS en caché antes de volver a consultarla.
 
@@ -421,21 +504,26 @@ En la siguiente sesión aplicarás la misma idea sobre la dirección pública de
 
 ## 🎯 Qué debes saber hacer al salir de esta sesión
 
+Al terminar, deberías poder:
+
 - Explicar qué responsabilidad tiene un servidor web y qué sigue perteneciendo a la aplicación.
-- Incorporar Nginx como servidor web delante de una aplicación.
-- Servir un directorio de contenido estático mediante una raíz de documentos.
-- Montar configuración y contenido de Nginx desde Compose en modo de solo lectura.
+- Incorporar Nginx como servicio de entrada delante de una aplicación.
+- Servir contenido desde una raíz de documentos.
+- Montar configuración y contenido desde Compose en modo de solo lectura.
 - Validar la configuración antes de recargarla.
 - Configurar dos hosts virtuales por nombre sobre una misma dirección y puerto.
-- Declarar un servidor por defecto que no publique accidentalmente otro sitio.
-- Permitir el listado de un directorio cuando interesa y reconocer los riesgos de hacerlo.
-- Diagnosticar problemas de permisos, raíz de documentos y tipos MIME.
-- Activar compresión y demostrar su efecto midiendo los bytes transferidos.
-- Aplicar políticas distintas de caché según el tipo de recurso.
-- Resolver un nombre con `dig`, reconocer un registro A y un CNAME y explicar qué representa el TTL.
-- Explicar por qué `/etc/hosts` puede afectar al navegador sin afectar a una consulta `dig`.
+- Explicar la secuencia `DNS → dirección IP → Host HTTP → sitio`.
+- Declarar un servidor por defecto para nombres no reconocidos.
+- Aplicar y comprobar gzip sobre contenido textual.
+- Aplicar una política de caché a recursos estáticos y explicar por qué no debe trasladarse automáticamente a cualquier respuesta dinámica.
+- Utilizar `dig` para reconocer una respuesta DNS, una dirección IPv4 y su TTL.
 
-Lo que basta con reconocer: los detalles internos de los MPM de Apache, otros tipos de registros DNS y técnicas avanzadas de reescritura de URL.
+Lo que basta con **reconocer**:
+
+- diferencias generales entre Apache y Nginx;
+- síntomas básicos relacionados con `404`, `403`, permisos y tipos MIME;
+- qué representa un registro `CNAME`;
+- por qué `/etc/hosts` puede afectar al navegador sin modificar lo que devuelve `dig`.
 
 ---
 
@@ -444,17 +532,19 @@ Lo que basta con reconocer: los detalles internos de los MPM de Apache, otros ti
 ??? tip "Abrir resumen"
 
     - Nginx puede convertirse en la puerta HTTP del sistema y servir directamente recursos estáticos.
-    - Nginx puede servir directamente contenido estático y reenviar las rutas dinámicas hacia un backend interno.
-    - El servidor web puede ser la única puerta publicada, mientras aplicación y base de datos permanecen accesibles solo dentro de la red interna.
-    - Un servidor web relaciona URL, raíz de documentos y cabeceras HTTP. Un `404`, un `403` y un tipo MIME incorrecto apuntan a problemas diferentes.
-    - La configuración se versiona y se monta de solo lectura. Antes de aplicarla se valida con `nginx -t` y después se recarga.
-    - Un host virtual por nombre se selecciona mediante la cabecera `Host`. Varios sitios pueden compartir dirección IP y puerto.
-    - Un servidor `default_server` explícito evita que un nombre desconocido termine mostrando por accidente uno de los sitios reales.
-    - Gzip reduce los bytes enviados para contenido textual. `curl -I` permite inspeccionar cabeceras, pero para medir bytes hay que descargar el cuerpo.
-    - La caché debe adaptarse a la volatilidad del recurso. Una política larga sobre un nombre de fichero estable puede dejar clientes usando una versión antigua.
-    - Un registro A relaciona nombre e IPv4; un CNAME crea un alias. El TTL determina cuánto puede reutilizarse una respuesta DNS.
-    - El resolutor del sistema puede consultar `/etc/hosts`. `dig` consulta DNS directamente, por lo que ambos pueden mostrar resultados diferentes.
+    - El servidor web puede ser la única pieza publicada, mientras aplicación y base de datos permanecen dentro de la red interna.
+    - `root`, `index` y los montajes determinan qué ficheros puede servir cada sitio.
+    - Ante un fallo conviene distinguir síntomas: `404`, `403` y un tipo MIME incorrecto suelen apuntar a problemas diferentes.
+    - La configuración se valida con `nginx -t` antes de recargarla.
+    - DNS permite llegar a una dirección; después la cabecera HTTP `Host` permite seleccionar el host virtual.
+    - Un `default_server` explícito evita que un nombre desconocido muestre accidentalmente otro sitio.
+    - Gzip reduce los bytes enviados para contenido textual. `Vary: Accept-Encoding` permite distinguir variantes comprimidas y no comprimidas en cachés.
+    - Los recursos estáticos suelen ser buenos candidatos para caché prolongada; una respuesta dinámica necesita una política acorde con la naturaleza del dato.
+    - Un registro `A` relaciona nombre e IPv4. Un `CNAME` representa un alias y basta con reconocerlo en esta sesión.
+    - El TTL indica cuánto tiempo puede conservarse una respuesta DNS en caché.
+    - El resolutor del sistema puede utilizar `/etc/hosts`; `dig` consulta DNS directamente.
+
 
 ---
 
-En la actividad aplicarás estos patrones al proyecto del módulo: dos sitios sobre un mismo Nginx, nombres distintos, servidor por defecto y políticas de entrega de contenido estático. El reenvío de `/api/` se mantendrá como una caja negra hasta la siguiente sesión.
+En la actividad aplicarás estos patrones sobre el proyecto del módulo, pero los conceptos de esta sesión son generales: dos sitios pueden compartir servidor, dirección y puerto; DNS conduce hasta la máquina; HTTP selecciona el sitio; y el servidor web puede aplicar políticas específicas a los recursos estáticos. El reenvío de `/api/` se mantendrá como una caja negra hasta la siguiente sesión.

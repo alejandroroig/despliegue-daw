@@ -2,7 +2,7 @@
 
 ## Contexto
 
-El equipo con el que trabajas ha decidido que, a partir de ahora, todo lo que se despliegue viajará empaquetado en imágenes. Antes de empaquetar la aplicación, te toca lo que le toca a todo el mundo: **manejar con soltura contenedores de otros**, saber inspeccionarlos y no dejar el equipo lleno de restos.
+El equipo con el que trabajas ha decidido que, a partir de ahora, todo lo que se despliegue viajará empaquetado en imágenes. Antes de empaquetar la aplicación, te toca lo que le toca a todo el mundo: **manejar con soltura contenedores de otros, saber inspeccionarlos y no dejar el equipo lleno de restos**.
 
 Como primer encargo relacionado con Escaparate vas a preparar algo pequeño pero útil: una imagen de PostgreSQL capaz de crear por sí sola la base de datos de pruebas del proyecto.
 
@@ -12,9 +12,9 @@ No recibirás una nueva versión de Escaparate para esta actividad. Utilizarás 
 
 - **Ejecutar** contenedores publicando puertos y pasando configuración desde fuera.
 - **Diagnosticar** utilizando logs y una shell dentro del contenedor.
-- **Comprobar** qué sobrevive y qué desaparece en distintos estados del ciclo de vida.
+- **Distinguir** imagen y contenedor observando qué cambia al detener, eliminar o recrear.
 - **Construir** una imagen sencilla a partir de otra.
-- **Publicar** una imagen propia en un registro.
+- **Publicar** una imagen propia en un registro y comprobar que puede descargarse desde fuera de tu equipo.
 
 ## Requisitos previos
 
@@ -27,7 +27,7 @@ docker version
 Si la parte del servidor da error de permisos, avisa antes de seguir: tu usuario tiene que pertenecer al grupo que puede dar órdenes al demonio de Docker.
 
 - El repositorio `daw-despliegue` creado en la actividad 1.2, clonado en tu equipo.
-- Dentro de `escaparate/db/` deben estar los scripts de inicialización de la base de datos:
+- Dentro de `escaparate/db/` deben estar:
 
 ```text
 escaparate/
@@ -36,8 +36,8 @@ escaparate/
     └── 02-data.sql
 ```
 
-- **El PAT** `DAW - Curso` **creado en la actividad 1.2 disponible**. Si elegiste la alternativa de mínimo privilegio, crearás en el paso 9 la credencial específica para GHCR.
-- Tu rama de esta sesión, creada antes de empezar:
+- El PAT `DAW - Curso` disponible.
+- Tu rama de esta sesión:
 
 ```bash
 git switch main
@@ -46,7 +46,7 @@ git switch -c sesion-03
 ```
 
 !!! info "Documenta la actividad en el repositorio"
-    Crea al comenzar la sesión:
+    Crea al comenzar:
 
     ```text
     entregas/
@@ -56,105 +56,118 @@ git switch -c sesion-03
             └── img/
     ```
 
-    Documenta en `actividad-2.1.md` las respuestas, reflexiones y resultados que se pidan durante la actividad. Guarda las capturas en `img/` e insértalas en el Markdown mediante rutas relativas.
-
-    Los ficheros técnicos de despliegue no se duplican dentro de `entregas/`: permanecerán en `practicas/`, en la ubicación indicada en cada paso.
-
-!!! info "Reparto de tiempo orientativo"
-    - Pasos 1 a 4: unos 35 minutos. 
-    - Pasos 5 y 6: unos 20 min. 
-    - Pasos 7 a 10: unos 35 min.
+    Documenta únicamente las respuestas, reflexiones y resultados que se pidan. Guarda las **cuatro evidencias** solicitadas en `img/` e insértalas mediante rutas relativas.
 
 ---
 
-## Paso 1: Arranca algo y publica su puerto
+## Paso 1: Ejecuta tu primer contenedor
 
-Pon en marcha, en segundo plano, un contenedor a partir de la imagen `nginx:1.30.4-alpine`, de forma que puedas verlo desde el navegador de tu equipo en el puerto **8080**. Dale un nombre reconocible en lugar de dejar que Docker invente uno.
+Pon en marcha, en segundo plano, un contenedor a partir de `nginx:1.30.4-alpine`, publicado en el puerto **8080** y con un nombre reconocible.
 
-Después comprueba desde el terminal qué contenedores tienes en marcha.
+Después comprueba qué contenedores tienes en marcha.
 
-**Comprueba:** el navegador muestra la página de bienvenida del servidor en `http://localhost:8080`.
-
-**Captura:** listado de contenedores en ejecución, con el nombre y el puerto visibles.
+**Comprueba:** `http://localhost:8080` muestra la página de bienvenida de Nginx.
 
 !!! tip "Fíjate en la etiqueta"
-    No hemos escrito `nginx` a secas: hemos fijado versión y variante. A partir de ahora debes acostumbrarte a saber qué imagen concreta estás ejecutando.
+    No hemos escrito `nginx` a secas: hemos fijado versión y variante.
 
 ---
 
-## Paso 2: Lee los logs
+## Paso 2: Obsérvalo desde fuera y desde dentro
 
-Recarga la página del navegador tres o cuatro veces y pide después al contenedor que muestre su salida. Cada recarga debe aparecer en ella.
+Recarga la página tres o cuatro veces y consulta los logs del contenedor.
 
-Ahora solicita una dirección que no exista, por ejemplo `http://localhost:8080/no-existe`, y vuelve a mirar los logs.
+Solicita después:
 
-**Comprueba:** distingues las peticiones correctas de la que no lo era por su código de estado.
+```text
+http://localhost:8080/no-existe
+```
 
-**Captura:** salida del contenedor con ambos tipos de petición.
+y vuelve a mirar los logs.
 
----
+**Comprueba:** distingues peticiones correctas y fallidas por su código de estado.
 
-## Paso 3: Entra dentro
+Abre una shell **dentro** del contenedor y averigua:
 
-Abre una shell **dentro** del contenedor y responde con hechos a dos preguntas:
+- qué sistema operativo utiliza;
+- qué hay en el directorio desde el que Nginx sirve sus ficheros.
 
-- ¿Qué sistema operativo dice tener el contenedor?
-- ¿Qué hay en el directorio desde el que Nginx sirve sus ficheros?
-
-Ya que estás dentro, **modifica la página de bienvenida** para que muestre un texto tuyo. Sal y recarga el navegador.
+Modifica la página de bienvenida para que muestre un texto tuyo. Sal y recarga el navegador.
 
 **Comprueba:** el navegador muestra tu texto.
 
-**Captura:** comandos ejecutados dentro del contenedor y página modificada.
+**Evidencia 1:** una captura donde se vea el contenedor en ejecución y logs con peticiones correctas y una fallida.
 
 ---
 
-## Paso 4: El experimento que hay que entender
+## Paso 3: Imagen y contenedor no son lo mismo
 
-Haz esta secuencia en orden y **anota después de cada paso si tu texto sigue apareciendo o no**:
+### 3.1. Detén y vuelve a arrancar
 
-1. Detén el contenedor y vuelve a arrancarlo.
-2. Elimina el contenedor y crea uno nuevo, exactamente igual, a partir de la misma imagen.
+Detén el primer contenedor, vuelve a arrancarlo y abre otra vez `http://localhost:8080`.
 
-**Captura:** navegador después de cada uno de los dos pasos.
+**Comprueba:** tu modificación sigue apareciendo.
 
-!!! question "Reflexiona"
-    Tu texto ha sobrevivido a una de las operaciones y no a la otra. **¿Dónde estaba escrito exactamente ese fichero y por qué la imagen de la que arrancan ambos contenedores no lo contiene?** Si en lugar de una frase fuera la base de datos de una tienda, ¿qué acabas de aprender?
+### 3.2. Crea otro contenedor desde la misma imagen
+
+Sin eliminar el primero, arranca un **segundo** contenedor desde `nginx:1.30.4-alpine`, con otro nombre y publicado en el puerto **8081**.
+
+Abre:
+
+```text
+http://localhost:8080
+http://localhost:8081
+```
+
+**Comprueba:**
+
+- el primero muestra tu página modificada;
+- el segundo muestra la página original de la imagen.
+
+Modifica ahora la página del segundo contenedor con un texto distinto.
+
+**Evidencia 2:** una captura donde se vea que dos contenedores creados desde la misma imagen muestran contenido diferente.
+
+### 3.3. Elimina y recrea
+
+Elimina el primer contenedor y vuelve a crearlo con el mismo nombre, el mismo puerto y **la misma imagen**.
+
+**Comprueba:** la modificación del primer contenedor ya no existe.
+
+En `actividad-2.1.md` responde:
+
+1. ¿Por qué detener y volver a arrancar conserva la modificación?
+2. ¿Por qué dos contenedores de la misma imagen pueden tener contenido diferente?
+3. ¿Por qué eliminar y recrear hace desaparecer la modificación?
+4. Si ese fichero fuera la base de datos de una tienda, ¿qué problema tendrías?
+
+!!! question "La idea que debes conservar"
+    ¿Dónde estaba realmente escrito tu cambio: en la imagen o en el contenedor?
 
 ---
 
-## Paso 5: Dos contenedores, una imagen
+## Paso 4: Limpia antes de construir
 
-Arranca un **segundo** contenedor de la misma imagen, con otro nombre y publicado en el puerto 8081. Modifica su página de bienvenida con un texto distinto.
+Detén y elimina los contenedores de Nginx.
 
-**Comprueba:** `http://localhost:8080` y `http://localhost:8081` muestran textos diferentes.
+Comprueba:
 
-**Captura:** las dos páginas y el listado de contenedores.
+```bash
+docker ps -a
+```
 
-Documenta en `actividad-2.1.md`: si ahora eliminaras el primer contenedor, ¿qué le pasaría al segundo y por qué?
+No debe quedar ninguno de esta parte de la actividad.
 
----
-
-## Paso 6: Recoge
-
-Antes de limpiar, apunta cuánto espacio están ocupando en tu equipo las imágenes y los contenedores. Después detén y elimina los dos contenedores, elimina la imagen descargada y vuelve a medir.
-
-**Comprueba:** no queda ningún contenedor de la prueba, ni siquiera detenido.
-
-**Captura:** medida de espacio antes y después.
-
-!!! danger "La norma de la limpieza"
-    Los equipos del aula los utilizan otros grupos. Toda práctica termina sin contenedores tuyos en ejecución y sin imágenes que ya no necesites. Este hábito también será importante en la nube, donde dejar recursos funcionando puede tener coste.
+??? info "Si te sobra tiempo: cuánto ocupa Docker"
+    Ejecuta `docker system df` antes y después de limpiar y observa qué espacio ocupaban los recursos eliminados.
 
 ---
 
-## Paso 7: Una base de datos que se inicializa sola
+## Paso 5: Construye tu primera imagen
 
-Hasta ahora has ejecutado imágenes creadas por otros. Ahora vas a construir una muy sencilla.
+El objetivo es obtener una imagen de PostgreSQL que cree automáticamente las tablas de Escaparate y cargue los productos de ejemplo.
 
-El objetivo es obtener una imagen de PostgreSQL que, al arrancar por primera vez con un almacenamiento vacío, cree las tablas de Escaparate y cargue los productos de ejemplo **sin ejecutar manualmente los scripts SQL**.
-
-Los scripts ya están en:
+Los scripts están en:
 
 ```text
 escaparate/db/
@@ -162,9 +175,13 @@ escaparate/db/
 └── 02-data.sql
 ```
 
-La imagen oficial de PostgreSQL dispone de un mecanismo de inicialización: durante el primer arranque ejecuta los scripts que encuentra en un directorio concreto. **Busca en la documentación oficial de la imagen cuál es ese directorio** y anota de dónde has obtenido el dato.
+La imagen oficial de PostgreSQL ejecuta durante la inicialización los scripts colocados en:
 
-Crea ahora:
+```text
+/docker-entrypoint-initdb.d/
+```
+
+Crea:
 
 ```text
 practicas/
@@ -173,159 +190,100 @@ practicas/
         └── Dockerfile
 ```
 
-El `Dockerfile` debe tener únicamente lo necesario para:
+El `Dockerfile` debe:
 
 1. partir de `postgres:18-alpine`;
-2. copiar los dos scripts de `escaparate/db/` al directorio de inicialización.
+2. copiar los dos scripts a `/docker-entrypoint-initdb.d/`.
 
 !!! info "Atención al contexto de construcción"
-    El `Dockerfile` está en `practicas/docker/db/`, pero los ficheros que necesita están en `escaparate/db/`. Al construir la imagen tendrás que elegir un **contexto de construcción** desde el que Docker pueda acceder a esos scripts. Los caminos utilizados por `COPY` se interpretan respecto a ese contexto, no respecto a la ubicación del `Dockerfile`.
+    El `Dockerfile` está en `practicas/docker/db/`, pero los scripts están en `escaparate/db/`.
 
-Construye la imagen local con la etiqueta:
+    Al construir debes elegir un **contexto de construcción** desde el que Docker pueda acceder a esos ficheros. Los caminos de `COPY` se interpretan respecto al contexto, no respecto a la ubicación del `Dockerfile`.
+
+Construye la imagen con la etiqueta:
 
 ```text
 escaparate-db:1.0.0
 ```
 
-**Comprueba:** la imagen aparece en el listado local con esa etiqueta exacta.
-
-**Captura:** `Dockerfile`, comando utilizado para construir y salida de la construcción.
+**Comprueba:** la imagen aparece en el listado local con esa etiqueta.
 
 !!! info "Inicializar no es migrar"
-    Aquí personalizamos una imagen de PostgreSQL para aprender cómo se construyen imágenes y cómo funciona su mecanismo de inicialización. En un proyecto real, la evolución del esquema suele gestionarse mediante migraciones versionadas, por ejemplo con Flyway o Liquibase. Hoy solo necesitas distinguir ambos problemas.
+    Aquí personalizamos una imagen para aprender construcción e inicialización. En un proyecto real, la evolución del esquema suele gestionarse mediante migraciones versionadas como Flyway o Liquibase.
 
 ---
 
-## Paso 8: Arráncala con las credenciales desde fuera
+## Paso 6: Configúrala desde fuera
 
-Pon en marcha un contenedor de tu imagen indicándole **al arrancar**:
+Arranca un contenedor de tu imagen indicándole al arrancar:
 
 - usuario;
 - contraseña;
 - nombre de la base de datos.
 
-Publica PostgreSQL en el puerto **5433** de tu equipo.
+Publica PostgreSQL en el puerto **5433**.
 
-Conéctate después desde dentro del propio contenedor utilizando `psql` y comprueba:
+Conéctate desde dentro con `psql` y comprueba:
 
 - que existe la tabla `productos`;
 - que `SELECT count(*) FROM productos;` devuelve **8** registros.
 
-Ahora elimina ese contenedor y arranca otro **de la misma imagen** con un usuario y una contraseña diferentes.
+Elimina ese contenedor y arranca otro **de la misma imagen** con un usuario y una contraseña diferentes.
 
-**Comprueba:** el esquema corresponde a Escaparate, la consulta devuelve **8 productos** y la misma imagen funciona con credenciales distintas.
+**Comprueba:** el esquema sigue siendo el de Escaparate y la consulta devuelve **8 productos**.
 
-**Captura:** listado de tablas, cuenta de productos y segundo arranque con las nuevas credenciales.
-
-!!! tip "Por qué 5433 y no 5432"
-    Podría existir ya un PostgreSQL instalado en la máquina escuchando en 5432. Publicarlo en otro puerto evita ese conflicto y te obliga a distinguir el puerto del anfitrión del puerto interno del contenedor.
+**Evidencia 3:** captura del listado de tablas o de la consulta con resultado `8`, y del segundo arranque con credenciales distintas. No muestres contraseñas reales.
 
 !!! question "Reflexiona"
-    La misma imagen ha funcionado con dos usuarios y dos contraseñas distintas. **¿Dónde estaban esas credenciales si no estaban dentro de la imagen?** ¿Qué tendría de malo escribirlas en el `Dockerfile` para no tener que proporcionarlas al arrancar?
+    La misma imagen ha funcionado con dos juegos de credenciales distintos. **¿Dónde estaban esas credenciales si no estaban dentro de la imagen?** ¿Qué tendría de malo escribirlas en el `Dockerfile`?
 
 ---
 
-## Paso 9: Publícala
+## Paso 7: Publícala en GHCR
 
-Hasta ahora las imágenes solo han existido en tu equipo. Para que otra persona pueda descargarlas necesitas un registro de contenedores. Utilizaremos GitHub Container Registry (`ghcr.io`).
+### 7.1. Prepara la credencial
 
-### 9.1 Prepara la credencial para GHCR
-
-En la Actividad 1.2 aprendiste qué es un Personal Access Token y configuraste la autenticación de GitHub por HTTPS.
-
-Si seguiste la **opción simplificada del curso**, tu PAT classic `DAW - Curso` ya contiene:
+Si seguiste la opción simplificada del curso, tu PAT classic `DAW - Curso` ya contiene:
 
 ```text
 repo
 write:packages
 ```
 
-Por tanto, **no necesitas crear otro token**. El permiso `write:packages`, que hasta ahora no habías utilizado, es el que permitirá publicar la imagen en GitHub Container Registry.
+No necesitas crear otro token.
 
-??? info "Si elegiste la alternativa de mínimo privilegio"
-    Si en la Actividad 1.2 utilizaste un PAT *fine-grained* limitado a `daw-despliegue`, no lo reutilices para GHCR.
+??? info "Si elegiste mínimo privilegio"
+    Utiliza un PAT classic independiente para GHCR con `write:packages`.
 
-    GitHub Packages requiere actualmente un **Personal Access Token (classic)** para la autenticación manual. Crea ahora uno independiente:
-
-    ```text
-    GitHub
-    → Settings
-    → Developer settings
-    → Personal access tokens
-    → Tokens (classic)
-    → Generate new token (classic)
-    ```
-
-    Utiliza:
-
-    ```text
-    Nombre: DAW - GHCR
-    Caducidad: hasta el final del curso o la indicada por el profesor
-    Scope: write:packages
-    ```
-
-    No necesita `delete:packages` ni acceso general a tus repositorios. Si al seleccionar `write:packages` GitHub marca también `repo` automáticamente, puedes abrir directamente:
-
-    ```text
-    https://github.com/settings/tokens/new?scopes=write:packages
-    ```
-
-    para crear el token con el ámbito de paquetes sin añadir acceso general a repositorios. Guarda el token en tu gestor de contraseñas y no lo incluyas en el repositorio ni en capturas.
-
-### 9.2 Inicia sesión en GHCR
-
-Git y Docker son clientes diferentes. Haber utilizado un PAT con `git push` no significa que Docker esté autenticado en `ghcr.io`.
-
-En Linux, inicia sesión con:
+### 7.2. Inicia sesión
 
 ```bash
 docker login ghcr.io -u <tu-usuario>
 ```
 
-Cuando Docker solicite la contraseña:
+Cuando Docker solicite la contraseña, utiliza el PAT correspondiente. No uses la contraseña normal de GitHub.
 
-- si seguiste la opción simplificada, utiliza el mismo PAT `DAW - Curso`;
-- si elegiste mínimo privilegio, utiliza el PAT `DAW - GHCR` creado para paquetes.
+### 7.3. Etiqueta y publica
 
-No utilices la contraseña normal de GitHub.
-
-Si todo ha ido bien, Docker mostrará:
-
-```text
-Login Succeeded
-```
-
-!!! info "Dos servicios, dos sesiones"
-    Git se autentica contra `github.com` y Docker contra `ghcr.io`. `docker login` y `docker logout` afectan a la sesión de Docker con el registro y **no cierran ni cambian la autenticación que utiliza Git para `pull` o `push`**.
-
-!!! question "Reflexiona"
-    La opción simplificada reutiliza un PAT classic con `repo` y `write:packages`. ¿Qué riesgo adicional supone que una sola credencial tenga ambas capacidades? ¿Cómo reduce ese riesgo la alternativa de separar el acceso al repositorio y al registro de contenedores?
-
-### 9.3 Etiqueta y publica la imagen
-
-Etiqueta tu imagen con el nombre completo del registro:
+Etiqueta tu imagen como:
 
 ```text
 ghcr.io/<tu-usuario>/escaparate-db:1.0.0
 ```
+
 y publícala.
 
-Después entra en GitHub, localiza el paquete recién creado y configúralo como **público**.
+Después localiza el paquete en GitHub y configúralo como **público**.
 
-!!! info "Por qué el paquete es público"
-    El repositorio `daw-despliegue` seguirá siendo privado durante el curso. El paquete de GHCR se hace público únicamente para que pueda verificarse desde un equipo externo sin utilizar credenciales del alumno. En un proyecto real podría mantenerse privado y limitar su acceso a usuarios o sistemas autorizados.
+### 7.4. Demuestra que no dependes de la copia local
 
-### 9.4 Comprueba que lo publicado funciona
-
-Primero cierra la sesión de **Docker** con el registro:
+Cierra la sesión del registro:
 
 ```bash
 docker logout ghcr.io
 ```
 
-Esto no afecta a la autenticación de Git con `github.com`; podrás seguir utilizando `git pull` y `git push` normalmente.
-
-Elimina después los contenedores de prueba que todavía utilicen la imagen, si los hubiera, y borra sus referencias locales:
+Elimina los contenedores de prueba y las referencias locales:
 
 ```bash
 docker image rm ghcr.io/<tu-usuario>/escaparate-db:1.0.0
@@ -338,20 +296,13 @@ Vuelve a descargarla **sin iniciar sesión**:
 docker pull ghcr.io/<tu-usuario>/escaparate-db:1.0.0
 ```
 
-La comprobación debe demostrar que utilizas realmente la copia publicada y que una persona ajena a tu cuenta puede obtenerla sin autenticarse.
+Arráncala de nuevo y comprueba que crea correctamente las tablas y los **8 productos**.
 
-**Comprueba:**
-
-- el paquete aparece asociado a tu cuenta de GitHub;
-- puede descargarse sin iniciar sesión una vez configurado como público;
-- la imagen descargada arranca correctamente;
-- los scripts crean las tablas y los productos igual que antes.
-
-**Captura:** página del paquete publicado y arranque después de volver a descargarlo.
+**Evidencia 4:** página del paquete publicado y prueba de descarga/ejecución después de eliminar las referencias locales.
 
 ---
 
-## Paso 10: Tu chuleta y cierre de la sesión
+## Paso 8: Documenta y cierra
 
 Crea:
 
@@ -362,49 +313,41 @@ entregas/
         └── docker-chuleta.md
 ```
 
-Incluye **ocho comandos** de los utilizados hoy, elegidos por ti. Para cada uno escribe:
+Elige **cinco comandos** de los utilizados hoy. Para cada uno escribe:
 
-- el comando, con las opciones necesarias;
+- el comando;
 - una línea explicando qué hace;
-- una línea indicando qué problema resuelve o cuándo lo utilizarías.
+- una línea indicando cuándo lo utilizarías.
 
-No copies una tabla de teoría. La utilidad está en seleccionar los comandos que realmente has necesitado y explicarlos con tus palabras.
+Revisa `actividad-2.1.md` y comprueba que contiene:
 
-Antes de cerrar la sesión, revisa `actividad-2.1.md` y comprueba que contiene todas las respuestas, reflexiones y capturas solicitadas.
+- las respuestas del Paso 3;
+- la reflexión del Paso 6;
+- las cuatro evidencias;
+- cualquier incidencia relevante y cómo la resolviste.
 
-Después sigue el flujo que ya utilizaste en la actividad 1.2:
+Después:
 
-1. registra los cambios de la sesión;
+1. registra los cambios;
 2. publica `sesion-03`;
 3. abre una Pull Request hacia `main`;
-4. revisa los cambios.
-
-Antes de fusionar la Pull Request, haz una captura de la PR abierta y del fichero `docker-chuleta.md` renderizado. Guarda ambas en `entregas/tema2/actividad-2.1/img/`, enlázalas desde `actividad-2.1.md` y registra y publica esos últimos cambios.
-
-Comprueba que la Pull Request se actualiza con el nuevo commit. Cuando toda la documentación esté incluida, fusiónala mediante **Create a merge commit** y actualiza tu `main` local.
+4. espera a que terminen las comprobaciones;
+5. revisa los cambios;
+6. fusiona mediante **Create a merge commit**;
+7. actualiza tu `main` local.
 
 **Comprueba:**
 
 - la PR aparece fusionada;
 - `entregas/tema2/actividad-2.1/` está en `main`;
 - `practicas/docker/db/Dockerfile` está en `main`;
-- el grafo permite identificar la rama `sesion-03` y su fusión.
-
----
-
-## Si te sobra tiempo
-
-Arranca un contenedor de tu imagen, **añade manualmente un producto nuevo** a la tabla y comprueba que existe. Elimina después ese contenedor y crea otro igual.
-
-El producto añadido ya no debería estar, pero los productos de ejemplo volverán a aparecer.
-
-Con ese resultado, responde: si PostgreSQL guardara sus ficheros en un almacenamiento que sobreviviera al contenedor, **¿volverían a ejecutarse los scripts de inicialización en cada arranque?** Razona qué tendría que comprobar la imagen antes de ejecutarlos.
+- el grafo muestra la rama `sesion-03` y su fusión.
 
 ---
 
 ## Verificación
 
-Para dar por válida la práctica se podrá ejecutar, sustituyendo `<usuario>` por el correspondiente:
+Para dar por válida la práctica se podrá ejecutar:
 
 ```bash
 docker logout ghcr.io 2>/dev/null || true
@@ -413,11 +356,7 @@ docker rmi ghcr.io/<usuario>/escaparate-db:1.0.0 2>/dev/null || true
 
 docker pull ghcr.io/<usuario>/escaparate-db:1.0.0
 
-docker run -d --name verifica -p 5434:5432 \
-  -e POSTGRES_USER=profesor \
-  -e POSTGRES_PASSWORD=otra-distinta \
-  -e POSTGRES_DB=escaparate \
-  ghcr.io/<usuario>/escaparate-db:1.0.0
+docker run -d --name verifica -p 5434:5432   -e POSTGRES_USER=profesor   -e POSTGRES_PASSWORD=otra-distinta   -e POSTGRES_DB=escaparate   ghcr.io/<usuario>/escaparate-db:1.0.0
 
 sleep 10
 
@@ -427,43 +366,42 @@ docker exec verifica psql -U profesor -d escaparate -c "SELECT count(*) FROM pro
 docker rm -f verifica
 ```
 
-Y debe observarse:
+Debe observarse:
 
-- La imagen se descarga sin necesidad de iniciar sesión.
-- Arranca con unas credenciales distintas de las utilizadas por el alumno.
-- Existe la tabla `productos` y la consulta devuelve **8** registros.
-- En el repositorio está `practicas/docker/db/Dockerfile`.
-- En el repositorio está `entregas/tema2/actividad-2.1/actividad-2.1.md`.
-- En el repositorio está `entregas/tema2/actividad-2.1/docker-chuleta.md`.
-- Las capturas están en `entregas/tema2/actividad-2.1/img/` y se enlazan mediante rutas relativas.
-- Ningún token ni contraseña utilizada durante la práctica ha entrado en el repositorio.
-- La entrega ha llegado a `main` mediante la Pull Request de `sesion-03`.
+- la imagen se descarga sin iniciar sesión;
+- arranca con credenciales distintas;
+- existe la tabla `productos`;
+- la consulta devuelve **8** registros;
+- `practicas/docker/db/Dockerfile` está versionado;
+- `actividad-2.1.md` y `docker-chuleta.md` están en el repositorio;
+- las cuatro evidencias están enlazadas mediante rutas relativas;
+- ningún token ni contraseña real ha entrado en el repositorio;
+- la entrega ha llegado a `main` mediante la PR de `sesion-03`.
 
 ---
 
 ## Qué se entrega
 
-- [ ] `entregas/tema2/actividad-2.1/actividad-2.1.md` con respuestas, reflexiones y resultados.
-- [ ] `entregas/tema2/actividad-2.1/img/` con las capturas enlazadas mediante rutas relativas.
-- [ ] `entregas/tema2/actividad-2.1/docker-chuleta.md`.
-- [ ] Ciclo de vida documentado: arranque, puerto publicado, logs y shell.
-- [ ] Experimento del paso 4 con explicación de la persistencia dentro del contenedor.
-- [ ] Dos contenedores independientes creados desde una misma imagen.
-- [ ] Medida de espacio antes y después de limpiar.
+- [ ] `actividad-2.1.md` con respuestas, reflexiones y resultados.
+- [ ] Carpeta `img/` con las cuatro evidencias.
+- [ ] `docker-chuleta.md` con cinco comandos elegidos y explicados.
+- [ ] Experimento que demuestra la diferencia entre detener, crear otra instancia y eliminar/recrear.
 - [ ] `practicas/docker/db/Dockerfile`.
 - [ ] Imagen `escaparate-db:1.0.0` funcionando con dos juegos de credenciales y **8 productos**.
 - [ ] Imagen publicada como paquete público en `ghcr.io`.
 - [ ] Pull Request `sesion-03 → main` fusionada.
 
 !!! info "Dónde queda la entrega"
-    La evidencia de la actividad queda versionada en el repositorio privado. El paquete de GHCR es público únicamente para permitir su comprobación sin credenciales.
+    La evidencia queda versionada en el repositorio privado. El paquete de GHCR es público únicamente para permitir su comprobación sin credenciales.
 
 ---
 
 ## ✅ Cierre
 
-Al terminar ya sabes ejecutar una imagen que te dan, publicar sus puertos, pasarle configuración desde fuera, leer sus logs, entrar en un contenedor y distinguir entre detenerlo, eliminarlo y volver a crearlo. También has comprobado que modificar un contenedor no modifica la imagen de la que nació.
+Al terminar ya sabes ejecutar una imagen, publicar puertos, pasar configuración desde fuera, leer logs, entrar en un contenedor y distinguir entre detenerlo, crear otra instancia, eliminarlo y recrearlo.
 
-Además, has construido y publicado una imagen sencilla relacionada con Escaparate. Los scripts de base de datos que ya estaban en tu repositorio se han convertido en una pieza que puede inicializar PostgreSQL automáticamente, mientras que las credenciales siguen estando fuera de la imagen y se deciden al arrancarla.
+También has comprobado directamente que **modificar un contenedor no modifica la imagen de la que nació** y que dos contenedores creados desde la misma imagen pueden evolucionar de forma independiente.
 
-En la próxima sesión harás lo mismo con la aplicación de verdad. Esta vez ya no bastará con copiar dos ficheros: Escaparate tendrá que compilarse con Java y Maven, y tendrás que decidir qué debe formar parte de la imagen final y qué debería quedarse fuera.
+Además, has construido y publicado una imagen sencilla relacionada con Escaparate. Los scripts de base de datos se han convertido en una pieza capaz de inicializar PostgreSQL automáticamente, mientras que las credenciales siguen estando fuera de la imagen.
+
+En la próxima sesión harás lo mismo con la aplicación completa. Esta vez ya no bastará con copiar dos ficheros: Escaparate tendrá que compilarse con Java y Maven, y tendrás que decidir qué debe formar parte de la imagen final y qué debería quedarse fuera.

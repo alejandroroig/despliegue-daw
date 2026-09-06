@@ -245,7 +245,12 @@ Lo importante no es la sintaxis, es la decisión: **publicar un puerto es abrir 
 
 Ya sabes la respuesta: la capa de escritura se va con el contenedor. Si arrancas una base de datos sin más y luego eliminas el contenedor, los datos **no están en ninguna parte**. No hay papelera.
 
-Docker ofrece dos formas de sacar datos de esa capa condenada:
+!!! info "Hoy necesitas entender el problema"
+    En esta sesión no vas a configurar todavía persistencia real. Lo importante es comprobar que los datos que viven únicamente dentro del contenedor desaparecen cuando ese contenedor se sustituye.
+
+    Más adelante utilizarás volúmenes y montajes para resolver este problema.
+
+Docker ofrece dos formas habituales de sacar datos de esa capa de escritura:
 
 | | Volumen | Montaje de directorio del anfitrión |
 |---|---|---|
@@ -255,14 +260,14 @@ Docker ofrece dos formas de sacar datos de esa capa condenada:
 | **Portabilidad** | Alta: no depende de la estructura de carpetas de la máquina | Baja: la ruta tiene que existir en cada máquina |
 | **Se comparte entre contenedores** | Sí, montando el mismo volumen | Sí, pero atado a esa máquina |
 
-La regla práctica: **volumen para los datos que deben sobrevivir, montaje de carpeta para introducir ficheros del anfitrión**. Un dato importante que vive únicamente en la capa de escritura de un contenedor desaparecerá cuando ese contenedor sea sustituido y tampoco será visible desde otras copias de la aplicación.
+Como orientación inicial, un **volumen** suele utilizarse para datos que deben sobrevivir al contenedor, mientras que un **montaje de carpeta** permite introducir o compartir ficheros del anfitrión. No necesitas configurar ninguno de los dos en la actividad de hoy.
 
 !!! info "Conexión con Escaparate"
     Más adelante observarás este problema con los ficheros subidos por la aplicación. Por ahora basta con recordar que **contenedor y dato persistente tienen ciclos de vida distintos**.
 
 ---
 
-## 🕸️ 8. Redes, y la deuda que dejamos abierta hoy
+## 🕸️ 8. Para situarnos: cómo se comunicarán varios contenedores
 
 Cuando Docker arranca, crea una red por defecto a la que se conectan todos los contenedores que no digan otra cosa. Ahí dentro se ven entre ellos por dirección IP, pero **no por nombre**: si tu aplicación busca un servidor llamado `basededatos`, no lo va a encontrar.
 
@@ -302,8 +307,10 @@ Puedes comprobar qué variables recibió un contenedor con:
 docker inspect ejemplo-bd
 ```
 
-!!! danger "Esto se corrige en todas las actividades del curso"
-    Una contraseña escrita **dentro** de la imagen viaja a todas partes donde vaya esa imagen, queda en sus capas para siempre y cualquiera que la descargue puede leerla. Aunque borres esa línea y construyas otra versión, la capa antigua sigue publicada. Las credenciales se pasan **en el momento de ejecutar**, nunca se hornean en el paquete.
+!!! danger "Los secretos no se incorporan a una imagen"
+    Si un secreto entra en una imagen publicada, debe considerarse comprometido. Eliminarlo después no garantiza que desaparezca de las capas anteriores de esa imagen y, además, las versiones que ya se hayan distribuido pueden seguir conteniéndolo.
+
+    Las credenciales se proporcionan al ejecutar el contenedor mediante mecanismos de configuración adecuados; no se escriben en el `Dockerfile` ni se versionan.
 
 ---
 

@@ -381,6 +381,39 @@ La etapa final también debe contener solo lo necesario.
 
 En este módulo utilizaremos variantes mínimas que todavía permitan inspeccionar el contenedor cuando algo falle.
 
+### 5.3. De una imagen funcional a una imagen preparada para desplegar
+
+Una imagen puede arrancar correctamente y, aun así, ser una mala imagen de despliegue. La mejora completa no consiste en una única técnica, sino en combinar varias decisiones:
+
+| Aspecto | Primera versión sencilla | Versión preparada para desplegar |
+|---|---|---|
+| **Contexto** | copia todo lo disponible | excluye contenido innecesario con `.dockerignore` |
+| **Caché** | un cambio pequeño invalida gran parte de la construcción | separa lo estable de lo que cambia con frecuencia |
+| **Construcción** | Maven, JDK y código quedan en la imagen | una etapa compila y otra conserva solo el resultado |
+| **Runtime** | contiene herramientas que producción no necesita | contiene el runtime y el artefacto ejecutable |
+| **Usuario** | puede terminar ejecutándose como `root` | utiliza un usuario sin privilegios |
+| **Escritura** | la aplicación escribe donde pueda | prepara explícitamente las rutas que necesita |
+
+```text
+imagen funcional
+    ↓
+contexto limpio
+    ↓
+caché aprovechable
+    ↓
+construcción multietapa
+    ↓
+runtime mínimo
+    ↓
+usuario sin privilegios
+    ↓
+rutas de escritura controladas
+    ↓
+imagen preparada para desplegar
+```
+
+No todas estas mejoras persiguen lo mismo. Algunas reducen **tiempo de construcción**, otras reducen **tamaño** y otras disminuyen **privilegios o superficie de ataque**. La comparación debe indicar siempre qué problema está resolviendo cada decisión.
+
 ---
 
 ## 🔍 6. Una imagen también envejece
@@ -501,4 +534,4 @@ Lo que basta con reconocer: extracción de artefactos con `--target`, bases sin 
 ---
 
 
-En la actividad aplicarás estos patrones al proyecto del módulo: partirás de una imagen funcional y la mejorarás utilizando contexto reducido, caché, construcción multietapa y un usuario sin privilegios.
+En la actividad aplicarás estos patrones al proyecto del módulo: partirás de una imagen funcional y la mejorarás combinando contexto limpio, caché, construcción multietapa, un runtime más ajustado y un usuario sin privilegios.

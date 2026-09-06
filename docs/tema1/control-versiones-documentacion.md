@@ -28,14 +28,15 @@ flowchart LR
     B["Rama<br/>sesion-XX"] --> W["Trabajar"]
     W --> C["Commit"]
     C --> P["Push + PR"]
-    P --> M["Merge<br/>main"]
+    P --> V["Revisión +<br/>comprobaciones"]
+    V --> M["Merge<br/>main"]
 ```
 
 Este será el flujo habitual del módulo:
 
 - Antes de empezar una actividad, parte de `main` actualizado y crea la rama de la sesión. 
 - Los cambios y commits se realizan en esa rama. 
-- Después, la rama se publica y se integra en `main` mediante una Pull Request.
+- Después, la rama se publica y se propone su integración en `main` mediante una Pull Request. Antes de fusionar, se revisan los cambios y las comprobaciones asociadas.
 
 ---
 
@@ -459,9 +460,9 @@ Eso no mueve el historial. Simplemente coloca aquella versión del fichero en tu
 
 ---
 
-### 4.4. Commit local que quieres rehacer
+### 4.4. Para consultar: rehacer un commit local
 
-Si el commit todavía **no se ha publicado**, puedes mover tu rama hacia atrás.
+Si un commit todavía **no se ha publicado**, Git permite rehacer el historial local. Una posibilidad es mover la rama hacia atrás conservando los cambios:
 
 ```bash
 git reset --soft HEAD~1
@@ -475,8 +476,13 @@ Las variantes principales son:
 | `--mixed` | quedan modificados pero sin preparar |
 | `--hard` | se descartan |
 
+!!! info "No necesitas utilizar `reset` en la actividad de hoy"
+    Lo importante en esta sesión es comprender que un commit **local y todavía no compartido** puede rehacerse, mientras que un error ya publicado se corrige normalmente hacia delante con `revert`.
+
+    `reset` queda aquí como operación de consulta para cuando necesites reconstruir un commit local.
+
 !!! danger "`--hard` borra trabajo"
-    Utilízalo solo cuando sabes exactamente qué estado quieres recuperar.
+    `git reset --hard` descarta modificaciones. Utilízalo únicamente cuando sabes exactamente qué estado quieres recuperar y nunca como forma habitual de corregir commits que ya se han compartido.
 
 ---
 
@@ -794,7 +800,7 @@ La PR crea un espacio para revisar:
 - qué líneas cambian;
 - por qué se hizo el cambio;
 - qué comprobaciones se han realizado;
-- más adelante, qué pruebas automáticas han pasado.
+- qué comprobaciones automáticas han pasado.
 
 ---
 
@@ -866,7 +872,39 @@ No necesitas crear otra PR.
 
 ---
 
-### 7.3. Fusionar y volver a `main`
+### 7.3. Comprobaciones automáticas en una Pull Request
+
+GitHub puede ejecutar tareas automáticamente cuando ocurre un evento en el repositorio, por ejemplo al abrir o actualizar una Pull Request. Una forma habitual de hacerlo es mediante **GitHub Actions**.
+
+Estas automatizaciones se describen en ficheros llamados *workflows*, almacenados en:
+
+```text
+.github/
+└── workflows/
+    └── validar.yml
+```
+
+De momento basta con entender el recorrido:
+
+```text
+push a la rama
+      ↓
+Pull Request
+      ↓
+GitHub ejecuta comprobaciones
+      ↓
+✓ correctas     ✗ alguna falla
+      ↓
+revisar antes de fusionar
+```
+
+Durante las primeras sesiones utilizarás un workflow ya preparado que irá incorporando comprobaciones sencillas sobre el repositorio y el despliegue. **No necesitas entender todavía su sintaxis ni construirlo por tu cuenta.** Lo importante ahora es saber localizar su resultado, abrir el detalle cuando falle y no fusionar una PR que tenga comprobaciones pendientes o incorrectas.
+
+Más adelante estudiaremos qué significan sus eventos, trabajos, pasos y ejecutores, y construiremos una pipeline de integración continua completa.
+
+---
+
+### 7.4. Fusionar y volver a `main`
 
 En este módulo utilizaremos **Create a merge commit** cuando queramos conservar claramente en el grafo la bifurcación y la integración de la rama.
 
@@ -940,28 +978,21 @@ Esta es una forma muy útil de entender por qué una rama y una versión no repr
 
 ---
 
-### 8.2. Commit vacío para observar referencias
+### 8.2. Para consultar: observar cómo se mueven las referencias
 
-A veces interesa crear un commit sin modificar ficheros para estudiar cómo se mueven las referencias:
+Una forma de estudiar la diferencia entre `main`, `origin/main`, `HEAD` y una etiqueta consiste en crear temporalmente un commit local y observar el grafo:
 
 ```bash
 git commit --allow-empty -m "Prueba temporal de referencias"
-```
-
-Después:
-
-```bash
 git log --graph --oneline --all --decorate
 ```
 
-Si ese commit era únicamente una prueba local y quieres volver **exactamente** al estado conocido del remoto:
+Ese experimento permite ver que un nuevo commit local mueve `main` y `HEAD`, mientras `origin/main` y una etiqueta creada anteriormente permanecen señalando el estado previo.
 
-```bash
-git reset --hard origin/main
-```
+!!! info "No realizarás este experimento en la actividad"
+    En la práctica basta con crear y publicar `v0.1.0` y comprender que **la rama seguirá avanzando en sesiones posteriores mientras la etiqueta permanece asociada a un commit concreto**.
 
-!!! danger "Solo en una prueba local controlada"
-    `reset --hard` descarta cambios. No utilices esta operación sobre trabajo que necesites conservar ni para reescribir commits que ya hayas publicado.
+    El commit vacío se conserva aquí únicamente como recurso de consulta para estudiar las referencias de Git en un entorno local controlado.
 
 ---
 
@@ -1375,11 +1406,13 @@ Al terminar deberías poder:
 - preparar solo una parte de los cambios;
 - interpretar y comprobar reglas de `.gitignore`;
 - explicar por qué un secreto no se arregla simplemente borrándolo;
-- distinguir `restore`, `restore --staged`, `reset` y `revert`;
+- elegir entre `restore`, `restore --staged` y `revert` según dónde se encuentre el cambio y si el historial ya se ha compartido;
+- reconocer que un commit local todavía puede rehacerse antes de publicarlo;
 - autenticar Git contra GitHub por HTTPS utilizando un PAT y explicar por qué debe tratarse como un secreto;
 - enlazar un repositorio local con GitHub;
 - trabajar en una rama corta y publicarla;
 - abrir una Pull Request y entender por qué nuevos commits actualizan la misma PR;
+- reconocer las comprobaciones automáticas asociadas a una PR y consultar su resultado;
 - actualizar `main` después de una fusión;
 - distinguir `main`, `origin/main`, `HEAD` y una etiqueta;
 - crear y publicar una etiqueta anotada;
@@ -1409,11 +1442,12 @@ Al terminar deberías poder:
     - Una rama es una referencia móvil; un commit identifica un estado concreto.
     - `origin/main` representa el último estado conocido de la rama remota y no avanza por hacer un commit local.
     - Una Pull Request es el punto de revisión antes de integrar en `main`.
-    - Los commits nuevos publicados en una rama actualizan automáticamente la PR abierta.
+    - Una PR puede ejecutar comprobaciones automáticas; antes de fusionar hay que revisar si han terminado correctamente.
+    - Los commits nuevos publicados en una rama actualizan automáticamente la PR abierta y vuelven a lanzar las comprobaciones asociadas.
     - Una etiqueta permite identificar un commit concreto aunque `main` siga avanzando.
     - Los enlaces e imágenes de la documentación deben utilizar rutas relativas.
     - El README explica qué contiene el repositorio, qué necesita y cómo comprobar progresivamente que el despliegue funciona.
 
 ---
 
-En la actividad aplicarás este flujo a tu repositorio del módulo. La decisión importante no será recordar comandos de memoria, sino identificar **dónde está el cambio** y si el historial **ya se ha compartido** antes de elegir cómo actuar.
+En la actividad aplicarás este flujo a tu repositorio del módulo y verás también su primera comprobación automática. La decisión importante no será recordar comandos de memoria, sino identificar **dónde está el cambio** y si el historial **ya se ha compartido** antes de elegir cómo actuar.

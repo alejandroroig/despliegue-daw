@@ -383,18 +383,14 @@ orquestado
 
 ## 🎯 Qué debes saber hacer al salir de esta sesión
 
-No tienes que memorizar todavía todas las tecnologías anteriores. Al terminar esta primera sesión deberías poder:
+Al terminar esta primera sesión deberías poder:
 
-- explicar qué significa desplegar una aplicación y por qué no equivale a copiar ficheros;
-- distinguir desarrollo, staging y producción;
-- nombrar las propiedades que buscamos en un despliegue profesional;
+- explicar qué significa desplegar una aplicación y por qué no equivale a que "funcione en mi ordenador";
 - distinguir contenido estático y dinámico;
-- diferenciar capas lógicas de unidades físicas o virtuales de despliegue;
-- explicar la diferencia entre monolito y microservicios sin asumir que uno es "mejor";
-- interpretar códigos y cabeceras HTTP como primeras pistas de diagnóstico;
-- identificar las cinco piezas de un despliegue: estáticos, artefacto/runtime, datos, configuración y secretos;
-- describir la arquitectura inicial de Escaparate;
-- situar de forma general Git, Docker, CI/CD, observabilidad y Kubernetes dentro del camino que lleva el código hasta producción.
+- entender que las capas lógicas de una aplicación no determinan cuántas máquinas o servicios necesita;
+- interpretar códigos y algunas cabeceras HTTP como primeras pistas de diagnóstico;
+- identificar las cinco piezas básicas de un despliegue: estáticos, artefacto/runtime, datos, configuración y secretos;
+- distinguir entre lo que puedes observar desde fuera, lo que puedes inferir y lo que no puedes conocer sin acceso al sistema.
 
 ---
 
@@ -414,6 +410,7 @@ No tienes que memorizar todavía todas las tecnologías anteriores. Al terminar 
     - Escaparate comienza como un monolito integrado con frontend y API en Spring Boot, PostgreSQL y almacenamiento de imágenes en filesystem.
     - El camino completo va desde código y repositorio hasta build, pruebas, artefacto, despliegue, verificación y monitorización.
     - El módulo avanza desde procedimientos manuales hacia despliegues reproducibles, automatizados y finalmente orquestados.
+    - Observar no es lo mismo que inferir: una buena diagnosis distingue la evidencia de aquello que solo parece probable.
 
 ---
 
