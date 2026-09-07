@@ -64,33 +64,27 @@ nav:
           - Observabilidad - logs, métricas y alertas: tema3/observabilidad.md
           - Actividad 3.4 - Que te lo cuente el sistema: tema3/actividad_3_4.md
       - Servidor de aplicaciones, estado y rendimiento:
-          - Servidor de aplicaciones - ejecución, estado y rendimiento: tema3/servidor-aplicaciones-rendimiento.md
+          - Servidor de aplicaciones - ejecución, estado y rendimiento: tema3/servidor-aplicaciones.md
           - Actividad 3.5 - El backend por dentro: tema3/actividad_3_5.md
 
-  # Rutas físicas transitorias:
-  # el antiguo tema5 pasa a ser conceptualmente el Tema 4.
-  # Se mantienen las carpetas para no romper enlaces hasta revisar ese bloque.
   - Tema 4 - Integración y despliegue continuos:
-      - Tema 4 - Introducción: tema5/index.md
+      - Tema 4 - Introducción: tema4/index.md
       - Integración continua:
-          - Integración continua: tema5/integracion-continua.md
-          - Actividad 4.1 - La puerta de entrada a main: tema5/actividad_5_1.md
+          - Integración continua: tema4/integracion-continua.md
+          - Actividad 4.1 - La puerta de entrada a main: tema4/actividad_4_1.md
       - Despliegue continuo:
-          - Despliegue continuo: tema5/despliegue-continuo.md
-          - Actividad 4.2 - Del commit a producción, y vuelta: tema5/actividad_5_2.md
+          - Despliegue continuo: tema4/despliegue-continuo.md
+          - Actividad 4.2 - Del commit a producción, y vuelta: tema4/actividad_4_2.md
 
-  # El antiguo tema6 pasa a ser conceptualmente el Tema 5.
   - Tema 5 - Orquestación de contenedores:
-      - Tema 5 - Introducción: tema6/index.md
+      - Tema 5 - Introducción: tema5/index.md
       - Arquitectura de Kubernetes:
-          - Arquitectura de Kubernetes - el estado deseado: tema6/kubernetes-arquitectura.md
-          - Actividad 5.1 - El catálogo, declarado: tema6/actividad_6_1.md
+          - Arquitectura de Kubernetes - el estado deseado: tema5/kubernetes-arquitectura.md
       - Configuración, sondas y actualizaciones:
-          - Configuración, sondas y actualizaciones progresivas: tema6/kubernetes-configuracion.md
-          - Actividad 5.2 - Publicar, vigilar y actualizar sin cortar: tema6/actividad_6_2.md
+          - Configuración, sondas y actualizaciones progresivas: tema5/kubernetes-configuracion.md
       - Clúster gestionado y GitOps:
-          - Clúster gestionado y GitOps: tema6/eks-gitops.md
-          - Actividad 5.3 - El repositorio manda: tema6/actividad_6_3.md
+          - Clúster gestionado y GitOps: tema5/eks-gitops.md
+          - Actividad 5.3 - El repositorio manda: tema5/actividad_5_3.md
 
   - Currículo: curriculum.md
   - Cierre del módulo: cierre.md
