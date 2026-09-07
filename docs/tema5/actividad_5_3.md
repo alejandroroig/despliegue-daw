@@ -1,7 +1,4 @@
-# 🧪 Actividad 6.3: El repositorio manda
-
-!!! warning "Descarga la plantilla"
-    📄 [Plantilla 6.3 — El repositorio manda](plantillas/Actividad_6_3_DAW_Plantilla.docx){target="_blank" rel="noopener"}
+# 🧪 Actividad 5.3: El repositorio manda
 
 ## Contexto
 

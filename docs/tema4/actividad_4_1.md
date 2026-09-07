@@ -1,7 +1,4 @@
-# 🧪 Actividad 5.1: La puerta de entrada a `main`
-
-!!! warning "Descarga la plantilla"
-    📄 [Plantilla 5.1 — La puerta de entrada a `main`](plantillas/Actividad_5_1_DAW_Plantilla.docx){target="_blank" rel="noopener"}
+# 🧪 Actividad 4.1: La puerta de entrada a `main`
 
 ## Contexto
 

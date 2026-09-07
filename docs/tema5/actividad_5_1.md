@@ -1,7 +1,4 @@
-# 🧪 Actividad 6.1: El catálogo, declarado
-
-!!! warning "Descarga la plantilla"
-    📄 [Plantilla 6.1 — El catálogo, declarado](plantillas/Actividad_6_1_DAW_Plantilla.docx){target="_blank" rel="noopener"}
+# 🧪 Actividad 5.1: El catálogo, declarado
 
 ## Contexto
 

@@ -1,35 +1,47 @@
 # 🏁 Cierre del módulo
 
-Has recorrido el camino completo: desde una aplicación que solo funcionaba en tu ordenador hasta cuatro formas distintas de ponerla en producción.
+Has recorrido el camino completo: desde una aplicación que solo funcionaba en tu ordenador hasta cuatro formas distintas de desplegarla y operarla.
 
 ## Lo que sabes hacer ahora
 
 - Leer un despliegue ajeno desde fuera y deducir qué hay detrás con evidencias, no con intuiciones.
-- Usar un repositorio como herramienta de despliegue: ramas de vida corta, revisión antes de fusionar, versiones etiquetadas y ni un secreto dentro.
-- Documentar un despliegue de forma que otra persona pueda repetirlo sin preguntarte nada.
-- Empaquetar cualquier aplicación en una imagen ligera y reproducible, y levantar su stack completo con un comando.
-- Configurar un servidor web con sitios virtuales, ponerlo delante de varias réplicas y repartir el tráfico entre ellas.
-- Emitir y renovar certificados reales, y endurecer tanto el servidor como la imagen.
-- Ver qué está pasando por dentro: logs centralizados, métricas y alertas que se adelantan a la queja del usuario.
-- Desplegar sobre un servidor de aplicaciones y medir si aguanta, con percentiles y no con medias.
-- Automatizar el camino del `git push` a producción, con vuelta atrás cuando algo sale mal.
+- Usar un repositorio como herramienta de despliegue: ramas de vida corta, revisión antes de fusionar, versiones etiquetadas y ningún secreto dentro.
+- Documentar un despliegue de forma que otra persona pueda reproducirlo sin preguntarte cada paso.
+- Empaquetar una aplicación en una imagen reproducible y levantar su stack completo con Docker Compose.
+- Configurar Nginx con sitios virtuales, proxy inverso y balanceo entre varias réplicas.
+- Publicar una aplicación mediante HTTPS con certificados reales y aplicar controles básicos de acceso y endurecimiento.
+- Centralizar logs y utilizarlos para reconstruir qué ha ocurrido durante una incidencia.
+- Distinguir el servidor web del proceso que ejecuta la aplicación, desplegar un WAR sobre Tomcat y entender las diferencias entre servidor embebido y externo.
+- Detectar por qué el estado guardado dentro de una réplica falla al balancear y externalizar una sesión para que las copias sean intercambiables.
+- Comparar rendimiento mediante throughput, errores y percentiles, entendiendo que aumentar procesos no equivale necesariamente a añadir recursos.
+- Automatizar comprobaciones y despliegues mediante un pipeline y disponer de una estrategia de vuelta atrás.
 - Declarar el estado deseado de una aplicación y dejar que un orquestador se encargue de mantenerlo.
 
 ## Una cosa que conviene que mires
 
-Abre el historial de `daw-despliegue` y recórrelo de abajo arriba. La primera etiqueta que pusiste, `v0.1.0`, marcaba un repositorio con un `README` y poco más. La última marca una aplicación que se despliega sola.
+Abre el historial de `daw-despliegue` y recórrelo de abajo arriba. La primera etiqueta que pusiste, `v0.1.0`, marcaba un repositorio con un `README` y poco más. La última representa una arquitectura mucho más completa.
 
-Entre una y otra no hay ningún salto: hay dieciséis viernes en los que cada pieza se añadió cuando hacía falta y no antes. Ese historial es la mejor descripción de lo que has aprendido, y además es pública.
+Entre una y otra no hay un salto mágico: hay dieciséis sesiones en las que cada pieza aparece cuando existe un problema que la hace necesaria. Ese historial es probablemente la mejor descripción de lo que has aprendido.
 
 ## La pregunta final
 
-En la defensa presentas Escaparate desplegado de cuatro maneras y respondes a lo que te preguntarán en una entrevista de trabajo: *dado este cliente concreto, ¿cuál le venderías y por qué?* La respuesta debe incluir coste mensual, esfuerzo de mantenimiento y qué pasa si el negocio triplica su tráfico.
+En la defensa presentas Escaparate desplegado de cuatro maneras y respondes a una pregunta que resume todo el módulo:
 
-No hay una respuesta correcta. Hay respuestas justificadas y respuestas que no lo están.
+> *Dado este cliente concreto, ¿qué forma de despliegue elegirías y por qué?*
+
+La respuesta debe considerar, al menos:
+
+- coste y recursos necesarios;
+- esfuerzo de mantenimiento;
+- automatización disponible;
+- tolerancia a fallos;
+- facilidad para crecer si aumenta el tráfico.
+
+No hay una única respuesta correcta. Hay decisiones justificadas y decisiones que no lo están.
 
 ## Y a partir de aquí
 
-Lo que has visto tiene nombre en el mercado laboral: administración de sistemas, DevOps, SRE, plataforma. Guarda tu repositorio: es lo más parecido a un portafolio que vas a tener al salir del ciclo.
+Lo que has trabajado conecta directamente con ámbitos como **administración de sistemas, DevOps, SRE y platform engineering**. Guarda tu repositorio: además de contener las prácticas, muestra cómo ha evolucionado una arquitectura y qué decisiones has sido capaz de justificar.
 
 !!! tip "Lo que queda por descubrir"
-    Service mesh, políticas de seguridad en el clúster, despliegues canary automatizados por métricas, infraestructura multi-región... Nada de eso cabía en el curso, pero ahora tienes la base para entenderlo cuando te lo encuentres.
+    Service mesh, políticas de seguridad de clúster, despliegues canary guiados por métricas, infraestructura como código más avanzada, arquitecturas multi-región... No cabía todo en el módulo, pero ya tienes la base para entender por qué existen esas herramientas cuando te las encuentres.

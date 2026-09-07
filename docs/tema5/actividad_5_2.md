@@ -1,7 +1,4 @@
-# 🧪 Actividad 6.2: Publicar, vigilar y actualizar sin cortar
-
-!!! warning "Descarga la plantilla"
-    📄 [Plantilla 6.2 — Publicar, vigilar y actualizar sin cortar](plantillas/Actividad_6_2_DAW_Plantilla.docx){target="_blank" rel="noopener"}
+# 🧪 Actividad 5.2: Publicar, vigilar y actualizar sin cortar
 
 ## Contexto
 

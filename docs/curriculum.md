@@ -89,19 +89,19 @@
 
 | RA | Tema | Sesiones | Peso orientativo |
 |---|---|---|---|
-| RA1 | Temas 1, 2 y 6 | S1, S3, S4, S5, S14–S16 | 30 % |
-| RA2 | Tema 3 (+Tema 6) | S6, S7, S8, S9 | 30 % |
-| RA3 | Tema 4 (+Tema 6) | S10, S11 | 15 % |
-| RA6 | Temas 1 y 5 | S2, S12, S13 | 25 % |
+| RA1 | Temas 1, 2 y 5 | S1, S3, S4, S5, S14–S16 | 30 % |
+| RA2 | Tema 3 (+Tema 5) | S6–S9, S14–S16 | 30 % |
+| RA3 | Tema 3 (+Tema 5) | S10, S14–S16 | 15 % |
+| RA6 | Temas 1 y 4 | S2, S11–S13 | 25 % |
 | RA4 | — | Formación en Empresa | — |
 | RA5 | — | Formación en Empresa | — |
 
-!!! info "Dos resultados de aprendizaje repartidos entre temas"
-    **RA1** se reparte entre el Tema 1 —arquitecturas, protocolos, estructura de la aplicación y requerimientos de implantación— y el Tema 2 —virtualización en contenedores y pruebas de funcionamiento—. El Tema 6 vuelve sobre él consolidándolo sobre un orquestador.
+!!! info "Cómo se reparten los RA entre los temas"
+    **RA1** se reparte entre el Tema 1 —arquitecturas, protocolos, estructura de la aplicación y requerimientos de implantación— y el Tema 2 —virtualización en contenedores y pruebas de funcionamiento—. El Tema 5 vuelve sobre él al consolidar esos principios en un orquestador.
 
-    **RA6** se reparte entre el Tema 1 —criterios a) a g), documentación y control de versiones— y el Tema 5 —criterio h), integración continua, y la parte de f) que corresponde a la protección de ramas y a los secretos del pipeline—.
+    **RA2 y RA3** comparten ahora el Tema 3 porque la arquitectura que se construye no separa artificialmente publicación y ejecución: Nginx actúa como entrada web y proxy, mientras Spring Boot/Tomcat ejecuta el backend. Las sesiones 6–9 se concentran en RA2 y la sesión 10 introduce de forma explícita RA3. El Tema 5 reutiliza ambos RA en un entorno orquestado.
 
-    El RA6 dedica siete criterios a la documentación y el control de versiones y uno solo a la integración continua. Como el Tema 5 ocupa el doble de sesiones que la parte de RA6 del Tema 1 y exige un nivel de autonomía mayor, **el peso de cada tema dentro del RA6 se pondera por sesiones y no por número de criterios**.
+    **RA6** se reparte entre el Tema 1 —documentación y control de versiones— y el Tema 4 —integración y despliegue continuos—. La sesión liberada al compactar servidores de aplicaciones se incorpora a este bloque, que pasa a ocupar S11–S13.
 
 !!! note "RA4 y RA5"
-    Se acreditan durante la Formación en Empresa mediante evidencia documental: uso de SFTP y gestión de accesos para el RA4; alta y modificación de registros DNS y autenticación contra el directorio corporativo para el RA5. En el aula solo se ven los registros A/CNAME y el diagnóstico con `dig`, como herramienta instrumental para los sitios virtuales y los certificados.
+    Se acreditan durante la Formación en Empresa mediante evidencia documental: uso de SFTP y gestión de accesos para el RA4; alta y modificación de registros DNS y autenticación contra el directorio corporativo para el RA5. En el aula se trabajan además los registros A/CNAME y el diagnóstico con `dig` cuando son necesarios para sitios virtuales, publicación y certificados.

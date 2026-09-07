@@ -17,7 +17,7 @@ theme:
       accent: light blue
       toggle:
         icon: material/weather-sunny
-        name: Modo Claro
+        name: Modo claro
   features:
     - navigation.top
     - navigation.tracking
@@ -27,6 +27,7 @@ theme:
 
 nav:
   - Inicio: index.md
+
   - Tema 1 - Punto de partida:
       - Tema 1 - Introducción: tema1/index.md
       - Arquitecturas y proceso de despliegue:
@@ -35,6 +36,7 @@ nav:
       - Control de versiones y documentación:
           - Control de versiones y documentación: tema1/control-versiones-documentacion.md
           - Actividad 1.2 - Tu repositorio como herramienta de despliegue: tema1/actividad_1_2.md
+
   - Tema 2 - Virtualización y contenedores:
       - Tema 2 - Introducción: tema2/index.md
       - Fundamentos de contenedores:
@@ -46,47 +48,50 @@ nav:
       - Docker Compose:
           - Docker Compose: tema2/docker-compose.md
           - Actividad 2.3 - El conjunto entero con un comando: tema2/actividad_2_3.md
-  - Tema 3 - Administración de servidores web:
+
+  - Tema 3 - Publicación y ejecución de aplicaciones web:
       - Tema 3 - Introducción: tema3/index.md
       - Servidores web y DNS:
           - Servidores web y DNS: tema3/servidores-web-dns.md
-          - Actividad 3.1 - Dos sitios, un servidor y un nombre: tema3/actividad_3_1.md
+          - Actividad 3.1 - Dos sitios, un servidor y dos nombres: tema3/actividad_3_1.md
       - Proxy inverso y balanceo:
           - Proxy inverso y balanceo: tema3/proxy-inverso-balanceo.md
           - Actividad 3.2 - Una puerta, tres copias: tema3/actividad_3_2.md
       - Seguridad web y HTTPS:
           - Seguridad web y HTTPS: tema3/seguridad-web-https.md
           - Actividad 3.3 - Cierra la puerta y echa la llave: tema3/actividad_3_3.md
-      - Observabilidad - logs, métricas y alertas:
+      - Observabilidad:
           - Observabilidad - logs, métricas y alertas: tema3/observabilidad.md
           - Actividad 3.4 - Que te lo cuente el sistema: tema3/actividad_3_4.md
-  - Tema 4 - Servidores de aplicaciones:
-      - Tema 4 - Introducción: tema4/index.md
-      - Servidor de aplicaciones:
-          - Servidor de aplicaciones: tema4/servidor-aplicaciones.md
-          - Actividad 4.1 - El mismo artefacto, dos servidores, y una sesión que deja de perderse: tema4/actividad_4_1.md
-      - Rendimiento y pruebas de carga:
-          - Rendimiento y pruebas de carga: tema4/rendimiento-pruebas-carga.md
-          - Actividad 4.2 - Cuánta carga aguanta y qué se rinde primero: tema4/actividad_4_2.md
-  - Tema 5 - Integración y despliegue continuos:
-      - Tema 5 - Introducción: tema5/index.md
+      - Servidor de aplicaciones, estado y rendimiento:
+          - Servidor de aplicaciones - ejecución, estado y rendimiento: tema3/servidor-aplicaciones-rendimiento.md
+          - Actividad 3.5 - El backend por dentro: tema3/actividad_3_5.md
+
+  # Rutas físicas transitorias:
+  # el antiguo tema5 pasa a ser conceptualmente el Tema 4.
+  # Se mantienen las carpetas para no romper enlaces hasta revisar ese bloque.
+  - Tema 4 - Integración y despliegue continuos:
+      - Tema 4 - Introducción: tema5/index.md
       - Integración continua:
           - Integración continua: tema5/integracion-continua.md
-          - Actividad 5.1 - La puerta de entrada a `main`: tema5/actividad_5_1.md
+          - Actividad 4.1 - La puerta de entrada a main: tema5/actividad_5_1.md
       - Despliegue continuo:
           - Despliegue continuo: tema5/despliegue-continuo.md
-          - Actividad 5.2 - Del commit a producción, y vuelta: tema5/actividad_5_2.md
-  - Tema 6 - Orquestación de contenedores:
-      - Tema 6 - Introducción: tema6/index.md
+          - Actividad 4.2 - Del commit a producción, y vuelta: tema5/actividad_5_2.md
+
+  # El antiguo tema6 pasa a ser conceptualmente el Tema 5.
+  - Tema 5 - Orquestación de contenedores:
+      - Tema 5 - Introducción: tema6/index.md
       - Arquitectura de Kubernetes:
           - Arquitectura de Kubernetes - el estado deseado: tema6/kubernetes-arquitectura.md
-          - Actividad 6.1 - El catálogo, declarado: tema6/actividad_6_1.md
+          - Actividad 5.1 - El catálogo, declarado: tema6/actividad_6_1.md
       - Configuración, sondas y actualizaciones:
           - Configuración, sondas y actualizaciones progresivas: tema6/kubernetes-configuracion.md
-          - Actividad 6.2 - Publicar, vigilar y actualizar sin cortar: tema6/actividad_6_2.md
+          - Actividad 5.2 - Publicar, vigilar y actualizar sin cortar: tema6/actividad_6_2.md
       - Clúster gestionado y GitOps:
           - Clúster gestionado y GitOps: tema6/eks-gitops.md
-          - Actividad 6.3 - El repositorio manda: tema6/actividad_6_3.md
+          - Actividad 5.3 - El repositorio manda: tema6/actividad_6_3.md
+
   - Currículo: curriculum.md
   - Cierre del módulo: cierre.md
 
@@ -120,7 +125,7 @@ markdown_extensions:
 validation:
   links:
     not_found: info
-    
+
 extra_css:
   - css/extra.css
 

@@ -1,7 +1,4 @@
-# 🧪 Actividad 5.2: Del commit a producción, y vuelta
-
-!!! warning "Descarga la plantilla"
-    📄 [Plantilla 5.2 — Del commit a producción, y vuelta](plantillas/Actividad_5_2_DAW_Plantilla.docx){target="_blank" rel="noopener"}
+# 🧪 Actividad 4.2: Del commit a producción, y vuelta
 
 ## Contexto
 

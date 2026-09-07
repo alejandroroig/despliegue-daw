@@ -9,10 +9,11 @@ Escribir una aplicación es la mitad del trabajo. La otra mitad es conseguir que
 ## 🎯 Qué vas a aprender
 
 - 📦 Empaquetar una aplicación en contenedores y levantar el stack completo con un solo comando.
-- 🌐 Administrar un servidor web: sitios virtuales, módulos, proxy inverso, balanceo de carga y HTTPS con certificados reales.
-- ☕ Desplegar sobre un servidor de aplicaciones y medir su rendimiento bajo carga.
-- 🔭 Ver qué está pasando por dentro: logs centralizados, métricas y alertas que avisan antes que el usuario.
-- 🔁 Automatizar el camino del `git push` a producción, con vuelta atrás cuando algo sale mal.
+- 🌐 Publicar aplicaciones con un servidor web: sitios virtuales, proxy inverso, balanceo y HTTPS con certificados reales.
+- ☕ Entender qué ejecuta realmente una aplicación Java, comparar servidor embebido y externo y resolver el estado cuando existen varias réplicas.
+- 🔭 Ver qué está pasando por dentro mediante logs centralizados y datos que permitan diagnosticar incidencias.
+- 📈 Medir rendimiento con latencia, percentiles, throughput y errores, evitando conclusiones basadas solo en medias.
+- 🔁 Automatizar el camino desde la integración del código hasta el despliegue, incluyendo una estrategia de vuelta atrás.
 - ☸️ Orquestar contenedores con Kubernetes y desplegar declarando el estado deseado en un repositorio.
 
 ---
@@ -23,10 +24,12 @@ Escribir una aplicación es la mitad del trabajo. La otra mitad es conseguir que
 |------|-----------|-----|
 | 🏁 [Tema 1 — Punto de partida](tema1/index.md) | Arquitecturas y proceso de despliegue, control de versiones y documentación aplicados al despliegue | RA1 · RA6 |
 | 📦 [Tema 2 — Virtualización y contenedores](tema2/index.md) | Fundamentos de contenedores, imágenes multietapa y Docker Compose | RA1 |
-| 🌐 [Tema 3 — Administración de servidores web](tema3/index.md) | Sitios virtuales, DNS, proxy inverso y balanceo, HTTPS con ACME, observabilidad | RA2 |
-| ☕ [Tema 4 — Servidores de aplicaciones](tema4/index.md) | Despliegue de artefactos, sesiones, pruebas de carga y rendimiento | RA3 |
-| 🔁 [Tema 5 — Integración y despliegue continuos](tema5/index.md) | Pipelines de integración continua y despliegue continuo con vuelta atrás | RA6 |
-| ☸️ [Tema 6 — Orquestación de contenedores](tema6/index.md) | Kubernetes, actualizaciones sin caída, clúster gestionado y GitOps | RA1 · RA2 · RA3 |
+| 🌐 [Tema 3 — Publicación y ejecución de aplicaciones web](tema3/index.md) | Nginx, sitios virtuales, proxy y balanceo, HTTPS, observabilidad, Tomcat, estado compartido y rendimiento | RA2 · RA3 |
+| 🔁 [Tema 4 — Integración y despliegue continuos](tema5/index.md) | Integración continua, publicación de artefactos e imágenes, despliegue automatizado y vuelta atrás | RA6 |
+| ☸️ [Tema 5 — Orquestación de contenedores](tema6/index.md) | Kubernetes, actualizaciones sin caída, clúster gestionado y GitOps | RA1 · RA2 · RA3 |
+
+!!! info "Numeración y carpetas"
+    La estructura didáctica ya utiliza **cinco temas**. De forma transitoria, el Tema 4 y el Tema 5 continúan almacenados en las carpetas `tema5/` y `tema6/` para no romper enlaces mientras esos bloques no se hayan revisado. Cuando lleguemos a ellos se renombrarán también las rutas físicas.
 
 ---
 
@@ -34,14 +37,14 @@ Escribir una aplicación es la mitad del trabajo. La otra mitad es conseguir que
 
 Todo lo que ves aquí se practica sobre la misma aplicación: **Escaparate**, un catálogo de productos con imágenes. No la programas tú —te la damos hecha—: lo que construyes es todo lo que hay alrededor para que funcione en condiciones reales.
 
-La vas a desplegar de cuatro formas distintas a lo largo del curso, cada una más profesional que la anterior:
+La vas a desplegar de cuatro formas distintas a lo largo del curso, cada una añadiendo una responsabilidad nueva:
 
 | Forma | Cuándo | Qué añade |
 |---|---|---|
-| Stack local con Compose | Tema 2 | Todo junto, reproducible en cualquier equipo |
-| Servidor con proxy y HTTPS | Tema 3 | Reparto entre varias copias, certificado real, logs centralizados |
-| Despliegue automático por pipeline | Tema 5 | Del `merge` a producción sin tocar el servidor |
-| Orquestado con Kubernetes y GitOps | Tema 6 | El repositorio como única fuente de verdad |
+| Stack local con Compose | Tema 2 | Aplicación y dependencias reproducibles en cualquier equipo |
+| Servidor con Nginx, HTTPS y varias réplicas | Tema 3 | Publicación real, balanceo, observabilidad, estado compartido y análisis de rendimiento |
+| Despliegue automático por pipeline | Tema 4 | Del cambio integrado a una versión desplegada con comprobaciones y vuelta atrás |
+| Orquestado con Kubernetes y GitOps | Tema 5 | Estado deseado, réplicas, actualizaciones progresivas y el repositorio como fuente de verdad |
 
 En la defensa final presentas las cuatro y respondes a la pregunta que resume el módulo: *dado este cliente concreto, ¿cuál le venderías y por qué?*
 
@@ -51,9 +54,9 @@ En la defensa final presentas las cuatro y respondes a la pregunta que resume el
     Haz clic en cualquier tema para empezar. Dentro de cada uno están los apuntes y las actividades en orden. Puedes usar las **flechas al pie de cada página** para avanzar o retroceder.
 
 !!! info "Cómo son las actividades"
-    Cada actividad tiene un enunciado con pasos numerados, y **todo lo que aparece en él es exigible**: está dimensionado para que dé tiempo. Al final encontrarás dos cosas: la sección **Verificación**, con los comandos exactos que se ejecutarán para dar la práctica por válida, y la lista **Qué se entrega**, que es la referencia de corrección.
+    Cada actividad tiene un enunciado con pasos numerados y está dimensionada para una sesión de trabajo. Al final encontrarás una sección **Verificación**, con las comprobaciones que permiten dar la práctica por válida, y la lista **Qué se entrega**, que sirve como referencia de corrección.
 
-    Algunas actividades terminan con un apartado **«Si te sobra tiempo»**. Es opcional, no puntúa y ninguna sesión posterior depende de él: está para quien vaya rápido, no para subir nota.
+    Algunas actividades pueden terminar con un apartado **«Si te sobra tiempo»**. Es opcional, no puntúa y ninguna sesión posterior depende de él.
 
 !!! note "Transferencia de archivos y servicios de red (RA4 y RA5)"
-    Estos dos resultados de aprendizaje —servidores FTP/SFTP y servicios de nombres y directorio— no se trabajan en estos apuntes: se acreditan durante la **Formación en Empresa**.
+    Estos dos resultados de aprendizaje —servidores FTP/SFTP y servicios de nombres y directorio— se acreditan principalmente durante la **Formación en Empresa**. En el aula sí aparecen DNS y herramientas como `dig` cuando son necesarias para publicar sitios, diagnosticar resolución de nombres u obtener certificados.
