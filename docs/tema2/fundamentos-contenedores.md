@@ -15,7 +15,18 @@ Hoy aparece la herramienta que aborda ese segundo problema: los contenedores. La
 
 Vuelve a la tabla de las cinco piezas de la primera sesión y quédate con **artefacto y runtime**. Una aplicación puede necesitar su ejecutable, una versión concreta del runtime, servicios auxiliares, variables de entorno, directorios y permisos. Copiar solo el código no reproduce ese conjunto.
 
-Contenerizar no significa meter todo eso dentro de un único contenedor. Cada pieza puede empaquetarse por separado: una imagen para PostgreSQL, otra para la aplicación, otra para un servidor web si hiciera falta. Después las conectaremos entre sí. Esa separación será importante durante todo el módulo.
+Contenerizar no significa meter todo eso dentro de un único contenedor. Cada pieza puede empaquetarse por separado: una imagen para PostgreSQL, otra para la aplicación y, más adelante, otra para el servidor web que actuará como punto de entrada.
+
+La imagen de una aplicación puede contener a su vez varias piezas internas. En el caso de Escaparate terminarás empaquetando:
+
+```text
+imagen de Escaparate
+├── runtime de Java
+└── aplicación Spring Boot
+    └── servidor HTTP embebido
+```
+
+Por tanto, **separar servidor web y servidor de aplicaciones no implica necesariamente instalar ambos como servidores independientes**. Más adelante Nginx será una pieza separada delante de Escaparate, mientras la aplicación seguirá llevando dentro el componente que ejecuta y atiende su código dinámico.
 
 Históricamente esto se ha resuelto de tres maneras, y las tres siguen existiendo:
 
@@ -80,7 +91,21 @@ Un **contenedor** utiliza el núcleo del sistema anfitrión y aísla procesos, r
 
 Una **imagen** es un paquete de solo lectura que contiene el sistema base, el software instalado, tu aplicación y su configuración de fábrica. Es **inmutable**: una vez construida no se modifica; si algo tiene que cambiar, se construye otra.
 
-Aquí está el cambio de mentalidad de este módulo. Puede que hayas visto Docker presentado como «una forma cómoda de tener una base de datos sin instalarla». Eso es cierto y es útil, pero es lo de menos. En despliegue, **la imagen es el artefacto**: es aquello que la primera sesión llamaba «el paquete de la aplicación», el objeto que se construye una vez, se guarda con un número de versión y se ejecuta idéntico en el ordenador del desarrollador, en el servidor de pruebas y en producción.
+Aquí está el cambio de mentalidad de este módulo. Puede que hayas visto Docker presentado como «una forma cómoda de tener una base de datos sin instalarla». Eso es cierto y es útil, pero es lo de menos.
+
+En un flujo basado en contenedores, **la imagen es la unidad de despliegue**: se construye una vez, se identifica con una versión y se ejecuta de forma equivalente en desarrollo, pruebas o producción.
+
+Conviene distinguir dos niveles que volverán a aparecer más adelante:
+
+```text
+artefacto de aplicación
+→ por ejemplo, un WAR o un JAR
+
+imagen de contenedor
+→ artefacto de aplicación + runtime + configuración de fábrica
+```
+
+Así, un mismo WAR puede formar parte de una imagen autocontenida o desplegarse sobre un servidor de aplicaciones externo. Docker no elimina el concepto de artefacto de aplicación: añade una unidad de despliegue reproducible alrededor.
 
 ### 3.2. Contenedor: una instancia de la imagen
 
@@ -455,7 +480,7 @@ Lo que basta con reconocer: el detalle de cómo se apilan las capas, el papel de
     - El repositorio guarda el código; el contenedor empaqueta el entorno donde ese código funciona. Son dos problemas distintos y hacen falta los dos.
     - Una máquina virtual lleva un sistema operativo invitado con su propio núcleo; un contenedor comparte el núcleo del anfitrión y aísla procesos, red y sistema de ficheros. Por eso suele ser mucho más ligero y rápido de crear y arrancar.
     - No compiten: lo habitual es ejecutar contenedores dentro de máquinas virtuales alquiladas en la nube.
-    - **Imagen** es el paquete de solo lectura, **contenedor** es una instancia creada a partir de ella, **registro** es el servidor donde se publica y **etiqueta** identifica una referencia de esa imagen. En despliegue, la imagen es el artefacto que se construye una vez y se ejecuta de forma reproducible.
+    - **Imagen** es el paquete de solo lectura, **contenedor** es una instancia creada a partir de ella, **registro** es el servidor donde se publica y **etiqueta** identifica una referencia de esa imagen. En un flujo containerizado, la imagen actúa como unidad de despliegue y puede contener dentro un artefacto de aplicación como un WAR.
     - `latest` no significa «la última»: significa «la que alguien marcó así». Un despliegue reproducible fija siempre la versión.
     - Una imagen es una pila de capas de solo lectura que se comparten entre imágenes y entre contenedores; al arrancar se añade encima una capa de escritura que nace y muere con el contenedor.
     - Un contenedor puede estar creado, ejecutándose o detenido. Cuando se ejecuta, su proceso principal determina su ciclo de vida: si termina, el contenedor se detiene. Detenido conserva su capa de escritura; eliminado, no.

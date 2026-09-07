@@ -69,7 +69,19 @@ Antes de escribir un `Dockerfile`, inspecciona `escaparate/` y responde:
 Busca las respuestas en el propio proyecto: `pom.xml`, `README.md` y configuración de Spring.
 
 !!! info "Arquitectura que vas a empaquetar"
-    Esta distribución de Escaparate integra el frontend y la API en la misma aplicación Spring Boot. Al arrancar el contenedor tendrás **un único servicio de aplicación** escuchando en el puerto 8080. PostgreSQL seguirá siendo otro contenedor independiente.
+    Esta distribución de Escaparate integra el frontend y la API en la misma aplicación Spring Boot. El WAR es ejecutable y, al arrancarlo, Spring Boot levanta su **Tomcat embebido**, que atiende HTTP en el puerto 8080.
+
+    Por tanto, la imagen que vas a construir contiene conceptualmente:
+
+    ```text
+    JRE
+      ↓
+    WAR de Escaparate
+      ↓
+    Spring Boot + Tomcat embebido
+    ```
+
+    No instalarás un Tomcat externo en el `Dockerfile`. PostgreSQL seguirá siendo otro contenedor independiente.
 
 ---
 
@@ -510,7 +522,7 @@ docker rm -f verifica bd
 Y debe observarse:
 
 - Las imágenes se descargan sin iniciar sesión.
-- Escaparate arranca y sirve tanto el frontend como la API desde el mismo contenedor.
+- Escaparate arranca y su Tomcat embebido sirve tanto el frontend como la API desde el mismo contenedor.
 - `/api/salud/vivo` responde mientras el proceso está activo.
 - `/api/salud/listo` confirma que PostgreSQL está disponible.
 - El proceso no se ejecuta como `root`.

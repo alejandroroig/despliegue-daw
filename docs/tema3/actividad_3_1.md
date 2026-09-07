@@ -15,13 +15,14 @@ Navegador
     │ :8080
     ▼
 app
+Spring Boot + Tomcat embebido
 (frontend + API)
     │
     ▼
 bd
 ```
 
-En esta sesión aparece una nueva pieza. **Nginx será la única puerta de entrada del despliegue**. Servirá directamente una distribución estática del frontend y un segundo sitio con la documentación del proyecto. Las peticiones dinámicas seguirán llegando a la aplicación Java, pero lo harán a través de Nginx.
+En esta sesión aparece una nueva pieza. **Nginx será la única puerta de entrada del despliegue**. Servirá directamente una distribución estática del frontend y un segundo sitio con la documentación del proyecto. Las peticiones dinámicas seguirán llegando a la aplicación Java —Spring Boot con su Tomcat embebido—, pero lo harán a través de Nginx.
 
 El objetivo final es:
 
@@ -41,7 +42,7 @@ Desde el equipo anfitrión solo debe publicarse el puerto 80 de `web`.
 - **Configurar** dos hosts virtuales por nombre sobre la misma dirección y puerto.
 - **Resolver** nombres con DNS y comprobar el resultado con `dig`.
 - **Configurar** un servidor por defecto para nombres no reconocidos.
-- **Aplicar y comprobar** compresión y caché sobre contenido estático.
+- **Activar, configurar y comprobar** la funcionalidad de compresión gzip de Nginx y aplicar caché sobre contenido estático.
 - **Distinguir** por qué la entrega de recursos estáticos y las respuestas dinámicas no reciben necesariamente la misma política de caché.
 - **Versionar** la configuración del servidor como parte del despliegue.
 
@@ -372,7 +373,7 @@ location ~* \.(css|js|png|jpg|jpeg|svg|webp)$ {
 
 | Directiva | Qué consigue |
 |---|---|
-| `gzip on` | permite comprimir respuestas antes de enviarlas |
+| `gzip on` | activa la compresión proporcionada por el módulo HTTP gzip de Nginx |
 | `gzip_vary on` | añade información para distinguir respuestas comprimidas y no comprimidas en las cachés |
 | `gzip_types` | indica otros tipos de contenido textual que pueden comprimirse |
 | `location ~* ...` | aplica una regla a determinados tipos de fichero |
@@ -614,7 +615,9 @@ Finalmente se verificará que:
 
 ## ✅ Cierre
 
-El despliegue ya no expone directamente Spring Boot. Nginx se ha convertido en la puerta de entrada, sirve los recursos estáticos con reglas propias y decide qué sitio debe responder según el nombre solicitado.
+El despliegue ya no expone directamente Spring Boot/Tomcat. Nginx se ha convertido en la puerta de entrada, sirve los recursos estáticos con reglas propias y decide qué sitio debe responder según el nombre solicitado.
+
+La aplicación no ha dejado de tener servidor: **Tomcat sigue embebido dentro del proceso Spring Boot**. Lo que ha cambiado es qué pieza recibe primero las conexiones públicas.
 
 También has comprobado que DNS y HTTP resuelven problemas diferentes: DNS lleva el nombre hasta una dirección, mientras que la cabecera `Host` permite al servidor decidir qué sitio debe responder una vez establecida la conexión.
 

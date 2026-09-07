@@ -14,7 +14,7 @@ Navegador ──► web:Nginx ├── documentación
 
 Para que el catálogo siguiera funcionando utilizaste ya `proxy_pass`, pero el bloque `/api/` estaba dado y no debías modificarlo.
 
-Hoy lo vas a escribir tú y cambiarás una propiedad mucho más importante: **ya no habrá una sola copia de `app`, sino tres**.
+Hoy lo vas a escribir tú y cambiarás una propiedad mucho más importante: **ya no habrá una sola copia de `app`, sino tres**. Cada copia será un proceso Spring Boot con su propio Tomcat embebido.
 
 El resultado será:
 
@@ -485,7 +485,7 @@ Debe observarse:
 
 ## ✅ Cierre
 
-Escaparate ya no depende de una única copia de la aplicación. Nginx recibe todas las peticiones públicas y reparte `/api/` entre tres réplicas que comparten PostgreSQL y el almacenamiento que necesitan recuperar.
+Escaparate ya no depende de una única copia de la aplicación. Nginx recibe todas las peticiones públicas y reparte `/api/` entre tres **servidores de aplicación equivalentes**: tres procesos Spring Boot con Tomcat embebido que comparten PostgreSQL y el almacenamiento que necesitan recuperar.
 
 También has comprobado dos ideas distintas de disponibilidad. Una réplica puede desaparecer sin derribar el servicio porque el proxy tiene alternativas. Pero replicar procesos no basta: cuando un dato necesario vive dentro de una sola copia, la propia replicación crea un fallo nuevo.
 

@@ -43,10 +43,12 @@
 
 **Actividades:**
 
-- [Actividad 1.1 — Disección de despliegues reales](actividad_1_1.md)
+- [Actividad 1.1 — Qué se puede saber de un despliegue desde fuera](actividad_1_1.md)
 - [Actividad 1.2 — Tu repositorio como herramienta de despliegue](actividad_1_2.md)
 
 ---
 
 !!! note "Cómo encaja este tema"
-    Dos sesiones para responder a dos preguntas previas a todo lo demás: qué piezas tiene una aplicación web desplegada y dónde viven mientras no lo están. Al terminar sabes leer un despliegue ajeno desde fuera y tienes montado `daw-despliegue`, el repositorio que te acompañará los dieciséis viernes del curso.
+    Dos sesiones para responder a dos preguntas previas a todo lo demás: qué piezas necesita una aplicación web para llegar a usuarios y dónde versionamos la información necesaria para reconstruir ese despliegue. Al terminar sabes leer un sistema desde fuera y tienes montado `daw-despliegue`, el repositorio que te acompañará durante el curso.
+
+    Más adelante esas piezas aparecerán juntas en un mismo bloque de publicación: **el servidor web gestionará la entrada y el servidor de aplicaciones o runtime ejecutará la lógica dinámica**. Esta primera unidad solo introduce esa separación; la configuración práctica llegará en los temas posteriores.

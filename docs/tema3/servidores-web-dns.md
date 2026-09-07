@@ -7,6 +7,8 @@
 
 Un servidor web puede asumir la entrada HTTP de un sistema y servir directamente recursos estáticos. Esto permite separar el trabajo de **entregar ficheros** del trabajo de **ejecutar lógica de aplicación**.
 
+En el Tema 2 ya empaquetaste la segunda responsabilidad: Escaparate es una aplicación Spring Boot cuyo WAR ejecutable arranca un **Tomcat embebido**. En esta sesión no sustituimos esa pieza; añadimos Nginx delante.
+
 En esta sesión incorporaremos Nginx delante de una aplicación web y utilizaremos dos sitios distintos para estudiar raíces de documentos, hosts virtuales, compresión, caché y resolución de nombres. El reenvío de peticiones dinámicas aparecerá únicamente como conexión con el backend; su funcionamiento se estudiará en la siguiente sesión.
 
 La idea central será separar dos responsabilidades:
@@ -117,7 +119,17 @@ Hay tres ideas importantes:
 !!! info "La raíz predeterminada de la imagen oficial"
     La imagen oficial de Nginx trae preparado `/usr/share/nginx/html` como directorio web predeterminado. Es una convención de la imagen, no una ruta obligatoria. Podemos utilizar raíces propias como `/srv/www/web` y `/srv/www/docs`; la directiva `root` de cada bloque `server` decide qué contenido sirve cada sitio.
 
-La aplicación `app` continúa existiendo, pero deja de publicar su puerto 8080 hacia el anfitrión. El único puerto público del conjunto será el 80 de `web`.
+La aplicación `app` continúa existiendo y sigue ejecutando su lógica mediante Spring Boot + Tomcat embebido, pero deja de publicar su puerto 8080 hacia el anfitrión. El único puerto público del conjunto será el 80 de `web`.
+
+Esta es la primera cooperación práctica entre las dos responsabilidades que recorrerán el tema:
+
+```text
+Nginx
+→ servidor web y punto de entrada
+
+Spring Boot + Tomcat embebido
+→ servidor de aplicaciones / runtime que ejecuta la lógica
+```
 
 ```mermaid
 flowchart LR
@@ -327,6 +339,8 @@ Un servidor web también puede optimizar cómo entrega los ficheros.
 
 HTML, CSS y JavaScript son texto y suelen comprimirse muy bien.
 
+En Nginx esta funcionalidad la aporta el módulo HTTP gzip (`ngx_http_gzip_module`). Al utilizar sus directivas estamos **activando y configurando funcionalidad modular del servidor web**; no estamos modificando Escaparate.
+
 El cliente anuncia qué codificaciones acepta:
 
 ```http
@@ -514,7 +528,7 @@ Al terminar, deberías poder:
 - Configurar dos hosts virtuales por nombre sobre una misma dirección y puerto.
 - Explicar la secuencia `DNS → dirección IP → Host HTTP → sitio`.
 - Declarar un servidor por defecto para nombres no reconocidos.
-- Aplicar y comprobar gzip sobre contenido textual.
+- Aplicar y comprobar gzip sobre contenido textual, reconociéndolo como funcionalidad aportada por un módulo HTTP de Nginx.
 - Aplicar una política de caché a recursos estáticos y explicar por qué no debe trasladarse automáticamente a cualquier respuesta dinámica.
 - Utilizar `dig` para reconocer una respuesta DNS, una dirección IPv4 y su TTL.
 

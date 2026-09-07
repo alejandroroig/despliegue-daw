@@ -37,7 +37,7 @@ No vas a aprender a administrar Fluent Bit, Elasticsearch o Kibana desde cero. L
     - Kibana será accesible mediante túnel SSH desde el principio;
     - solo crearás **dos visualizaciones**;
     - no configurarás notificaciones reales;
-    - la memoria final del tema será breve.
+    - la primera parte de la memoria final del tema será breve.
 
 ## Qué vas a practicar
 
@@ -518,22 +518,24 @@ No existe una única respuesta correcta. Debes justificar que la condición dist
 
 ---
 
-# Paso 8: Cierra el tema
+# Paso 8: Consolida la capa de publicación
 
 Crea:
 
 ```text
-entregas/tema3/memoria-servidor-web.md
+entregas/tema3/memoria-publicacion-ejecucion.md
 ```
 
-La memoria debe ser **muy breve**: aproximadamente 250–350 palabras más un diagrama.
+Hoy escribirás **la primera parte** de la memoria final del tema: aproximadamente 250–350 palabras más un diagrama.
+
+No des por cerrado todavía el documento. En la siguiente sesión completarás la arquitectura desde el punto de vista del backend, el estado compartido y el rendimiento.
 
 Incluye:
 
 1. arquitectura final;
 2. papel de Nginx;
 3. HTTPS y control de acceso;
-4. tres réplicas y almacenamiento compartido;
+4. tres réplicas de Spring Boot/Tomcat y almacenamiento compartido de imágenes;
 5. observabilidad: qué se recoge y qué preguntas permiten responder las dos visualizaciones.
 
 Puedes utilizar un esquema como:
@@ -584,7 +586,7 @@ Al finalizar debe cumplirse:
 - existe `Latencia por ruta` con media y p95;
 - las incidencias provocadas aparecen en los datos;
 - se han definido dos condiciones de alerta justificadas;
-- existe `memoria-servidor-web.md`;
+- existe `memoria-publicacion-ejecucion.md` con la parte de servidor web y observabilidad;
 - la rama `sesion-09` ha llegado a `main`.
 
 ---
@@ -599,7 +601,7 @@ Al finalizar debe cumplirse:
 - [ ] Visualización `Errores por ruta`.
 - [ ] Visualización `Latencia por ruta`.
 - [ ] Dos condiciones de alerta justificadas.
-- [ ] `memoria-servidor-web.md`.
+- [ ] `memoria-publicacion-ejecucion.md` con su primera parte.
 - [ ] PR `sesion-09 → main` fusionada.
 
 ---
@@ -626,3 +628,10 @@ recoger
 → interpretar
 → actuar
 ```
+
+
+---
+
+## Puente a la siguiente sesión
+
+Con esto queda cerrada la **capa de publicación y observabilidad**, pero no el recorrido completo. En la siguiente sesión abrirás la caja que hasta ahora hemos llamado simplemente `app`: veremos qué ejecuta realmente, qué ocurre con el estado al replicar y cómo se comporta bajo una carga pequeña.

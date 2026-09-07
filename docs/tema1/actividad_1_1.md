@@ -212,7 +212,7 @@ RECURSOS ESTÁTICOS
 ¿Tengo evidencia?: sí / no / no es observable desde fuera
 Evidencia o explicación:
 
-ARTEFACTO O RUNTIME DEL SERVIDOR
+RUNTIME / SERVIDOR DE APLICACIONES
 ¿Tengo evidencia?: sí / no / no es observable desde fuera
 Evidencia o explicación:
 

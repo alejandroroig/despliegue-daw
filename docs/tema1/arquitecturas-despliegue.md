@@ -116,7 +116,19 @@ Lo que el servidor devuelve puede tener dos naturalezas distintas:
 
 La diferencia importante no es si el contenido "cambia", sino **si hay que ejecutar lógica para producir la respuesta**.
 
-Separar contenido estático y dinámico permite que cada parte sea atendida por la pieza más adecuada. Más adelante servirás estáticos con un servidor web y también estudiarás cómo pueden distribuirse desde otros servicios.
+Separar contenido estático y dinámico permite que cada parte sea atendida por la pieza más adecuada.
+
+A lo largo del módulo distinguiremos dos responsabilidades que a veces se mezclan bajo la palabra *servidor*:
+
+```text
+servidor web
+→ recibe HTTP, sirve recursos y puede reenviar peticiones
+
+runtime / servidor de aplicaciones
+→ ejecuta el código que genera respuestas dinámicas
+```
+
+En aplicaciones modernas ambas responsabilidades pueden estar empaquetadas de formas distintas. Por ejemplo, una aplicación Spring Boot puede llevar su propio servidor HTTP embebido, mientras Nginx actúa delante como servidor web y proxy. Más adelante construirás precisamente esa cooperación.
 
 ---
 
@@ -252,7 +264,7 @@ Como programador puedes pensar que "la aplicación" es el proyecto de tu IDE. Pa
 | Pieza | Qué es | Qué necesita al desplegar |
 |---|---|---|
 | **Estáticos** | HTML, CSS, JS, imágenes del frontend | Un servicio capaz de entregarlos por HTTP |
-| **Artefacto y runtime** | WAR/JAR, binario, paquete + Java, Node, PHP... | Un proceso capaz de ejecutarlo y reiniciarlo |
+| **Artefacto y runtime de aplicación** | WAR/JAR, binario, paquete + Java, Node, PHP... | Un proceso o servidor de aplicaciones capaz de ejecutarlo y reiniciarlo |
 | **Datos** | Información persistente | Almacenamiento estable, copias y acceso restringido |
 | **Configuración** | Hosts, puertos, rutas, modo de ejecución | Poder cambiar sin recompilar |
 | **Secretos** | Contraseñas, tokens, certificados | Permanecer fuera del código y del repositorio |
@@ -359,13 +371,12 @@ Cada punto tiene su lugar en el curso:
 | 1 · Versionado y documentación | Sesión 2 |
 | 2 · Contenedores, imágenes y despliegue reproducible | Sesiones 3 a 5 |
 | 3 · Configuración y secretos externos | Sesión 5 y refuerzos posteriores |
-| 4 · Servidor web y nombres | Sesión 6 |
-| 5 · Proxy inverso y balanceo | Sesión 7 |
-| 6 · HTTPS y endurecimiento | Sesión 8 |
-| 7 · Observabilidad | Sesión 9 |
-| 8 · Servidores de aplicaciones y rendimiento | Sesiones 10 y 11 |
-| 9 · CI, CD y rollback | Sesiones 12 y 13 |
-| 10 · Kubernetes local, rolling updates y nube | Sesiones 14 a 16 |
+| 4 · Publicación y ejecución web: servidor web, proxy y aplicaciones | Sesiones 6 a 10 |
+| 5 · Seguridad de la entrada: HTTPS y control de acceso | Dentro del bloque anterior |
+| 6 · Observabilidad y diagnóstico | Dentro del bloque anterior |
+| 7 · Servidor de aplicaciones, estado y rendimiento | Cierre del bloque anterior |
+| 8 · Integración y despliegue continuos | A partir de la sesión 11 |
+| 9 · Orquestación, actualizaciones progresivas y nube | Tramo final del módulo |
 
 Ese es el mapa del módulo:
 
@@ -387,6 +398,7 @@ Al terminar esta primera sesión deberías poder:
 
 - explicar qué significa desplegar una aplicación y por qué no equivale a que "funcione en mi ordenador";
 - distinguir contenido estático y dinámico;
+- diferenciar la responsabilidad de un servidor web de la pieza que ejecuta la aplicación dinámica;
 - entender que las capas lógicas de una aplicación no determinan cuántas máquinas o servicios necesita;
 - interpretar códigos y algunas cabeceras HTTP como primeras pistas de diagnóstico;
 - identificar las cinco piezas básicas de un despliegue: estáticos, artefacto/runtime, datos, configuración y secretos;

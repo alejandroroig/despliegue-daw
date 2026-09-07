@@ -12,13 +12,17 @@ Escaparate mantiene la arquitectura utilizada en las sesiones anteriores:
 Navegador
     │
     ▼
-Escaparate (frontend + API)
+Escaparate
+Spring Boot + Tomcat embebido
+(frontend + API)
     │
     ▼
 PostgreSQL
 ```
 
 El despliegue tendrá únicamente **dos servicios**, `app` y `bd`. Al finalizar, solo la aplicación publicará un puerto hacia el equipo anfitrión.
+
+Este es el estado final **de este tema**, no de la arquitectura completa del módulo. En el siguiente bloque Nginx se colocará delante y acabará convirtiéndose en la puerta de entrada, mientras `app` permanecerá como la pieza que ejecuta la lógica de la aplicación.
 
 ## Qué vas a practicar
 
@@ -693,4 +697,18 @@ contenedor
 
 A partir de ahora puedes entregar el repositorio a otra persona y pedirle que levante el sistema siguiendo la sección `Puesta en marcha`.
 
-En el siguiente bloque empezarás a estudiar qué ocurre por delante de la aplicación: cómo un servidor web sirve contenido, responde a distintos nombres y, más adelante, se coloca como punto de entrada antes de Escaparate.
+En el siguiente bloque empezarás a construir la **capa de publicación** que faltaba. Nginx aparecerá delante de Escaparate para servir contenido, responder a distintos nombres y reenviar peticiones.
+
+La arquitectura evolucionará de:
+
+```text
+cliente → Spring Boot/Tomcat embebido
+```
+
+a:
+
+```text
+cliente → Nginx → Spring Boot/Tomcat embebido
+```
+
+Ahí empezará a verse de forma práctica la cooperación entre **servidor web** y **servidor de aplicaciones/runtime**.

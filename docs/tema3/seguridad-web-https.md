@@ -66,6 +66,8 @@ Internet
 
 Solo el punto de entrada necesita publicar puertos. Los servicios internos siguen comunicándose mediante la red de Docker.
 
+En nuestro caso, cada servicio de aplicación sigue siendo el mismo que en las sesiones anteriores: **Spring Boot con Tomcat embebido**. HTTPS termina en Nginx; dentro de la red Docker, Nginx continúa hablando HTTP con esas aplicaciones.
+
 ### 1.2. Un nombre debe resolver públicamente
 
 Para practicar con nombres públicos sin registrar un dominio propio puede utilizarse un servicio DNS comodín. Por ejemplo:

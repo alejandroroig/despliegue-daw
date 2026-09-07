@@ -33,4 +33,6 @@ Los criterios de análisis de arquitecturas y de estructura de la aplicación se
 ---
 
 !!! note "Cómo encaja este tema"
-    Tres sesiones para convertir Escaparate en algo que se pueda mover. Al terminar tienes la aplicación empaquetada en una imagen propia, publicada en un registro y con su stack completo —front, API y base de datos— levantándose con un solo comando en cualquier máquina, documentado en tu repositorio.
+    Tres sesiones para convertir Escaparate en una unidad de despliegue reproducible. Al terminar tienes la aplicación empaquetada en una imagen propia, publicada en un registro y con el stack de esta etapa —Spring Boot con frontend, API y Tomcat embebido, más PostgreSQL— levantándose con un solo comando y documentado en tu repositorio.
+
+    Este tema prepara directamente el bloque conjunto de **servidores web y servidores de aplicaciones**: primero empaquetas la pieza que ejecuta la aplicación; después colocarás Nginx delante como servidor web, proxy y puerta de entrada. No sustituirás el Tomcat embebido: ambas responsabilidades cooperarán dentro del mismo despliegue.

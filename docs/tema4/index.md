@@ -1,48 +1,39 @@
-# ☕ Tema 4: Servidores de aplicaciones
+# 🔄 Tema 5: Integración y despliegue continuos
 
-> **RA3**: Implanta aplicaciones web en servidores de aplicaciones, evaluando y aplicando criterios de configuración para su funcionamiento seguro.
+> **RA6**: Elabora la documentación de la aplicación web evaluando y seleccionando herramientas de generación de documentación, control de versiones y de integración continua.
 
 ---
 
 ## 🎯 Criterios de evaluación
 
-✅ Se han descrito los componentes y el funcionamiento de los servicios proporcionados por el servidor de aplicaciones.
+Los criterios de documentación y control de versiones —a), b), c), d), e) y g)— se acreditaron en el Tema 1. Aquí se completa el resultado de aprendizaje con la automatización:
 
-✅ Se han identificado los principales archivos de configuración y de bibliotecas compartidas.
+✅ **h)** Se han utilizado herramientas para la integración continua del código.
 
-✅ Se ha configurado el servidor de aplicaciones para cooperar con el servidor web.
+✅ **f)** Se ha garantizado la accesibilidad y seguridad de la información y código almacenada por el sistema de control de versiones.
 
-✅ Se han configurado y activado los mecanismos de seguridad del servidor de aplicaciones.
+El criterio f) se abrió en el Tema 1 con los secretos fuera del repositorio y se completa aquí en su vertiente de automatización: protección de ramas con comprobaciones exigidas, credenciales temporales del pipeline, secretos por entorno y permisos mínimos de los workflows.
 
-✅ Se han configurado y utilizado los componentes web del servidor de aplicaciones.
+!!! info "Sobre el peso de este tema"
+    El RA6 dedica siete criterios a la documentación y el control de versiones y uno solo a la integración continua. Este tema ocupa dos sesiones y es el más exigente del resultado de aprendizaje, así que su peso en la calificación se pondera por sesiones y no por número de criterios.
 
-✅ Se han realizado los ajustes necesarios para el despliegue de aplicaciones sobre el servidor.
-
-✅ Se han realizado pruebas de funcionamiento y rendimiento de la aplicación web desplegada.
-
-✅ Se ha elaborado documentación relativa a la administración y recomendaciones de uso del servidor de aplicaciones.
-
-✅ Se han utilizado tecnologías de virtualización en el despliegue de servidores de aplicaciones en la nube y en contenedores.
+Los contenidos básicos del módulo incluyen además la **monitorización continua de las métricas de calidad de la aplicación**, que en este tema se concreta en el umbral de cobertura que bloquea la integración.
 
 ---
 
 ## 📘 Índice de contenidos
 
-1. [Servidor de aplicaciones](servidor-aplicaciones.md)
-2. [Rendimiento y pruebas de carga](rendimiento-pruebas-carga.md)
+1. [Integración continua](integracion-continua.md)
+2. [Despliegue continuo](despliegue-continuo.md)
 
 **Actividades:**
 
-- [Actividad 4.1 — El mismo artefacto, dos servidores, y una sesión que deja de perderse](actividad_4_1.md)
-- [Actividad 4.2 — Cuánta carga aguanta y qué se rinde primero](actividad_4_2.md)
+- [Actividad 5.1 — La puerta de entrada a `main`](actividad_5_1.md)
+- [Actividad 5.2 — Del commit a producción, y vuelta](actividad_5_2.md)
+
+Con la Actividad 5.2 se cierra la unidad 5 y el RA6 completo.
 
 ---
 
 !!! note "Cómo encaja este tema"
-    Es el tema más corto del módulo —dos sesiones— y responde a dos preguntas que el Tema 3 dejó abiertas.
-
-    La primera: llevas cuatro sesiones administrando Nginx y Nginx no ha ejecutado nunca una línea de Escaparate. Recibe peticiones, decide a dónde van y devuelve lo que le contesten, pero quien ejecuta la aplicación es otra pieza que todavía no tiene nombre en el curso. La sesión 10 se lo pone, y de paso salda una deuda anunciada en la primera sesión: esa sesión de usuario que desaparece al recargar cuando hay un proxy repartiendo entre varias copias.
-
-    La segunda: nadie ha comprobado si las tres copias que montaste en la sesión 7 rinden más que una. La sesión 11 lo mide con un criterio pactado de latencia y errores, y cierra el RA3 con la conclusión menos intuitiva del módulo: replicar en la misma máquina reparte el trabajo, pero no añade recursos.
-
-    El RA3 reaparece en el Tema 6, cuando sea un orquestador quien decida cuántas copias hacen falta y sobre cuántas máquinas repartirlas.
+    Recupera el repositorio que montaste en septiembre y le da su función definitiva. Todo lo que allí parecía ceremonia —la rama, la pull request, la etiqueta, el secreto fuera del código— resulta ser el mecanismo con el que una máquina construye, comprueba y despliega Escaparate sin que nadie toque el servidor. Y de paso deja una lección que ninguna herramienta enseña sola: una comprobación automática vale exactamente lo que hayas puesto dentro, así que poder volver atrás forma parte del despliegue y no del plan B.

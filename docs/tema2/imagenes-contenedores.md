@@ -239,8 +239,10 @@ Para **ejecutarlo** necesitamos mucho menos:
 ```text
 runtime de Java
 +
-WAR de la aplicación
+WAR ejecutable de la aplicación
 ```
+
+En Escaparate ese WAR es una aplicación Spring Boot capaz de arrancar su propio contenedor de servlets. Por eso la imagen final **no instala Tomcat por separado**: al ejecutar el WAR, la propia aplicación levanta el Tomcat embebido que escucha en el puerto 8080.
 
 Una construcción multietapa permite utilizar una imagen completa para fabricar el artefacto y una segunda imagen más pequeña para ejecutarlo.
 
@@ -271,13 +273,26 @@ La frontera importante está en el segundo `FROM`:
 ```mermaid
 flowchart LR
     B["Etapa build<br/>Maven + JDK"] -->|"genera"| A["WAR"]
-    A -->|"COPY --from=build"| R["Etapa runtime<br/>Java"]
+    A -->|"COPY --from=build"| R["Etapa runtime<br/>Java + WAR ejecutable"]
     R --> I["Imagen de producción"]
 ```
 
-`COPY --from=build` copia únicamente el artefacto que queremos conservar.
+`COPY --from=build` copia únicamente el artefacto de aplicación que queremos conservar.
 
 La imagen final ya no contiene Maven, el compilador, el código fuente ni el repositorio local utilizado durante la construcción.
+
+!!! info "Dos niveles de empaquetado"
+    En esta sesión aparecen dos objetos distintos:
+
+    ```text
+    WAR
+    → artefacto de la aplicación Java
+
+    imagen
+    → unidad de despliegue que contiene JRE + WAR
+    ```
+
+    Más adelante utilizarás esta distinción para comparar dos modelos: ejecutar el WAR de forma autónoma con su servidor embebido o entregarlo a un servidor de aplicaciones externo.
 
 !!! note "Las dependencias de ejecución no desaparecen"
     Las bibliotecas que la aplicación necesita para funcionar siguen formando parte del artefacto generado. Lo que eliminamos de la imagen final son las **herramientas y materiales de construcción** que no son necesarios en producción.
@@ -390,7 +405,7 @@ Una imagen puede arrancar correctamente y, aun así, ser una mala imagen de desp
 | **Contexto** | copia todo lo disponible | excluye contenido innecesario con `.dockerignore` |
 | **Caché** | un cambio pequeño invalida gran parte de la construcción | separa lo estable de lo que cambia con frecuencia |
 | **Construcción** | Maven, JDK y código quedan en la imagen | una etapa compila y otra conserva solo el resultado |
-| **Runtime** | contiene herramientas que producción no necesita | contiene el runtime y el artefacto ejecutable |
+| **Runtime** | contiene herramientas que producción no necesita | contiene JRE + artefacto ejecutable, que en Escaparate arranca su servidor embebido |
 | **Usuario** | puede terminar ejecutándose como `root` | utiliza un usuario sin privilegios |
 | **Escritura** | la aplicación escribe donde pueda | prepara explícitamente las rutas que necesita |
 
@@ -524,7 +539,7 @@ Lo que basta con reconocer: extracción de artefactos con `--target`, bases sin 
     - `.gitignore` controla el historial Git; `.dockerignore` controla lo que Docker recibe durante la construcción.
     - La caché mejora las reconstrucciones: copia primero lo estable, como `pom.xml`, y después lo volátil, como `src/`.
     - Caché y multietapa resuelven problemas distintos: la primera reduce trabajo repetido; la segunda reduce lo que termina en producción.
-    - Una construcción multietapa puede compilar con Maven y JDK y ejecutar después únicamente con JRE + WAR.
+    - Una construcción multietapa puede compilar con Maven y JDK y ejecutar después únicamente con JRE + WAR; en Escaparate ese WAR arranca el Tomcat embebido de Spring Boot.
     - Las dependencias Java necesarias para ejecutar siguen dentro del artefacto; lo que desaparece son herramientas y materiales de construcción.
     - Ejecutar como usuario sin privilegios obliga a preparar explícitamente los directorios que la aplicación necesita escribir.
     - Si una aplicación escribe en runtime, esas rutas deben pertenecer o ser escribibles por el usuario no privilegiado.

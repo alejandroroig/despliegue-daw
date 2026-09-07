@@ -172,7 +172,7 @@ done
 **Captura 1:** `docker compose ps` en EC2 y comprobación del catálogo remoto.
 
 !!! question "Reflexiona"
-    La EC2 no necesita compilar la aplicación. ¿Qué artefacto ejecutan realmente `app-1`, `app-2` y `app-3`?
+    La EC2 no necesita compilar la aplicación. ¿Qué **unidad de despliegue** descarga Docker y qué **artefacto Java** termina ejecutándose dentro de cada `app-*`? Relaciónalo con lo aprendido en el Tema 2.
 
 ---
 

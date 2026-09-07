@@ -7,6 +7,16 @@
 
 En la sesión anterior Nginx actuó como servidor web y puerta de entrada. Ahora añadiremos un segundo papel: **reenviar peticiones a aplicaciones internas**. Cuando un servidor recibe tráfico y lo dirige hacia uno o varios backends hablamos de proxy inverso.
 
+En nuestro despliegue esos backends no son “otro Nginx”: cada `app-*` contiene Escaparate y su **Tomcat embebido**. Desde esta sesión ya existe de forma explícita la cooperación:
+
+```text
+servidor web / proxy
+Nginx
+   ↓
+servidor de aplicaciones
+Spring Boot + Tomcat embebido
+```
+
 Si existen varias copias equivalentes del backend, el mismo punto de entrada puede repartir entre ellas las peticiones. Esto introduce dos problemas que estudiaremos juntos: qué ocurre cuando una copia deja de responder y qué pasa si una réplica guarda localmente datos que después necesita cualquiera de las demás.
 
 ---
@@ -103,6 +113,8 @@ Un `404` que solo aparece al atravesar el proxy es una señal clara para revisar
 ### 2.2. El backend ya no habla con el cliente
 
 Al introducir un proxy, la conexión que recibe el backend procede de Nginx. Si no hacemos nada, la aplicación pierde información sobre la petición original.
+
+Por eso Nginx puede reenviar información sobre el host, la dirección observada y el protocolo externo. En esta sesión basta con comprender qué problema resuelven esas cabeceras; el detalle interno de Spring Boot/Tomcat se estudiará cuando abramos el backend.
 
 | Información original | Sin reenviarla, el backend ve | Cabecera habitual |
 |---|---|---|
@@ -427,4 +439,4 @@ Lo que basta con **reconocer**:
 
 ---
 
-En la actividad aplicarás este patrón general al proyecto del módulo: varias réplicas detrás de Nginx, detección pasiva de fallos y almacenamiento compartido entre copias del mismo host. El despliegue en una máquina pública se reserva para la siguiente sesión, donde esa nueva situación será necesaria para trabajar HTTPS y certificados.
+En la actividad aplicarás este patrón general al proyecto del módulo: varias réplicas de Spring Boot/Tomcat detrás de Nginx, detección pasiva de fallos y almacenamiento compartido entre copias del mismo host. El despliegue en una máquina pública se reserva para la siguiente sesión, donde esa nueva situación será necesaria para trabajar HTTPS y certificados.

@@ -11,11 +11,13 @@ Docker Compose permite trasladar esa descripción a un fichero versionado. Para 
 
 ```mermaid
 flowchart LR
-    N["Navegador"] --> A["Aplicación web<br/>(frontend + api)"]
+    N["Navegador"] --> A["Spring Boot<br/>frontend + API<br/>Tomcat embebido"]
     A --> D[("PostgreSQL")]
 ```
 
-El despliegue tendrá dos servicios: la aplicación y la base de datos. El objetivo de esta sesión es describir y operar correctamente esa relación, no añadir más piezas.
+El despliegue tendrá dos servicios: la aplicación y la base de datos. En este punto el navegador entra directamente a la aplicación, cuyo Tomcat embebido atiende HTTP en el puerto 8080.
+
+El objetivo de esta sesión es describir y operar correctamente esa relación, no añadir más piezas. En el siguiente bloque aparecerá Nginx como servidor web y punto de entrada separado; entonces la aplicación seguirá ejecutándose igual, pero dejará de ser necesariamente la pieza expuesta directamente al cliente.
 
 ---
 
@@ -675,3 +677,5 @@ Lo que basta con reconocer: el nombre de proyecto explícito y los límites de C
 ---
 
 En la actividad aplicarás esta descripción declarativa al proyecto del módulo y comprobarás red interna, persistencia, configuración externa y la diferencia entre **contenedor arrancado** y **servicio preparado**.
+
+Este `compose.yaml` será también la base sobre la que más adelante añadirás una nueva pieza delante de `app`: el servidor web. La aplicación no dejará de ejecutar su propio código ni su servidor embebido; simplemente pasará a recibir el tráfico a través de Nginx.
