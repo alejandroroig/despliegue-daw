@@ -1,7 +1,7 @@
 # 🌐 Servidores web y DNS
 
 !!! info "Descarga de diapositivas"
-    [Descarga las diapositivas](diapositivas/servidores-web-dns.pptx){target="_blank" rel="noopener"}
+    <!-- [Descarga las diapositivas](diapositivas/servidores-web-dns.pptx){target="_blank" rel="noopener"} -->
 
 ---
 

@@ -1,5 +1,10 @@
 # 👁️ Observabilidad: logs, métricas y alertas
 
+!!! info "Descarga de diapositivas"
+    <!-- [Descarga las diapositivas](diapositivas/servidores-web-dns.pptx){target="_blank" rel="noopener"} -->
+
+---
+
 Un servicio puede estar correctamente desplegado y, aun así, ser difícil de administrar si no sabemos qué está ocurriendo.
 
 Decir:

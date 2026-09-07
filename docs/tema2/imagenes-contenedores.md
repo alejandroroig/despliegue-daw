@@ -1,7 +1,7 @@
 # 🏗️ Imágenes de contenedores
 
 !!!info "Descarga de diapositivas"
-    [Descarga las diapositivas](diapositivas/imagenes-contenedores.pptx){target="_blank" rel="noopener"}
+    <!-- [Descarga las diapositivas](diapositivas/imagenes-contenedores.pptx){target="_blank" rel="noopener"} -->
 
 ---
 

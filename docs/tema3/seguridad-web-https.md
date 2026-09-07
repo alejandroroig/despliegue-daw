@@ -1,5 +1,10 @@
 # 🔒 Seguridad web y HTTPS
 
+!!! info "Descarga de diapositivas"
+    <!-- [Descarga las diapositivas](diapositivas/servidores-web-dns.pptx){target="_blank" rel="noopener"} -->
+
+---
+
 Publicar una aplicación no consiste solo en conseguir que responda. Cuando un servicio pasa de un entorno local a una máquina accesible desde Internet aparecen dos preguntas nuevas:
 
 ```text

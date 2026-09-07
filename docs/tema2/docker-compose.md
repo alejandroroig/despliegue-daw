@@ -1,7 +1,7 @@
 # 🧵 Docker Compose
 
 !!! info "Descarga de diapositivas"
-    [Descarga las diapositivas](diapositivas/docker-compose.pptx){target="_blank" rel="noopener"}
+    <!-- [Descarga las diapositivas](diapositivas/docker-compose.pptx){target="_blank" rel="noopener"} -->
 
 ---
 

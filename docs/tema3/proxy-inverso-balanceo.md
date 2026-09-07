@@ -1,7 +1,7 @@
 # 🔀 Proxy inverso y balanceo
 
 !!! info "Descarga de diapositivas"
-    [Descarga las diapositivas](diapositivas/proxy-inverso-balanceo.pptx){target="_blank" rel="noopener"}
+    <!-- [Descarga las diapositivas](diapositivas/proxy-inverso-balanceo.pptx){target="_blank" rel="noopener"} -->
 
 ---
 

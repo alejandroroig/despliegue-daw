@@ -1,5 +1,10 @@
 # 🧩 Servidor de aplicaciones: ejecución, estado y rendimiento
 
+!!! info "Descarga de diapositivas"
+    <!-- [Descarga las diapositivas](diapositivas/servidores-web-dns.pptx){target="_blank" rel="noopener"} -->
+
+---
+
 Hasta ahora el foco ha estado en la entrada del sistema:
 
 ```text

@@ -1,7 +1,7 @@
 # 📦 Fundamentos de contenedores
 
 !!!info "Descarga de diapositivas"
-    [Descarga las diapositivas](diapositivas/fundamentos-contenedores.pptx){target="_blank" rel="noopener"}
+    <!-- [Descarga las diapositivas](diapositivas/fundamentos-contenedores.pptx){target="_blank" rel="noopener"} -->
 
 ---
 
