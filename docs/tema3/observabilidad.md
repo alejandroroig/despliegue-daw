@@ -9,24 +9,19 @@ Un servicio puede estar correctamente desplegado y, aun así, ser difícil de ad
 
 Decir:
 
-```text
-"la web va mal"
-```
+> “La web va mal.”
 
 aporta poco.
 
 Una descripción observable sería más útil:
 
-```text
-"/api/productos devuelve más errores 5xx
-y el p95 de latencia ha aumentado"
-```
+> “`/api/productos` devuelve más errores `5xx` y el p95 de latencia ha aumentado.”
 
 La **observabilidad** es la capacidad de comprender el estado interno de un sistema a partir de las señales que emite.
 
 ---
 
-## 1. Las señales de un sistema
+## 📡 1. Las señales de un sistema
 
 Tradicionalmente se habla de tres grandes tipos:
 
@@ -36,7 +31,7 @@ Tradicionalmente se habla de tres grandes tipos:
 | **Métricas** | valores numéricos a lo largo del tiempo | ¿cómo evoluciona? |
 | **Trazas** | recorrido de una petición | ¿dónde se consume el tiempo? |
 
-### Logs
+### 1.1. Logs
 
 Ejemplo:
 
@@ -48,32 +43,27 @@ duracion=1.84s
 
 Un log permite investigar un caso y conservar contexto.
 
-### Métricas
+### 1.2. Métricas
 
 Ejemplos:
 
-```text
-peticiones por segundo
-porcentaje de errores
-latencia
-CPU
-memoria
-```
+- peticiones por segundo;
+- porcentaje de errores;
+- latencia;
+- CPU;
+- memoria.
 
 Son útiles para tendencias, paneles y alertas.
 
-### Trazas
+### 1.3. Trazas
 
 Una traza sigue una petición entre varios componentes:
 
-```text
-cliente
-  ↓
-proxy
-  ↓
-servicio
-  ↓
-base de datos
+```mermaid
+flowchart LR
+    C["Cliente"] --> P["Proxy"]
+    P --> S["Servicio"]
+    S --> D[("Base de datos")]
 ```
 
 En esta sesión basta con **reconocer** su utilidad. La práctica se centrará principalmente en logs y en agregaciones calculadas a partir de ellos.
@@ -83,22 +73,20 @@ En esta sesión basta con **reconocer** su utilidad. La práctica se centrará p
 
 ---
 
-## 2. Qué registra un servidor web
+## 🧾 2. Qué registra un servidor web
 
 Un servidor como Nginx suele producir dos tipos de registro especialmente útiles.
 
 ### 2.1. Access log
 
-Normalmente registra una entrada por petición:
+Normalmente registra una entrada por petición con campos como:
 
-```text
-cliente
-método
-ruta
-estado
-tamaño
-duración
-```
+- cliente;
+- método;
+- ruta;
+- estado;
+- tamaño;
+- duración.
 
 Por ejemplo:
 
@@ -108,38 +96,31 @@ GET /api/productos
 42 ms
 ```
 
-Permite responder:
+Permite responder preguntas como:
 
-```text
-¿qué ruta se utiliza?
-¿qué código recibió el cliente?
-¿cuánto tardó?
-```
+- **¿Qué ruta se utilizó?**
+- **¿Qué código recibió el cliente?**
+- **¿Cuánto tardó?**
 
 ### 2.2. Error log
 
-Registra problemas del propio servidor:
+Registra problemas del propio servidor, por ejemplo:
 
-```text
-upstream no disponible
-problemas de permisos
-configuración incorrecta
-fichero no encontrado
-```
+- upstream no disponible;
+- problemas de permisos;
+- configuración incorrecta;
+- fichero no encontrado.
 
 Una misma incidencia puede verse desde dos perspectivas:
 
-```text
-access log
-→ /api/productos → 502
-
-error log
-→ fallo al conectar con el upstream
-```
+| Registro | Qué muestra |
+|---|---|
+| `access log` | `/api/productos → 502` |
+| `error log` | fallo al conectar con el upstream |
 
 ---
 
-## 3. Del texto libre al log estructurado
+## 🧱 3. Del texto libre al log estructurado
 
 Un texto pensado para personas puede ser incómodo de analizar automáticamente.
 
@@ -165,22 +146,15 @@ En el segundo caso cada dato tiene un nombre.
 
 Eso permite:
 
-```text
-filtrar
-agrupar
-contar
-calcular medias
-calcular percentiles
-```
+- filtrar;
+- agrupar;
+- contar;
+- calcular medias;
+- calcular percentiles.
 
 ### 3.1. Registrar el backend utilizado
 
-Cuando un proxy reparte tráfico, también puede ser útil conservar:
-
-```text
-destino
-→ dirección del backend que respondió
-```
+Cuando un proxy reparte tráfico, también puede ser útil conservar el campo **destino**, es decir, la dirección del backend que respondió.
 
 Así podemos comprobar desde los logs si varias réplicas están recibiendo peticiones.
 
@@ -200,19 +174,17 @@ al definir un `log_format`.
 
 Evita registrar información sensible innecesaria:
 
-```text
-contraseñas
-tokens
-cookies de sesión
-datos bancarios
-datos personales no necesarios
-```
+- contraseñas;
+- tokens;
+- cookies de sesión;
+- datos bancarios;
+- datos personales no necesarios.
 
 Un log suele copiarse, centralizarse y conservarse. Por eso debe tratarse como información potencialmente sensible.
 
 ---
 
-## 4. Centralizar registros
+## 🗃️ 4. Centralizar registros
 
 Con una sola pieza puede bastar:
 
@@ -220,28 +192,19 @@ Con una sola pieza puede bastar:
 docker compose logs
 ```
 
-Pero en un sistema con varias:
-
-```text
-proxy
-app-1
-app-2
-app-3
-base de datos
-```
-
-la investigación se complica.
+Pero en un sistema con proxy, varias réplicas y base de datos la investigación se complica.
 
 El patrón general es:
 
-```text
-servicios
-   ↓
-recolector
-   ↓
-almacén / índice
-   ↓
-consulta y visualización
+```mermaid
+flowchart LR
+    P["Proxy"] --> R["Recolector"]
+    A1["app-1"] --> R
+    A2["app-2"] --> R
+    A3["app-3"] --> R
+    D["Base de datos"] --> R
+    R --> E["Almacén / índice"]
+    E --> V["Consulta + visualización"]
 ```
 
 | Pieza | Responsabilidad |
@@ -252,32 +215,23 @@ consulta y visualización
 
 Las herramientas concretas pueden cambiar. El patrón es más importante que una marca concreta.
 
-En entornos de contenedores es habitual que los procesos escriban en:
+En entornos de contenedores es habitual que los procesos escriban en **`stdout` y `stderr`**, y que la plataforma recoja esas salidas.
 
-```text
-stdout
-stderr
-```
-
-y que la plataforma recoja esas salidas.
-
-### Retención
+**Retención.**
 
 Los logs crecen.
 
 Todo sistema debe decidir:
 
-```text
-qué guardar
-durante cuánto tiempo
-qué eliminar
-```
+- qué guardar;
+- durante cuánto tiempo;
+- qué eliminar.
 
 Guardar todo indefinidamente no es una estrategia.
 
 ---
 
-## 5. Qué merece nuestra atención
+## 🎯 5. Qué merece nuestra atención
 
 Una referencia muy conocida son las **cuatro señales de oro**:
 
@@ -288,25 +242,13 @@ Una referencia muy conocida son las **cuatro señales de oro**:
 | **Errores** | cuántas operaciones fallan |
 | **Saturación** | cuánto margen queda antes del límite |
 
-En una práctica basada en access logs podemos observar especialmente:
-
-```text
-latencia
-tráfico
-errores
-```
+En una práctica basada en access logs podemos observar especialmente **latencia, tráfico y errores**.
 
 La saturación de CPU, memoria, disco o conexiones requiere normalmente señales específicas de infraestructura.
 
 ### 5.1. RED para un servicio web
 
-Para servicios y APIs resulta útil pensar en:
-
-```text
-R → Rate
-E → Errors
-D → Duration
-```
+Para servicios y APIs resulta útil pensar en **RED: Rate, Errors y Duration**.
 
 | Elemento | Pregunta |
 |---|---|
@@ -321,17 +263,19 @@ RED encaja muy bien con lo que puede observarse desde un access log.
 
 ---
 
-## 6. La media puede ocultar problemas
+## 📊 6. La media puede ocultar problemas
+
+### 6.1. La media
 
 Supón:
 
-```text
-50 ms
-50 ms
-55 ms
-60 ms
-800 ms
-```
+| Petición | Latencia |
+|---|---:|
+| 1 | 50 ms |
+| 2 | 50 ms |
+| 3 | 55 ms |
+| 4 | 60 ms |
+| 5 | 800 ms |
 
 La mayoría de peticiones son rápidas, pero existe una claramente lenta.
 
@@ -339,58 +283,47 @@ Una media resume todos los valores y puede ocultar la cola.
 
 Por eso se utilizan **percentiles**.
 
-### p95
+### 6.2. p95
 
 Una interpretación suficiente es:
 
-```text
-p95 = el 95 % de las peticiones
-      ha tardado ese valor o menos
-```
+> **p95** es el tiempo que el 95 % de las peticiones no supera.
 
 Por ejemplo:
 
-```text
-media = 90 ms
-p95   = 420 ms
-```
+| Medida | Valor |
+|---|---:|
+| media | 90 ms |
+| p95 | 420 ms |
 
-indica que el comportamiento promedio parece bueno, pero una parte del tráfico experimenta latencias mucho mayores.
+El comportamiento promedio parece bueno, pero una parte del tráfico experimenta latencias mucho mayores.
 
 No necesitas calcular manualmente el percentil. Debes saber **interpretarlo**.
 
 ---
 
-## 7. Un dashboard debe responder preguntas
+## 📈 7. Un dashboard debe responder preguntas
 
 Un panel no es mejor por tener más gráficos.
 
-Mal criterio:
+!!! warning "Mal criterio"
+    Diseñar un dashboard para **mostrar todo lo posible**.
 
-```text
-"mostrar todo lo posible"
-```
+Un criterio mejor es partir de una pregunta:
 
-Mejor:
+> **¿Qué necesito saber para decidir si el servicio funciona bien?**
 
-```text
-¿qué necesito saber
-para decidir si el servicio funciona bien?
-```
+Por ejemplo:
 
-Ejemplos:
-
-```text
-¿qué rutas acumulan errores?
-¿qué rutas tienen peor latencia?
-¿están respondiendo varias réplicas?
-```
+- ¿qué rutas acumulan errores?;
+- ¿qué rutas tienen peor latencia?;
+- ¿están respondiendo varias réplicas?
 
 Cada visualización debería existir porque ayuda a responder una pregunta.
 
 ---
 
-## 8. Alertas: cuándo merece la pena avisar
+## 🚨 8. Alertas: cuándo merece la pena avisar
 
 Un panel necesita que alguien lo mire.
 
@@ -407,46 +340,30 @@ Una alerta útil necesita cuatro decisiones:
 
 Ejemplo:
 
-```text
-CONDICIÓN
-más de 10 respuestas 5xx
+| Elemento | Decisión |
+|---|---|
+| Condición | más de 10 respuestas `5xx` |
+| Ventana | durante 2 minutos |
+| Destinatario | responsable del servicio |
+| Acción | comprobar aplicación y dependencias |
 
-VENTANA
-durante 2 minutos
+**Fatiga de alertas.** Una alerta que se dispara continuamente y no exige actuación termina siendo ignorada.
 
-DESTINATARIO
-responsable del servicio
-
-ACCIÓN
-comprobar aplicación y dependencias
-```
-
-### Fatiga de alertas
-
-Una alerta que se dispara continuamente y no exige actuación termina siendo ignorada.
-
-```text
-más alertas
-≠
-mejor observabilidad
-```
+> **Más alertas ≠ mejor observabilidad.**
 
 Suele ser más útil alertar sobre un **síntoma que afecta al servicio** que sobre una posible causa aislada.
 
 ---
 
-## 9. Observar también tiene coste
+## 💾 9. Observar también tiene coste
 
-La observabilidad utiliza:
+La observabilidad también consume recursos y trabajo:
 
-```text
-CPU
-memoria
-disco
-almacenamiento
-índices
-mantenimiento
-```
+- CPU;
+- memoria;
+- disco y almacenamiento;
+- índices;
+- mantenimiento.
 
 Por eso hay que elegir qué recoger y cuánto conservar.
 

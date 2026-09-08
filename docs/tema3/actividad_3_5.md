@@ -1,85 +1,75 @@
-# 🧪 Actividad 3.5: El backend por dentro
+# 🧪 Actividad 3.5 — El backend por dentro
 
 ## Contexto
 
-Escaparate ya está publicado por HTTPS y Nginx reparte `/api/` entre tres copias:
+Escaparate ya está publicado en una instancia EC2. Nginx recibe las peticiones HTTPS y reparte `/api/` entre tres copias de la aplicación:
 
-```text
-Internet
-   │
-   ▼
-Nginx
-   │
-   ├── app-1
-   ├── app-2
-   └── app-3
+```mermaid
+flowchart LR
+    C["Cliente"] --> N["Nginx :443"]
+    N --> A1["app-1"]
+    N --> A2["app-2"]
+    N --> A3["app-3"]
+    A1 --> P[("PostgreSQL")]
+    A2 --> P
+    A3 --> P
 ```
 
-Hasta ahora esas tres copias han funcionado como una caja negra. Sabes que responden en `8080`, pero no hemos dedicado tiempo a observar qué servidor ejecuta realmente la aplicación ni qué consecuencias tiene guardar estado dentro de cada proceso.
+Hasta ahora hemos utilizado las tres aplicaciones como si fueran cajas negras. En esta actividad vamos a mirar qué ocurre **dentro del servidor de aplicaciones**.
 
-Hoy vas a responder tres preguntas:
+Vamos a demostrar cuatro ideas:
 
-```text
-¿qué ejecuta realmente cada app?
-¿dónde debe vivir una sesión si hay varias copias?
-¿tener tres copias significa tener tres veces más capacidad?
+1. un mismo WAR puede ejecutarse con el Tomcat embebido de Spring Boot o desplegarse en un Tomcat externo;
+2. una `HttpSession` guardada en memoria pertenece a una réplica concreta;
+3. Redis permite compartir esa sesión entre todas las réplicas;
+4. tener tres réplicas no significa automáticamente tener tres veces más rendimiento.
+
+> Esta actividad es deliberadamente guiada. No se evalúa que descubras por ensayo y error cómo configurar Spring Session, Redis o Tomcat. Se evalúa que seas capaz de **desplegar, comprobar e interpretar** lo que ocurre.
+
+---
+
+## Cómo vamos a trabajar
+
+Para no mezclar entornos, utilizaremos siempre esta regla:
+
+| Lugar | Para qué lo utilizamos |
+|---|---|
+| **Equipo del aula (LliureX/Linux)** | editar el proyecto, trabajar con Git y ejecutar k6 |
+| **EC2 / Amazon Linux** | construir y ejecutar contenedores, Nginx, Tomcat y Redis |
+
+Cuando cambie el lugar de trabajo aparecerá indicado expresamente.
+
+### Estado inicial esperado
+
+Antes de comenzar deben estar funcionando:
+
+- Nginx con HTTPS;
+- `app-1`, `app-2` y `app-3`;
+- PostgreSQL;
+- el stack de observabilidad de la sesión anterior.
+
+En EC2 puedes comprobarlo con:
+
+Desde cualquier carpeta situada dentro del repositorio:
+
+```bash
+cd "$(git rev-parse --show-toplevel)/practicas/compose"
+docker compose ps
 ```
 
-El Tomcat externo será únicamente un **laboratorio temporal**. La arquitectura final seguirá utilizando Spring Boot con Tomcat embebido.
+> La ruta de tu repositorio puede ser diferente. Lo importante es situarte en `practicas/compose/`.
 
-!!! info "Tiempo orientativo"
-    La actividad está pensada para unos **100 minutos**:
+---
 
-    ```text
-    WAR y Tomcat externo       15–20 min
-    incidencia de sesión       15 min
-    sesión compartida          20 min
-    comparación k6             20–25 min
-    conclusiones + Git         15–20 min
-    ```
+# Paso 1. Preparar una sesión que podamos observar
 
-## Qué vas a practicar
+**Objetivo:** añadir dos endpoints muy pequeños para crear una sesión y comprobar después si la réplica que recibe la petición la conoce.
 
-- **Comparar** el mismo WAR ejecutado con Tomcat embebido y desplegado en un Tomcat externo.
-- **Comprobar** cómo el nombre del WAR afecta a la ruta de contexto.
-- **Reproducir** una pérdida de sesión al balancear entre varias copias.
-- **Externalizar** la sesión a Redis sin desactivar el reparto.
-- **Comprobar** que una misma sesión funciona aunque cambie la réplica.
-- **Comparar** una y tres copias con la misma prueba k6.
-- **Interpretar** throughput, p95 y errores sin confundir el laboratorio con producción.
+## 1.1. Crear la rama
 
-## Requisitos previos
+📍 **EQUIPO DEL AULA — LliureX/Linux (Bash)**
 
-- Actividad 3.4 terminada y fusionada en `main`.
-- El despliegue de la sesión 9 funcionando en EC2.
-- `app-1`, `app-2` y `app-3` detrás de Nginx.
-- PostgreSQL operativo.
-- Pila de observabilidad disponible.
-- `memoria-publicacion-ejecucion.md` creada en la sesión anterior.
-- Paquete `actividad-3.5-soporte.zip`.
-- Imagen docente `ghcr.io/<usuario>/escaparate:sesion-10`, preparada para esta actividad.
-
-El paquete incluye:
-
-```text
-practicas/
-├── compose/
-│   └── compose.aplicaciones.yaml
-└── aplicaciones/
-    ├── extrae-war.sh
-    └── prueba-carga.js
-```
-
-`compose.aplicaciones.yaml` contiene:
-
-- un servicio Redis preparado;
-- un Tomcat 11 de laboratorio compatible con el WAR del proyecto;
-- los montajes necesarios para el experimento;
-- la referencia a la imagen docente de esta sesión.
-
-No tienes que construir una imagen nueva ni modificar código Java. La imagen `sesion-10` añade únicamente el pequeño soporte necesario para experimentar con `HttpSession` y mantiene el resto de Escaparate igual que en las sesiones anteriores.
-
-Prepara:
+Desde la raíz del repositorio:
 
 ```bash
 git switch main
@@ -87,179 +77,932 @@ git pull --ff-only
 git switch -c sesion-10
 ```
 
+## 1.2. Añadir el controlador
+
 Crea:
 
 ```text
-entregas/
-└── tema3/
-    └── actividad-3.5/
-        ├── actividad-3.5.md
-        └── img/
+escaparate/src/main/java/es/escaparate/infraestructura/SesionDemoController.java
+```
+
+y copia exactamente:
+
+```java
+package es.escaparate.infraestructura;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/sesion")
+public class SesionDemoController {
+
+    @PostMapping("/abrir")
+    public Map<String, String> abrir(
+            @RequestParam(defaultValue = "demo") String usuario,
+            HttpServletRequest request) {
+
+        HttpSession session = request.getSession(true);
+        session.setAttribute("usuario", usuario);
+
+        return Map.of(
+                "usuario", usuario,
+                "sesion", session.getId()
+        );
+    }
+
+    @GetMapping("/estado")
+    public ResponseEntity<Map<String, String>> estado(
+            HttpServletRequest request) {
+
+        HttpSession session = request.getSession(false);
+
+        if (session == null || session.getAttribute("usuario") == null) {
+            return ResponseEntity.status(401)
+                    .body(Map.of("estado", "sesion-no-encontrada"));
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "estado", "sesion-encontrada",
+                "usuario", session.getAttribute("usuario").toString(),
+                "sesion", session.getId()
+        ));
+    }
+}
+```
+
+Solo necesitas comprender estas dos líneas:
+
+```java
+request.getSession(true)
+```
+
+crea una sesión si no existe.
+
+```java
+request.getSession(false)
+```
+
+busca una sesión existente, pero **no crea una nueva**.
+
+Esto nos permitirá distinguir claramente entre:
+
+```text
+200 → esta réplica conoce la sesión
+401 → esta réplica no conoce la sesión
+```
+
+## 1.3. Publicar el cambio en la rama
+
+```bash
+git add escaparate/src/main/java/es/escaparate/infraestructura/SesionDemoController.java
+git commit -m "feat: añade demostracion de sesiones"
+git push -u origin sesion-10
 ```
 
 ---
 
-# Paso 1: Ejecuta el mismo WAR de otra forma
+# Paso 2. Construir la versión con sesión local
 
-Hasta ahora cada `app-*` ejecuta el WAR de Escaparate de forma autónoma:
+**Objetivo:** ejecutar exactamente la misma aplicación en las tres réplicas, pero manteniendo todavía `HttpSession` en la memoria de cada JVM.
 
-```text
-java -jar app.war
-       ↓
-Spring Boot
-       ↓
-Tomcat embebido
-```
+No vamos a instalar Java ni Maven en EC2. El `Dockerfile` se encargará de construir la aplicación dentro del proceso de creación de la imagen.
 
-Vamos a extraer **ese mismo artefacto** de la imagen y entregárselo a un Tomcat externo.
+📍 **EC2 — Bash**
 
-Desde el repositorio en EC2:
+Actualiza la rama:
 
 ```bash
-chmod +x practicas/aplicaciones/extrae-war.sh
-./practicas/aplicaciones/extrae-war.sh
+cd "$(git rev-parse --show-toplevel)"
+
+git fetch origin
+git switch sesion-10
+git pull --ff-only
 ```
 
-Comprueba que el script ha dejado:
+Construye la imagen:
+
+```bash
+docker build \
+  -f practicas/docker/app/Dockerfile \
+  -t ghcr.io/<usuario>/escaparate:sesion-10-local \
+  escaparate
+```
+
+> Sustituye `<usuario>` por tu usuario de GitHub.
+
+En:
 
 ```text
-practicas/aplicaciones/tomcat/escaparate.war
+practicas/compose/compose.yaml
 ```
 
-!!! question "Antes de continuar"
-    ¿Has extraído una imagen Docker o el artefacto Java que había dentro de ella?
+cambia **solo** la imagen de `app-1`, `app-2` y `app-3` a:
 
-## 1.1. Despliega `escaparate.war`
+```yaml
+image: ghcr.io/<usuario>/escaparate:sesion-10-local
+```
 
-Desde `practicas/compose/` levanta solo el laboratorio:
+Sitúate en Compose:
+
+```bash
+cd practicas/compose
+```
+
+Valida el fichero:
+
+```bash
+docker compose config >/dev/null && echo "Compose OK"
+```
+
+Recrea solo las aplicaciones:
+
+```bash
+docker compose up -d app-1 app-2 app-3
+```
+
+Comprueba:
+
+```bash
+docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
+```
+
+Las tres aplicaciones deben utilizar:
+
+```text
+sesion-10-local
+```
+
+---
+
+# Paso 3. Desplegar el mismo WAR en un Tomcat externo
+
+**Objetivo:** comprobar que la aplicación no depende obligatoriamente del Tomcat embebido de Spring Boot.
+
+Este Tomcat será solo un **laboratorio temporal**. Al terminar volveremos a la arquitectura habitual.
+
+## 3.1. Extraer el WAR de la imagen
+
+📍 **EC2 — Bash**
+
+Desde la raíz del repositorio:
+
+```bash
+cd "$(git rev-parse --show-toplevel)"
+
+mkdir -p practicas/aplicaciones/tomcat
+
+CID=$(docker create ghcr.io/<usuario>/escaparate:sesion-10-local)
+
+docker cp \
+  "$CID:/app/app.war" \
+  practicas/aplicaciones/tomcat/escaparate.war
+
+docker rm "$CID"
+```
+
+Comprueba:
+
+```bash
+ls -lh practicas/aplicaciones/tomcat/escaparate.war
+```
+
+Aquí tenemos dos artefactos diferentes:
+
+```text
+imagen Docker
+└── contiene app.war
+
+escaparate.war
+└── aplicación web desplegable en un servidor compatible
+```
+
+## 3.2. Crear el Tomcat de laboratorio
+
+Crea:
+
+```text
+practicas/compose/compose.sesion10-lab.yaml
+```
+
+con este contenido:
+
+```yaml
+services:
+
+  tomcat-lab:
+    image: tomcat:11.0.25-jre21-temurin-noble
+
+    environment:
+      DB_HOST: bd
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+
+      APP_STORAGE_TYPE: filesystem
+      APP_STORAGE_PATH: /tmp/uploads
+
+    volumes:
+      - ../aplicaciones/tomcat/escaparate.war:/usr/local/tomcat/webapps/escaparate.war:ro
+
+    depends_on:
+      bd:
+        condition: service_healthy
+```
+
+Desde `practicas/compose/` valida:
 
 ```bash
 docker compose \
   -f compose.yaml \
-  -f compose.aplicaciones.yaml \
-  --profile lab \
+  -f compose.sesion10-lab.yaml \
+  config >/dev/null \
+  && echo "Compose laboratorio OK"
+```
+
+Levanta Tomcat:
+
+```bash
+docker compose \
+  -f compose.yaml \
+  -f compose.sesion10-lab.yaml \
   up -d tomcat-lab
 ```
 
-`tomcat-lab` no publica `8080` hacia Internet.
-
-Comprueba desde `web`:
+Observa el arranque:
 
 ```bash
 docker compose \
   -f compose.yaml \
-  -f compose.aplicaciones.yaml \
-  exec web \
-  curl -s -o /dev/null -w "%{http_code}\n" \
-  http://tomcat-lab:8080/escaparate/api/salud/listo
+  -f compose.sesion10-lab.yaml \
+  logs --tail=100 tomcat-lab
 ```
 
-y:
+No continúes hasta encontrar un mensaje similar a:
 
-```bash
-docker compose \
-  -f compose.yaml \
-  -f compose.aplicaciones.yaml \
-  exec web \
-  curl -s -o /dev/null -w "%{http_code}\n" \
-  http://tomcat-lab:8080/api/salud/listo
+```text
+Started EscaparateApplication
 ```
 
-Relaciona el resultado con:
+## 3.3. Comprobar el contexto del WAR
+
+Como el fichero se llama:
 
 ```text
 escaparate.war
-→ /escaparate
 ```
 
-## 1.2. Publícalo en la raíz
-
-Cambia únicamente el nombre con el que el WAR se monta en Tomcat:
+Tomcat lo publica bajo:
 
 ```text
-ROOT.war
+/escaparate
 ```
 
-Recrea el laboratorio:
+Compruébalo desde el contenedor de Nginx:
 
 ```bash
 docker compose \
   -f compose.yaml \
-  -f compose.aplicaciones.yaml \
-  --profile lab \
+  -f compose.sesion10-lab.yaml \
+  exec web \
+  wget -S -O /dev/null \
+  http://tomcat-lab:8080/escaparate/api/salud/listo \
+  2>&1 | grep 'HTTP/'
+```
+
+Esperado:
+
+```text
+HTTP/1.1 200
+```
+
+Ahora prueba sin `/escaparate`:
+
+```bash
+docker compose \
+  -f compose.yaml \
+  -f compose.sesion10-lab.yaml \
+  exec web \
+  wget -S -O /dev/null \
+  http://tomcat-lab:8080/api/salud/listo \
+  2>&1 | grep 'HTTP/'
+```
+
+Esperado:
+
+```text
+HTTP/1.1 404
+```
+
+## 3.4. Convertir el WAR en aplicación raíz
+
+Edita en `compose.sesion10-lab.yaml` una única línea:
+
+```yaml
+- ../aplicaciones/tomcat/escaparate.war:/usr/local/tomcat/webapps/ROOT.war:ro
+```
+
+Recrea Tomcat:
+
+```bash
+docker compose \
+  -f compose.yaml \
+  -f compose.sesion10-lab.yaml \
   up -d --force-recreate tomcat-lab
 ```
 
-Repite:
+Mira el log hasta que termine el despliegue:
 
 ```bash
 docker compose \
   -f compose.yaml \
-  -f compose.aplicaciones.yaml \
-  exec web \
-  curl -s -o /dev/null -w "%{http_code}\n" \
-  http://tomcat-lab:8080/api/salud/listo
+  -f compose.sesion10-lab.yaml \
+  logs --tail=60 tomcat-lab
 ```
 
-Ahora debe responder en `/`.
+Ahora:
 
-**Captura 1:** las respuestas que demuestran `/escaparate` con el nombre original y `/` al desplegarlo como `ROOT.war`.
+```bash
+docker compose \
+  -f compose.yaml \
+  -f compose.sesion10-lab.yaml \
+  exec web \
+  wget -S -O /dev/null \
+  http://tomcat-lab:8080/api/salud/listo \
+  2>&1 | grep 'HTTP/'
+```
 
-!!! question "Reflexiona"
-    ¿Qué ha cambiado realmente: el código de la aplicación o la forma en que el servidor la ha desplegado?
+debe devolver:
+
+```text
+HTTP/1.1 200
+```
+
+La conclusión es:
+
+```text
+escaparate.war → /escaparate
+ROOT.war       → /
+```
+
+📸 **Captura 1:** guarda una evidencia de esta comparación.
 
 Detén el laboratorio:
 
 ```bash
 docker compose \
   -f compose.yaml \
-  -f compose.aplicaciones.yaml \
-  --profile lab \
+  -f compose.sesion10-lab.yaml \
   stop tomcat-lab
 ```
 
-A partir de aquí volvemos al despliegue habitual con Tomcat embebido.
-
-Antes del siguiente experimento, recrea las tres réplicas con la imagen docente de esta sesión. El overlay cambia la imagen, pero **todavía no activa Redis**:
-
-```bash
-docker compose   -f compose.yaml   -f compose.aplicaciones.yaml   up -d app-1 app-2 app-3
-```
-
-Comprueba:
-
-```bash
-docker compose   -f compose.yaml   -f compose.aplicaciones.yaml   ps
-```
-
-y:
-
-```bash
-curl -s -o /dev/null -w "%{http_code}\n"   https://escaparate.<ip>.nip.io/api/sesion/estado
-```
-
-Sin cookie debe devolver:
-
-```text
-401
-```
+A partir de aquí volvemos a trabajar con las tres aplicaciones Spring Boot y su Tomcat embebido.
 
 ---
 
-# Paso 2: Demuestra dónde vive una sesión
+# Paso 4. Demostrar el problema de una sesión local
 
-Escaparate incluye para esta actividad dos endpoints docentes:
+**Objetivo:** comprobar que una sesión guardada dentro de una JVM deja de estar disponible cuando Nginx envía la siguiente petición a otra réplica.
+
+📍 **EC2 — Bash**
+
+## 4.1. Hacer visible qué backend responde
+
+En:
 
 ```text
-POST /api/sesion/abrir
-GET  /api/sesion/estado
+practicas/nginx/conf.d/sitios.conf
 ```
 
-No representan un sistema de autenticación real. Solo nos permiten crear y consultar una `HttpSession`.
+dentro de `location /api/`, añade temporalmente:
 
-Primero necesitamos saber **qué réplica atendió la misma respuesta** que estamos comprobando.
+```nginx
+add_header X-Destino $upstream_addr always;
+```
 
-En el bloque `location /api/` de Nginx añade:
+Valida:
+
+```bash
+docker compose exec web nginx -t
+```
+
+Recarga:
+
+```bash
+docker compose exec web nginx -s reload
+```
+
+Define la URL de tu despliegue:
+
+```bash
+URL="https://escaparate.<IP-PUBLICA>.nip.io"
+```
+
+Por ejemplo:
+
+```bash
+URL="https://escaparate.52.207.112.46.nip.io"
+```
+
+## 4.2. Crear una sesión
+
+Elimina cualquier cookie anterior:
+
+```bash
+rm -f /tmp/sesion.txt
+```
+
+Crea una sesión:
+
+```bash
+curl -i \
+  -c /tmp/sesion.txt \
+  -X POST \
+  "$URL/api/sesion/abrir?usuario=demo"
+
+echo
+```
+
+Debes ver:
+
+```text
+HTTP/1.1 200
+Set-Cookie: JSESSIONID=...
+```
+
+## 4.3. Repetir la misma petición con la misma cookie
+
+Copia y ejecuta:
+
+```bash
+for i in $(seq 1 12); do
+  echo "Petición $i"
+
+  curl -s \
+    -b /tmp/sesion.txt \
+    -o /dev/null \
+    -D - \
+    "$URL/api/sesion/estado" \
+    | grep -iE '^HTTP/|^X-Destino'
+
+  echo
+done
+```
+
+El resultado esperado es parecido a:
+
+```text
+HTTP/1.1 401
+X-Destino: ...:8080
+
+HTTP/1.1 401
+X-Destino: ...:8080
+
+HTTP/1.1 200
+X-Destino: ...:8080
+```
+
+No importa qué réplica devuelve `200`.
+
+Lo importante es comprobar que:
+
+```text
+la cookie es siempre la misma
++
+Nginx cambia de réplica
++
+solo la réplica que creó la sesión la conoce
+```
+
+📸 **Captura 2:** guarda varias peticiones donde aparezcan destinos diferentes y una mezcla de `200` y `401`.
+
+> Relación con la sesión 7: antes comprobaste que un fichero local podía existir solo en una réplica. Ahora ocurre exactamente lo mismo con el estado de una sesión.
+
+---
+
+# Paso 5. Compartir las sesiones mediante Redis
+
+**Objetivo:** mantener el mismo código Java, pero sacar el estado de sesión fuera de las JVM para que las tres réplicas puedan consultarlo.
+
+Vamos a pasar de:
+
+```text
+HttpSession
+→ memoria de una réplica
+```
+
+a:
+
+```text
+HttpSession
+→ Spring Session
+→ Redis
+→ estado compartido
+```
+
+## 5.1. Añadir Spring Session Redis
+
+📍 **EQUIPO DEL AULA — LliureX/Linux (Bash)**
+
+Abre:
+
+```text
+escaparate/pom.xml
+```
+
+y añade dentro de `<dependencies>`:
+
+```xml
+<!-- Externaliza HttpSession para compartirla entre réplicas. -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-session-data-redis</artifactId>
+</dependency>
+```
+
+No añadas una versión.
+
+Spring Boot gestionará una versión compatible.
+
+## 5.2. Añadir Redis al despliegue
+
+En:
+
+```text
+practicas/compose/compose.yaml
+```
+
+añade el servicio:
+
+```yaml
+redis:
+  image: redis:8-alpine
+
+  healthcheck:
+    test: ["CMD", "redis-cli", "ping"]
+    interval: 2s
+    timeout: 2s
+    retries: 15
+```
+
+No publiques el puerto `6379`. Redis solo debe ser accesible desde la red interna de Docker.
+
+Ahora modifica `app-1`, `app-2` y `app-3`.
+
+### Cambio 1 — imagen
+
+```yaml
+image: ghcr.io/<usuario>/escaparate:sesion-10
+```
+
+### Cambio 2 — variables Redis
+
+Añade dentro de `environment`:
+
+```yaml
+SPRING_DATA_REDIS_HOST: redis
+SPRING_DATA_REDIS_PORT: 6379
+```
+
+### Cambio 3 — dependencia de arranque
+
+Añade Redis a `depends_on`:
+
+```yaml
+depends_on:
+  bd:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+```
+
+No elimines las demás variables, volúmenes o configuraciones existentes de cada réplica.
+
+Publica estos cambios:
+
+```bash
+git add escaparate/pom.xml practicas/compose/compose.yaml
+git commit -m "feat: comparte sesiones mediante redis"
+git push
+```
+
+## 5.3. Construir y desplegar la versión final
+
+📍 **EC2 — Bash**
+
+Actualiza el repositorio:
+
+```bash
+cd "$(git rev-parse --show-toplevel)"
+
+git pull --ff-only
+```
+
+Construye la nueva imagen:
+
+```bash
+docker build \
+  -f practicas/docker/app/Dockerfile \
+  -t ghcr.io/<usuario>/escaparate:sesion-10 \
+  escaparate
+```
+
+Vuelve a Compose:
+
+```bash
+cd practicas/compose
+```
+
+Valida:
+
+```bash
+docker compose config >/dev/null && echo "Compose OK"
+```
+
+Levanta Redis y recrea las tres aplicaciones:
+
+```bash
+docker compose up -d redis app-1 app-2 app-3
+```
+
+Comprueba Redis:
+
+```bash
+docker compose exec redis redis-cli ping
+```
+
+Esperado:
+
+```text
+PONG
+```
+
+### Esperar a que la aplicación esté realmente lista
+
+Las JVM pueden tardar varios segundos en arrancar. No lances todavía la prueba de sesión.
+
+Ejecuta:
+
+```bash
+until curl -fsS "$URL/api/salud/listo" >/dev/null; do
+  echo "Esperando a Escaparate..."
+  sleep 2
+done
+
+echo "Escaparate listo"
+```
+
+No continúes hasta ver:
+
+```text
+Escaparate listo
+```
+
+## 5.4. Crear una nueva sesión
+
+Borra la cookie anterior:
+
+```bash
+rm -f /tmp/sesion.txt
+```
+
+Crea otra sesión:
+
+```bash
+curl -i \
+  -c /tmp/sesion.txt \
+  -X POST \
+  "$URL/api/sesion/abrir?usuario=demo"
+
+echo
+```
+
+Comprueba que Redis contiene información de Spring Session:
+
+```bash
+docker compose exec redis \
+  redis-cli --scan --pattern 'spring:session*'
+```
+
+Deben aparecer claves que comiencen por:
+
+```text
+spring:session
+```
+
+## 5.5. Repetir la prueba entre réplicas
+
+Ejecuta exactamente la misma prueba anterior:
+
+```bash
+for i in $(seq 1 12); do
+  echo "Petición $i"
+
+  curl -s \
+    -b /tmp/sesion.txt \
+    -o /dev/null \
+    -D - \
+    "$URL/api/sesion/estado" \
+    | grep -iE '^HTTP/|^X-Destino'
+
+  echo
+done
+```
+
+Ahora deben ocurrir simultáneamente dos cosas:
+
+```text
+X-Destino → cambia
+HTTP      → siempre 200
+```
+
+La sesión ya no pertenece a una JVM concreta.
+
+```mermaid
+flowchart LR
+    N["Nginx"] --> A1["app-1"]
+    N --> A2["app-2"]
+    N --> A3["app-3"]
+
+    A1 --> R[("Redis")]
+    A2 --> R
+    A3 --> R
+```
+
+📸 **Captura 3:** destinos diferentes, respuestas `200` y claves `spring:session...` en Redis.
+
+---
+
+# Paso 6. Comparar una y tres réplicas con k6
+
+**Objetivo:** comprobar experimentalmente si ejecutar tres JVM en la misma EC2 aumenta necesariamente el rendimiento.
+
+No buscamos una cifra concreta. Buscamos **comparar dos configuraciones bajo exactamente la misma carga**.
+
+## 6.1. Crear el script
+
+📍 **EQUIPO DEL AULA — LliureX/Linux (Bash)**
+
+Desde la raíz de tu repositorio crea:
+
+```text
+practicas/aplicaciones/prueba-carga.js
+```
+
+con:
+
+```javascript
+import http from 'k6/http';
+import { check } from 'k6';
+
+export default function () {
+    const respuesta = http.get(
+        `${__ENV.URL}/api/carga?ms=50`
+    );
+
+    check(respuesta, {
+        'estado 200': (r) => r.status === 200,
+    });
+}
+```
+
+Define la URL:
+
+```bash
+URL="https://escaparate.<IP-PUBLICA>.nip.io"
+```
+
+## 6.2. Medir las tres réplicas
+
+Ejecuta:
+
+```bash
+docker run --rm -i \
+  -e URL="$URL" \
+  -v "$PWD/practicas/aplicaciones/prueba-carga.js:/scripts/prueba-carga.js:ro" \
+  grafana/k6 run \
+  --vus 20 \
+  --duration 30s \
+  /scripts/prueba-carga.js
+```
+
+Anota únicamente:
+
+```text
+http_reqs/s
+http_req_duration p(95)
+http_req_failed
+```
+
+Completa:
+
+| Configuración | req/s | p95 | errores |
+|---|---:|---:|---:|
+| 3 réplicas | | | |
+
+## 6.3. Dejar una sola réplica
+
+📍 **EC2 — Bash**
+
+Primero guarda una copia de la configuración actual de Nginx:
+
+```bash
+cp ../nginx/conf.d/sitios.conf /tmp/sitios-tres.conf
+```
+
+Edita el `upstream` de `sitios.conf` y deja únicamente:
+
+```nginx
+server app-1:8080 resolve;
+```
+
+Detén las otras dos aplicaciones:
+
+```bash
+docker compose stop app-2 app-3
+```
+
+Valida y recarga Nginx:
+
+```bash
+docker compose exec web nginx -t
+docker compose exec web nginx -s reload
+```
+
+Comprueba que solo responde `app-1`:
+
+```bash
+for i in $(seq 1 3); do
+  curl -s "$URL/api/instancia"
+  echo
+done
+```
+
+## 6.4. Repetir exactamente la misma carga
+
+📍 **EQUIPO DEL AULA — LliureX/Linux (Bash)**
+
+No cambies VUs ni duración.
+
+Ejecuta otra vez:
+
+```bash
+docker run --rm -i \
+  -e URL="$URL" \
+  -v "$PWD/practicas/aplicaciones/prueba-carga.js:/scripts/prueba-carga.js:ro" \
+  grafana/k6 run \
+  --vus 20 \
+  --duration 30s \
+  /scripts/prueba-carga.js
+```
+
+Completa:
+
+| Configuración | req/s | p95 | errores |
+|---|---:|---:|---:|
+| 3 réplicas | | | |
+| 1 réplica | | | |
+
+### Interpreta
+
+Responde brevemente:
+
+1. ¿Tres réplicas han triplicado las peticiones por segundo?
+2. ¿Qué recursos físicos comparten las tres JVM?
+3. Aunque no sean más rápidas, ¿qué ventajas aportan varias réplicas?
+
+> No concluyas automáticamente que «una réplica es mejor». Las tres réplicas se están ejecutando en **la misma EC2** y compiten por la misma CPU y memoria. Replicar procesos no equivale a añadir recursos físicos.
+
+---
+
+# Paso 7. Restaurar el despliegue final
+
+**Objetivo:** dejar Escaparate preparado para continuar el proyecto.
+
+📍 **EC2 — Bash**
+
+Restaura Nginx:
+
+```bash
+cp /tmp/sitios-tres.conf ../nginx/conf.d/sitios.conf
+```
+
+Arranca las otras dos aplicaciones:
+
+```bash
+docker compose start app-2 app-3
+```
+
+Elimina de `sitios.conf` la cabecera temporal:
 
 ```nginx
 add_header X-Destino $upstream_addr always;
@@ -272,356 +1015,31 @@ docker compose exec web nginx -t
 docker compose exec web nginx -s reload
 ```
 
-Define:
-
-```bash
-URL=https://escaparate.<ip>.nip.io
-```
-
-Abre una sesión guardando la cookie:
-
-```bash
-rm -f /tmp/sesion.txt
-
-curl -i -c /tmp/sesion.txt \
-  -X POST "$URL/api/sesion/abrir?usuario=demo"
-```
-
-Localiza:
-
-```text
-Set-Cookie: JSESSIONID=...
-```
-
-Después reutiliza **esa misma cookie**:
-
-```bash
-for i in $(seq 1 9); do
-  echo "Petición $i"
-  curl -s -b /tmp/sesion.txt \
-    -o /dev/null -D - \
-    "$URL/api/sesion/estado" \
-    | grep -iE '^HTTP/|^X-Destino'
-  echo
-done
-```
-
-Completa:
-
-| Petición | Destino | ¿Sesión encontrada? |
-|---|---|---|
-| 1 | | |
-| 2 | | |
-| 3 | | |
-| … | | |
-
-Debes observar una relación:
-
-```text
-misma cookie
-+
-copia que creó la sesión
-→ 200
-
-misma cookie
-+
-otra copia
-→ 401
-```
-
-!!! question "Reflexiona"
-    ¿Por qué el fallo parece intermitente?
-
-    Si el reparto fuese aproximadamente uniforme entre tres copias y solo una conociera la sesión, ¿qué proporción aproximada de peticiones esperarías que encontrara el estado?
-
----
-
-# Paso 3: Saca la sesión fuera de las copias
-
-La solución sigue la misma regla que aplicaste a los ficheros subidos:
-
-> un dato que cualquier réplica necesita recuperar no debe vivir únicamente dentro de una de ellas.
-
-El fichero:
-
-```text
-compose.aplicaciones.yaml
-```
-
-incluye un servicio `redis`.
-
-Activa en `app-1`, `app-2` y `app-3` el perfil preparado para Spring Session siguiendo el fragmento incluido en el soporte. La configuración equivalente es:
-
-```yaml
-environment:
-  SPRING_PROFILES_ACTIVE: redis
-  SPRING_DATA_REDIS_HOST: redis
-  SPRING_DATA_REDIS_PORT: 6379
-```
-
-Aplica:
-
-```bash
-docker compose \
-  -f compose.yaml \
-  -f compose.aplicaciones.yaml \
-  up -d
-```
-
-Comprueba que Redis responde:
-
-```bash
-docker compose \
-  -f compose.yaml \
-  -f compose.aplicaciones.yaml \
-  exec redis redis-cli ping
-```
-
-Debe devolver:
-
-```text
-PONG
-```
-
-Borra la cookie anterior:
-
-```bash
-rm -f /tmp/sesion.txt
-```
-
-Abre una sesión nueva:
-
-```bash
-curl -i -c /tmp/sesion.txt \
-  -X POST "$URL/api/sesion/abrir?usuario=demo"
-```
-
-Comprueba que Redis contiene sesiones:
-
-```bash
-docker compose \
-  -f compose.yaml \
-  -f compose.aplicaciones.yaml \
-  exec redis \
-  redis-cli --scan --pattern 'spring:session*' | head
-```
-
-Repite exactamente la tanda:
-
-```bash
-for i in $(seq 1 9); do
-  echo "Petición $i"
-  curl -s -b /tmp/sesion.txt \
-    -o /dev/null -D - \
-    "$URL/api/sesion/estado" \
-    | grep -iE '^HTTP/|^X-Destino'
-  echo
-done
-```
-
-Ahora deben cumplirse simultáneamente:
-
-```text
-X-Destino
-→ sigue cambiando
-
-HTTP
-→ siempre 200
-```
-
-**Captura 2:** varias respuestas atendidas por destinos diferentes manteniendo la sesión y alguna entrada `spring:session` en Redis.
-
-!!! question "Reflexiona"
-    Una sesión pegajosa habría hecho que el proxy intentara devolverte siempre a la misma copia.
-
-    ¿Qué ventaja tiene el almacén externo cuando esa copia se reinicia o se sustituye?
-
----
-
-# Paso 4: Compara una copia con tres
-
-Ahora responderás una pregunta distinta:
-
-```text
-¿tres procesos en la misma EC2
-equivalen a tres veces más capacidad?
-```
-
-El soporte incluye:
-
-```text
-practicas/aplicaciones/prueba-carga.js
-```
-
-y utiliza:
-
-```text
-/api/carga?ms=50
-```
-
-un endpoint preparado para generar una pequeña carga de CPU.
-
-No buscamos un número universal de usuarios. Compararemos únicamente:
-
-```text
-peticiones/s
-p95
-porcentaje de errores
-```
-
-manteniendo iguales el generador, la duración y el número de VUs.
-
-!!! info "Dónde ejecutar k6"
-    Ejecuta k6 **desde tu equipo**, contra la URL pública de EC2. Así el generador no consume la CPU que estamos intentando comparar.
-
-!!! warning "Una comparación necesita condiciones equivalentes"
-    En el escenario de una sola copia **no basta con detener `app-2` y `app-3`** dejando esos destinos en el `upstream`: Nginx intentaría conectarse a copias caídas y añadiría reintentos a la medición.
-
-    Para comparar de forma razonable dejaremos temporalmente el `upstream` con un único servidor.
-
-## 4.1. Calentamiento
-
-Desde tu equipo, situado en la raíz de tu copia del repositorio, define de nuevo la URL:
-
-```bash
-URL=https://escaparate.<ip>.nip.io
-```
-
-Asegúrate de que también tienes disponible localmente:
-
-```text
-practicas/aplicaciones/prueba-carga.js
-```
-
-Ejecuta:
-
-```bash
-docker run --rm \
-  -e URL="$URL" \
-  -v "$PWD/practicas/aplicaciones:/scripts:ro" \
-  grafana/k6 run \
-  --vus 10 --duration 15s \
-  /scripts/prueba-carga.js
-```
-
-No anotes este resultado.
-
-## 4.2. Tres copias
-
-Ejecuta:
-
-```bash
-docker run --rm \
-  -e URL="$URL" \
-  -v "$PWD/practicas/aplicaciones:/scripts:ro" \
-  grafana/k6 run \
-  --vus 20 --duration 30s \
-  /scripts/prueba-carga.js
-```
-
-Anota:
-
-| Configuración | Peticiones/s | p95 | Errores |
-|---|---:|---:|---:|
-| 3 copias | | | |
-
-## 4.3. Una copia
-
-En EC2 guarda temporalmente la configuración:
-
-```bash
-cp ../nginx/conf.d/sitios.conf /tmp/sitios-tres.conf
-```
-
-En `backend_pool` deja únicamente:
-
-```nginx
-server app-1:8080 resolve;
-```
-
-Detén:
-
-```bash
-docker compose \
-  -f compose.yaml \
-  -f compose.aplicaciones.yaml \
-  stop app-2 app-3
-```
-
-Valida y recarga Nginx:
-
-```bash
-docker compose exec web nginx -t
-docker compose exec web nginx -s reload
-```
-
 Comprueba:
 
 ```bash
-for i in $(seq 1 3); do
-  curl -s "$URL/api/instancia"
-  echo
-done
+docker compose ps
 ```
 
-Solo debe aparecer `app-1`.
+Al finalizar deben estar funcionando:
 
-Desde tu equipo repite **exactamente**:
-
-```bash
-docker run --rm \
-  -e URL="$URL" \
-  -v "$PWD/practicas/aplicaciones:/scripts:ro" \
-  grafana/k6 run \
-  --vus 20 --duration 30s \
-  /scripts/prueba-carga.js
+```text
+Nginx
+├── app-1
+├── app-2
+└── app-3
+     │
+     ├── PostgreSQL
+     └── Redis
 ```
 
-Completa:
-
-| Configuración | Peticiones/s | p95 | Errores |
-|---|---:|---:|---:|
-| 3 copias | | | |
-| 1 copia | | | |
-
-Restaura inmediatamente en EC2:
-
-```bash
-cp /tmp/sitios-tres.conf ../nginx/conf.d/sitios.conf
-
-docker compose \
-  -f compose.yaml \
-  -f compose.aplicaciones.yaml \
-  start app-2 app-3
-
-docker compose exec web nginx -t
-docker compose exec web nginx -s reload
-```
-
-Comprueba:
-
-```bash
-for i in $(seq 1 6); do
-  curl -s "$URL/api/instancia"
-  echo
-done
-```
-
-**Captura 3:** resultados de las dos ejecuciones o una tabla donde se vean peticiones/s, p95 y errores.
-
-!!! question "Reflexiona"
-    Si las tres copias no multiplican por tres el throughput, ¿qué recursos siguen siendo compartidos?
-
-    ¿Qué utilidad siguen teniendo varias réplicas aunque no tripliquen la capacidad?
-
-!!! warning "Qué demuestra esta prueba"
-    La comparación incluye la red entre tu equipo y EC2 y se ejecuta sobre una única máquina remota que comparte CPU, memoria y dependencias.
-
-    Sirve para comparar **estas dos configuraciones bajo las mismas condiciones**, no para declarar la capacidad de producción de Escaparate.
+El `tomcat-lab` debe quedar detenido.
 
 ---
 
-# Paso 5: Completa la memoria del tema
+# Paso 8. Completar la memoria
+
+📍 **EQUIPO DEL AULA — LliureX/Linux**
 
 Abre:
 
@@ -629,138 +1047,145 @@ Abre:
 entregas/tema3/memoria-publicacion-ejecucion.md
 ```
 
-Añade una sección breve:
+Añade:
 
 ```markdown
-## Ejecución, estado y rendimiento
+## Ejecución, sesiones y rendimiento
 ```
 
-Con unas **150–200 palabras** y una tabla pequeña es suficiente.
+Con unas **150–200 palabras** responde a estas cuestiones:
 
-Debe explicar:
+1. ¿qué Tomcat ejecutan normalmente las tres réplicas?;
+2. ¿qué comprobaste al desplegar el WAR en un Tomcat externo?;
+3. ¿dónde se almacenaba inicialmente `HttpSession`?;
+4. ¿por qué aparecían respuestas `200` y `401` con la misma cookie?;
+5. ¿qué cambió al introducir Spring Session + Redis?;
+6. ¿qué conclusión obtienes de la prueba con una y tres réplicas?
 
-1. qué servidor ejecutan normalmente las tres aplicaciones;
-2. qué cambió al desplegar el WAR en Tomcat externo;
-3. por qué la sesión fallaba entre réplicas;
-4. qué consiguió Redis;
-5. qué conclusión obtuviste de la comparación k6.
+Incluye esta tabla:
 
-Incluye:
-
-| Aspecto | Embebido | Externo |
-|---|---|---|
-| Quién arranca el servidor | | |
-| Cómo se despliega la aplicación | | |
-| Modelo que conserva el proyecto | | |
-
-Actualiza el diagrama final:
-
-```text
-Internet
-   │
-   ▼
-Nginx :443
-   │
-   ├── app-1 ─┐
-   ├── app-2 ─┼── Redis
-   └── app-3 ─┘
-        │
-        └── PostgreSQL
-
-logs
- ↓
-Fluent Bit
- ↓
-Elasticsearch
- ↓
-Kibana
+```markdown
+| Prueba | Resultado |
+|---|---|
+| WAR como `escaparate.war` | |
+| WAR como `ROOT.war` | |
+| sesión local | |
+| sesión con Redis | |
+| 1 vs. 3 réplicas | |
 ```
 
-El Tomcat externo **no aparece**, porque era únicamente un laboratorio.
+Y actualiza la arquitectura final:
+
+```mermaid
+flowchart LR
+    C["Internet"] --> N["Nginx :443"]
+
+    N --> A1["app-1"]
+    N --> A2["app-2"]
+    N --> A3["app-3"]
+
+    A1 --> R[("Redis<br/>sesiones")]
+    A2 --> R
+    A3 --> R
+
+    A1 --> P[("PostgreSQL")]
+    A2 --> P
+    A3 --> P
+```
+
+El Tomcat externo no aparece porque solo se utilizó como laboratorio.
 
 ---
 
-# Paso 6: Cierra la sesión
+# Paso 9. Git y entrega
 
-Revisa:
+Antes de subir nada, comprueba:
 
 ```bash
 git status
 ```
 
-No debe quedar la modificación temporal del `upstream`.
+Deben quedar como cambios permanentes:
 
-Después:
+```text
+SesionDemoController.java
+pom.xml
+compose.yaml
+compose.sesion10-lab.yaml
+prueba-carga.js
+memoria-publicacion-ejecucion.md
+```
 
-1. registra los cambios;
-2. publica `sesion-10`;
-3. abre Pull Request hacia `main`;
-4. verifica los checks;
-5. fusiona mediante **Create a merge commit**.
+No deben versionarse:
+
+```text
+escaparate.war
+/tmp/sesion.txt
+credenciales
+certificados privados
+la cabecera X-Destino
+la configuración temporal de una sola réplica
+```
+
+Añade los ficheros correctos:
+
+```bash
+git add escaparate \
+  practicas/compose/compose.yaml \
+  practicas/compose/compose.sesion10-lab.yaml \
+  practicas/aplicaciones/prueba-carga.js \
+  entregas/tema3
+```
+
+Comprueba de nuevo:
+
+```bash
+git status
+```
+
+Cuando estés seguro:
+
+```bash
+git commit -m "feat: completa administracion de sesiones y pruebas de carga"
+git push
+```
+
+Abre la Pull Request:
+
+```text
+sesion-10 → main
+```
+
+y fusiónala cuando los checks sean correctos.
 
 ---
 
-# Verificación
+# Qué debes entregar
 
-Al terminar debe cumplirse:
-
-- Nginx sigue siendo la única puerta pública;
-- `app-1`, `app-2` y `app-3` vuelven a estar activas;
-- existe evidencia del WAR bajo `/escaparate` y después bajo `/`;
-- el Tomcat externo ha quedado detenido;
-- la misma cookie produce respuestas `200/401` según la réplica antes de Redis;
-- después de Redis, `/api/sesion/estado` devuelve `200` aunque cambie `X-Destino`;
-- existen entradas `spring:session` en Redis;
-- el `upstream` final vuelve a contener las tres copias;
-- existe una comparación k6 desde el mismo generador y con las mismas condiciones entre una y tres copias;
-- la memoria conjunta está completada;
-- `sesion-10` ha llegado a `main`.
+- **Captura 1:** mismo WAR desplegado como `/escaparate` y como `/`.
+- **Captura 2:** sesión local con destinos distintos y mezcla de `200` / `401`.
+- **Captura 3:** sesión compartida con destinos distintos y siempre `200`, junto con las claves de Redis.
+- Tabla k6 con **1 y 3 réplicas**.
+- Apartado `Ejecución, sesiones y rendimiento` de la memoria.
+- Pull Request fusionada.
 
 ---
 
-# Qué se entrega
+# Qué has demostrado
 
-- [ ] `actividad-3.5.md`.
-- [ ] Tres capturas.
-- [ ] Evidencia del cambio de contexto `escaparate.war` → `ROOT.war`.
-- [ ] Tabla de la incidencia de sesión antes de Redis.
-- [ ] Evidencia de sesión estable entre distintas copias después de Redis.
-- [ ] Entradas `spring:session`.
-- [ ] Comparación k6 entre una y tres copias.
-- [ ] Reflexiones pedidas en la actividad.
-- [ ] `memoria-publicacion-ejecucion.md` completada.
-- [ ] PR `sesion-10 → main` fusionada.
+Al terminar la actividad debes poder explicar esta evolución:
 
----
-
-# ✅ Cierre
-
-Has abierto la parte del sistema que hasta ahora estaba detrás del proxy.
-
-Primero has comprobado que:
-
-```text
-mismo WAR
-→ puede ejecutarse con Tomcat embebido
-→ o desplegarse en un Tomcat externo
+```mermaid
+flowchart LR
+    A["Tomcat ejecuta<br/>la aplicación"]
+    A --> B["HttpSession<br/>en memoria local"]
+    B --> C["El balanceo rompe<br/>la continuidad"]
+    C --> D["Redis comparte<br/>las sesiones"]
+    D --> E["k6 compara<br/>el rendimiento"]
 ```
 
-Después has aplicado una idea más importante para la arquitectura final:
+La idea fundamental es:
 
-```text
-estado dentro de una réplica
-→ copias no intercambiables
+> **cuando una aplicación se replica, el estado que deba sobrevivir al cambio de réplica no puede depender exclusivamente de la memoria de una JVM.**
 
-estado compartido
-→ cualquier copia puede continuar
-```
-
-Y finalmente has comprobado que:
-
-```text
-más réplicas
-≠
-multiplicar automáticamente los recursos
-```
-
-El proyecto conserva el modelo embebido y queda preparado para el siguiente cambio de enfoque: **automatizar construcción, pruebas y publicación mediante integración continua**.
+Redis resuelve aquí el problema de las sesiones compartidas. Las tres réplicas aportan balanceo y tolerancia ante la caída de una instancia, pero no implican por sí solas más capacidad si todas comparten los mismos recursos físicos.

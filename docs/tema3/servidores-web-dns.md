@@ -13,13 +13,10 @@ En esta sesión incorporaremos Nginx delante de una aplicación web y utilizarem
 
 La idea central será separar dos responsabilidades:
 
-```text
-recursos estáticos
-→ el servidor web los lee y los entrega
-
-respuestas dinámicas
-→ la aplicación las genera cuando recibe la petición
-```
+| Tipo de respuesta | Quién la produce |
+|---|---|
+| **Recursos estáticos** | Nginx lee el fichero y lo entrega |
+| **Respuestas dinámicas** | La aplicación ejecuta lógica y genera la respuesta |
 
 A partir de esa separación veremos por qué un servidor web puede aplicar políticas específicas de entrega, como compresión o caché, sin confundirlas con el comportamiento de la aplicación.
 
@@ -41,25 +38,20 @@ La raíz marca el punto desde el que el servidor busca los recursos que puede pu
 
 Por eso no deben aparecer accidentalmente en una raíz pública:
 
-```text
-.env
-copias de seguridad
-scripts SQL
-credenciales
-notas internas
-```
+- ficheros `.env`;
+- copias de seguridad;
+- scripts SQL;
+- credenciales;
+- notas internas.
 
 Un servidor web tampoco sustituye a la aplicación. Nginx no ejecuta por sí mismo la lógica de negocio de una aplicación. Para contenido dinámico necesita reenviar la petición al proceso que sí puede generarlo.
 
 En esta sesión la separación será:
 
-```text
-HTML, CSS, JS, imágenes
-→ Nginx los lee del disco
-
-/api/...
-→ la aplicación genera la respuesta
-```
+| Petición | Responsable |
+|---|---|
+| HTML, CSS, JS e imágenes | Nginx los lee del disco |
+| `/api/...` | la aplicación genera la respuesta |
 
 ---
 
@@ -71,11 +63,13 @@ Su diseño histórico es diferente. Apache es muy modular y admite varios modelo
 
 En este módulo trabajaremos con **Nginx** porque una sola herramienta nos permitirá estudiar progresivamente:
 
-```text
-sesión 6 → contenido estático y hosts virtuales
-sesión 7 → proxy inverso y balanceo
-sesión 8 → HTTPS y control de acceso
-sesión 9 → registro del tráfico
+```mermaid
+flowchart LR
+    S6["Sesión 6<br/>estáticos + hosts virtuales"]
+    S7["Sesión 7<br/>proxy + balanceo"]
+    S8["Sesión 8<br/>HTTPS + acceso"]
+    S9["Sesión 9<br/>observabilidad"]
+    S6 --> S7 --> S8 --> S9
 ```
 
 No se trata de afirmar que Nginx sea universalmente mejor. Apache sigue siendo una opción perfectamente válida y muy extendida.
@@ -123,19 +117,11 @@ La aplicación `app` continúa existiendo y sigue ejecutando su lógica mediante
 
 Esta es la primera cooperación práctica entre las dos responsabilidades que recorrerán el tema:
 
-```text
-Nginx
-→ servidor web y punto de entrada
-
-Spring Boot + Tomcat embebido
-→ servidor de aplicaciones / runtime que ejecuta la lógica
-```
-
 ```mermaid
 flowchart LR
-    C["Navegador"] --> N["Nginx<br/>web"]
+    C["Navegador"] --> N["Nginx<br/>servidor web + entrada"]
     N --> E["Contenido<br/>estático"]
-    N --> A["Aplicación<br/>app"]
+    N --> A["Spring Boot + Tomcat<br/>ejecución dinámica"]
     A --> D[("Base de datos<br/>bd")]
 ```
 
@@ -165,14 +151,11 @@ docker compose exec web nginx -s reload
 
 La secuencia profesional es:
 
-```text
-editar
-↓
-validar
-↓
-recargar
-↓
-comprobar
+```mermaid
+flowchart LR
+    E["Editar"] --> V["Validar<br/>nginx -t"]
+    V --> R["Recargar"]
+    R --> C["Comprobar"]
 ```
 
 Reiniciar el contenedor entero para aplicar cada cambio funciona, pero oculta una capacidad importante del servidor: **puede recargar su configuración sin sustituir el proceso por un despliegue completamente nuevo**.
@@ -183,38 +166,29 @@ Reiniciar el contenedor entero para aplicar cada cambio funciona, pero oculta un
 
 Cuando un sitio está correctamente montado pero no se muestra como esperas, tres detalles explican muchos fallos.
 
-### Tipo MIME
+### 4.1. Tipo MIME
 
-La respuesta HTTP incluye una cabecera `Content-Type`, por ejemplo:
+La respuesta HTTP incluye una cabecera `Content-Type`. Algunos valores habituales son:
 
-```text
-text/html
-text/css
-application/javascript
-image/png
-```
+- `text/html`;
+- `text/css`;
+- `application/javascript`;
+- `image/png`.
 
 El navegador utiliza ese valor para interpretar el recurso. Un CSS puede existir y descargarse, pero no aplicarse correctamente si llega con un tipo inesperado.
 
-### Índice
+### 4.2. Índice
 
-Cuando se solicita un directorio, el servidor suele buscar un fichero como:
-
-```text
-index.html
-```
+Cuando se solicita un directorio, el servidor suele buscar un fichero como `index.html`.
 
 Si no existe, puede devolver `403` o, si se ha configurado expresamente, mostrar el listado del directorio mediante `autoindex`.
 
-### Permisos y rutas
+### 4.3. Permisos y rutas
 
 Nginx debe poder:
 
-```text
-leer los ficheros
-+
-atravesar los directorios que los contienen
-```
+- **leer** los ficheros;
+- **atravesar** los directorios que los contienen.
 
 Con montajes desde el anfitrión también conviene comprobar que la ruta configurada con `root` coincide con la ruta que realmente existe dentro del contenedor.
 
@@ -275,32 +249,21 @@ Las directivas principales son:
 
 Así pueden coexistir:
 
-```text
-web.ejemplo.test
-→ sitio principal
-
-docs.ejemplo.test
-→ documentación e informes
-```
+| Nombre solicitado | Sitio |
+|---|---|
+| `web.ejemplo.test` | sitio principal |
+| `docs.ejemplo.test` | documentación e informes |
 
 Los dos nombres pueden apuntar a la misma dirección IP, utilizar el puerto 80 y terminar en el mismo servidor Nginx.
 
 La secuencia completa puede visualizarse así:
 
-```text
-docs.ejemplo.test
-      │
-      │ DNS
-      ▼
-  203.0.113.10
-      │
-      │ petición HTTP
-      │ Host: docs.ejemplo.test
-      ▼
-    Nginx
-   ┌──┴───┐
-   ▼      ▼
-  web    docs
+```mermaid
+flowchart LR
+    N["docs.ejemplo.test"] -->|DNS| IP["203.0.113.10"]
+    IP -->|HTTP<br/>Host: docs.ejemplo.test| NG["Nginx"]
+    NG --> D["sitio docs"]
+    NG -. otro Host .-> W["sitio web"]
 ```
 
 DNS permite llegar hasta la máquina correcta. La cabecera HTTP `Host` permite después decidir qué sitio debe responder.
@@ -321,12 +284,11 @@ server {
 
 Ahora la política es clara:
 
-```text
-nombre conocido
-→ sitio correspondiente
-
-nombre desconocido
-→ 404
+```mermaid
+flowchart LR
+    H["Host recibido"] --> Q{"¿coincide con<br/>server_name?"}
+    Q -->|sí| S["sitio correspondiente"]
+    Q -->|no| D["default_server<br/>404"]
 ```
 
 ---
@@ -390,15 +352,10 @@ curl -s -H "Accept-Encoding: gzip" -o /dev/null \
 
 No todos los recursos tienen la misma volatilidad:
 
-```text
-HTML
-→ cambia con frecuencia
-→ caché corta o revalidación
-
-CSS, JS, imágenes versionadas
-→ cambian menos
-→ caché más larga
-```
+| Recurso | Cambio habitual | Política razonable |
+|---|---|---|
+| HTML | frecuente | caché corta o revalidación |
+| CSS, JS e imágenes versionadas | menos frecuente | caché más larga |
 
 En Nginx una configuración puede aplicar reglas por extensión. Por ejemplo:
 
@@ -423,19 +380,12 @@ La separación entre servidor web y aplicación también ayuda a decidir cómo t
 | `/index.html` | Nginx lee un fichero | suele recibir una caché más corta |
 | `/api/productos` | la aplicación genera la respuesta | la política depende del dato y de cuánto puede cambiar |
 
-La regla importante no es:
+!!! warning "Una simplificación incorrecta"
+    **Dinámico ≠ nunca cacheable.**
 
-```text
-dinámico
-→ nunca se cachea
-```
+La regla útil es:
 
-sino:
-
-```text
-cada respuesta
-→ necesita una política coherente con su naturaleza
-```
+> Cada respuesta necesita una política de caché coherente con la naturaleza y volatilidad del dato.
 
 Una API también puede utilizar caché, pero no conviene aplicar automáticamente a sus respuestas la misma política larga que a un CSS, JavaScript o una imagen versionada.
 
@@ -462,13 +412,10 @@ puede hacer que el navegador encuentre `ejemplo.local` sin que exista ningún re
 
 Así pueden darse simultáneamente estas dos situaciones:
 
-```text
-navegador
-→ nombre funciona por /etc/hosts
-
-dig
-→ el DNS dice que ese nombre no existe
-```
+| Herramienta | Fuente utilizada | Resultado posible |
+|---|---|---|
+| navegador / aplicación | resolutor del sistema, incluido `/etc/hosts` | el nombre funciona |
+| `dig` | DNS | el nombre no existe en DNS |
 
 No hay contradicción. Están consultando fuentes diferentes.
 
@@ -493,24 +440,13 @@ dig web.127.0.0.1.nip.io
 dig +short web.127.0.0.1.nip.io
 ```
 
-Para el laboratorio utilizaremos `nip.io`, un servicio DNS comodín que permite codificar una dirección IP dentro de un nombre. Así:
-
-```text
-web.127.0.0.1.nip.io
-docs.127.0.0.1.nip.io
-```
-
-pueden resolver a `127.0.0.1` sin registrar un dominio propio.
+Para el laboratorio utilizaremos `nip.io`, un servicio DNS comodín que permite codificar una dirección IP dentro de un nombre. Así, `web.127.0.0.1.nip.io` y `docs.127.0.0.1.nip.io` pueden resolver a `127.0.0.1` sin registrar un dominio propio.
 
 Esto nos permite practicar simultáneamente:
 
-```text
-DNS real
-+
-hosts virtuales por nombre
-+
-una sola máquina
-```
+- resolución mediante **DNS real**;
+- **hosts virtuales por nombre**;
+- varios nombres sobre **una sola máquina**.
 
 En la siguiente sesión aplicarás la misma idea sobre la dirección pública de una instancia remota.
 

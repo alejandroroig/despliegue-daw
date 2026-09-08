@@ -7,31 +7,25 @@
 
 Publicar una aplicación no consiste solo en conseguir que responda. Cuando un servicio pasa de un entorno local a una máquina accesible desde Internet aparecen dos preguntas nuevas:
 
-```text
-¿quién puede acceder?
-¿cómo protegemos el tráfico mientras viaja?
-```
+- **¿Quién puede acceder?**
+- **¿Cómo protegemos el tráfico mientras viaja?**
 
 En esta sesión estudiaremos ambas capas. Antes veremos también qué cambia —y qué no— al trasladar un despliegue Docker desde nuestro equipo a un host remoto.
 
 ---
 
-## 1. Del laboratorio local a un host remoto
+## 🚀 1. Del laboratorio local a un host remoto
 
 Un despliegue reproducible no debería depender de reconstruir manualmente la aplicación en cada servidor.
 
 El flujo habitual es:
 
-```text
-código
-  ↓
-build + pruebas
-  ↓
-imagen publicada
-  ↓
-servidor remoto
-  ↓
-pull + ejecución
+```mermaid
+flowchart LR
+    C["Código"] --> B["Build + pruebas"]
+    B --> I["Imagen publicada"]
+    I --> S["Servidor remoto"]
+    S --> E["Pull + ejecución"]
 ```
 
 El servidor de destino necesita:
@@ -58,15 +52,11 @@ En un host con dirección pública, esa misma publicación puede convertir el se
 
 Por eso seguimos buscando:
 
-```text
-Internet
-   │
-   │ 80 / 443
-   ▼
- Nginx
-   │
-   ├── aplicación
-   └── base de datos
+```mermaid
+flowchart LR
+    I["Internet"] -->|80 / 443| N["Nginx"]
+    N --> A["Aplicación"]
+    A --> D[("Base de datos")]
 ```
 
 Solo el punto de entrada necesita publicar puertos. Los servicios internos siguen comunicándose mediante la red de Docker.
@@ -92,22 +82,20 @@ El DNS permite llegar hasta la máquina. Después Nginx sigue utilizando la cabe
 
 ---
 
-## 2. Control de acceso en el servidor web
-
-### 2.1. HTTP Basic Authentication
+## 🔐 2. Control de acceso en el servidor web
 
 Un servidor web puede proteger una ruta sin modificar la aplicación.
 
 El intercambio básico es:
 
-```text
-cliente pide /privado/
-        ↓
-servidor responde 401
-+ WWW-Authenticate
-        ↓
-cliente reintenta
-+ Authorization: Basic ...
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant N as Nginx
+    C->>N: GET /privado/
+    N-->>C: 401 + WWW-Authenticate
+    C->>N: GET /privado/ + Authorization
+    N-->>C: acceso o nuevo 401
 ```
 
 La cabecera `Authorization` contiene una representación Base64 de:
@@ -146,38 +134,33 @@ Aunque la contraseña no esté guardada en claro, ese fichero sigue siendo **mat
 
 ---
 
-## 3. Qué problema tiene HTTP
+## 📡 3. Qué problema tiene HTTP
 
 HTTP por sí solo no ofrece confidencialidad ni integridad al transporte.
 
 Un observador situado en un punto por el que pase la comunicación puede llegar a ver:
 
-```text
-rutas
-cabeceras
-cookies
-credenciales Basic
-cuerpos
-respuestas
-```
+- rutas;
+- cabeceras;
+- cookies;
+- credenciales Basic;
+- cuerpos de petición;
+- respuestas.
 
 Y un intermediario activo podría intentar modificar el tráfico.
 
 La idea importante es:
 
-```text
-Basic Authentication
-→ controla acceso
-
-HTTPS
-→ protege el transporte
-```
+| Mecanismo | Qué protege |
+|---|---|
+| **Basic Authentication** | controla quién puede acceder |
+| **HTTPS** | protege el transporte entre los extremos TLS |
 
 Son problemas distintos.
 
 ---
 
-## 4. HTTPS: HTTP protegido por TLS
+## 🔒 4. HTTPS: HTTP protegido por TLS
 
 Cuando HTTP circula dentro de TLS hablamos de **HTTPS**.
 
@@ -191,21 +174,20 @@ TLS proporciona tres garantías principales:
 
 De forma simplificada:
 
-```text
-cliente inicia TLS
-      ↓
-servidor presenta certificado
-      ↓
-cliente valida nombre, fechas y confianza
-      ↓
-se acuerdan claves de sesión
-      ↓
-HTTP viaja protegido
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant S as Servidor
+    C->>S: inicia TLS
+    S-->>C: presenta certificado
+    Note over C: valida nombre, fechas y confianza
+    C->>S: acuerdan claves de sesión
+    Note over C,S: HTTP viaja protegido
 ```
 
 El certificado no cifra cada petición HTTP con la clave pública. En TLS moderno ayuda a autenticar al servidor durante el establecimiento de la conexión; después se utilizan claves de sesión eficientes para proteger el tráfico.
 
-### 4.1. HTTPS no hace segura toda la aplicación
+**HTTPS no hace segura toda la aplicación.**
 
 Un certificado válido no evita:
 
@@ -219,7 +201,7 @@ HTTPS protege principalmente **la comunicación entre los extremos de la conexi�
 
 ---
 
-## 5. Certificados y confianza
+## 📜 5. Certificados y confianza
 
 Un certificado X.509 contiene, entre otros datos:
 
@@ -231,11 +213,9 @@ Un certificado X.509 contiene, entre otros datos:
 
 Un mismo certificado puede cubrir varios nombres mediante **Subject Alternative Name (SAN)**:
 
-```text
-certificado
-├── web.ejemplo.test
-└── docs.ejemplo.test
-```
+| Certificado | Nombres incluidos |
+|---|---|
+| certificado del sitio | `web.ejemplo.test`, `docs.ejemplo.test` |
 
 La clave privada asociada **no forma parte del certificado público** y debe permanecer secreta.
 
@@ -243,12 +223,10 @@ La clave privada asociada **no forma parte del certificado público** y debe per
 
 Habitualmente:
 
-```text
-certificado del sitio
-        ↓
-CA intermedia
-        ↓
-CA raíz de confianza
+```mermaid
+flowchart LR
+    S["Certificado del sitio"] --> I["CA intermedia"]
+    I --> R["CA raíz de confianza"]
 ```
 
 El cliente valida que puede construir una cadena hasta una autoridad que ya considera confiable y comprueba también el nombre y las fechas.
@@ -264,21 +242,21 @@ Un certificado emitido por una CA pública reconocida puede validarse sin instal
 
 ---
 
-## 6. ACME y HTTP-01
+## 🤖 6. ACME y HTTP-01
 
 Una CA pública no necesita comprobar la identidad personal del administrador para un certificado de validación de dominio. Necesita comprobar que controla el nombre solicitado.
 
 Con **HTTP-01**:
 
-```text
-cliente ACME
-  │ escribe token
-  ▼
-webroot
-  ▲
-  │ GET /.well-known/acme-challenge/...
-  │
- CA
+```mermaid
+sequenceDiagram
+    participant A as Cliente ACME
+    participant W as Webroot / Nginx
+    participant C as CA
+    A->>W: publica token
+    C->>W: GET /.well-known/acme-challenge/...
+    W-->>C: devuelve token
+    Note over C: valida el control del nombre
 ```
 
 La autoridad:
@@ -288,15 +266,11 @@ La autoridad:
 3. solicita un token concreto;
 4. comprueba que recibe el valor esperado.
 
-Por eso HTTP-01 necesita:
+Por eso HTTP-01 necesita tres condiciones simultáneas:
 
-```text
-DNS público correcto
-+
-puerto 80 accesible
-+
-ruta del challenge correctamente servida
-```
+- DNS público correcto;
+- puerto **80** accesible;
+- ruta del challenge correctamente servida.
 
 ### 6.1. Probar antes de emitir
 
@@ -304,47 +278,39 @@ Las CA aplican límites de emisión. Durante configuración y diagnóstico debe 
 
 El flujo recomendable es:
 
-```text
-probar
-  ↓
-corregir
-  ↓
-volver a probar
-  ↓
-emitir en producción una vez
+```mermaid
+flowchart LR
+    P["Probar en staging"] --> Q{"¿funciona?"}
+    Q -->|no| C["Corregir"]
+    C --> P
+    Q -->|sí| E["Emitir en producción"]
 ```
 
 ### 6.2. Los certificados caducan
 
 Obtener un certificado una vez no resuelve el problema para siempre.
 
-```text
-renovar
-  ↓
-ficheros nuevos
-  ↓
-recargar servidor
-  ↓
-certificado nuevo en uso
+```mermaid
+flowchart LR
+    R["Renovar"] --> F["Ficheros nuevos"]
+    F --> N["Recargar Nginx"]
+    N --> C["Certificado nuevo en uso"]
 ```
 
 En esta sesión basta con comprender el ciclo. La automatización periódica puede quedar como ampliación.
 
 ---
 
-## 7. Terminación TLS en el proxy
+## 🚪 7. Terminación TLS en el proxy
 
 Cuando Nginx es la única entrada pública, puede concentrar también TLS:
 
-```text
-cliente
-  │ HTTPS
-  ▼
-Nginx :443
-  │ HTTP interno
-  ├── app-1
-  ├── app-2
-  └── app-3
+```mermaid
+flowchart LR
+    C["Cliente"] -->|HTTPS| N["Nginx :443<br/>terminación TLS"]
+    N -->|HTTP interno| A1["app-1"]
+    N -->|HTTP interno| A2["app-2"]
+    N -->|HTTP interno| A3["app-3"]
 ```
 
 Nginx:
@@ -377,16 +343,15 @@ Esto presupone que la red entre proxy y backend es una red interna de confianza.
 
 ---
 
-## 8. HTTP, redirección y HSTS
+## 🛡️ 8. HTTP, redirección y HSTS
 
 ### 8.1. Redirigir hacia HTTPS
 
 Una vez disponible HTTPS, el puerto 80 puede actuar como entrada de transición:
 
-```text
-http://web.ejemplo.test/recurso
-        ↓ 301
-https://web.ejemplo.test/recurso
+```mermaid
+flowchart LR
+    H["http://web.ejemplo.test/recurso"] -->|301| S["https://web.ejemplo.test/recurso"]
 ```
 
 Si seguimos utilizando HTTP-01, podemos conservar una excepción:
@@ -413,11 +378,8 @@ Durante un laboratorio conviene utilizar un tiempo corto.
 
 HSTS se aprende mejor como una segunda capa:
 
-```text
-redirección HTTP → HTTPS
-+
-navegador recuerda que debe usar HTTPS
-```
+1. el servidor **redirige** HTTP hacia HTTPS;
+2. el navegador **recuerda** que ese nombre debe utilizar HTTPS durante el tiempo indicado.
 
 ### 8.3. Otras cabeceras sencillas
 
@@ -437,17 +399,17 @@ Políticas más complejas, como Content Security Policy, deben diseñarse según
 
 ---
 
-## 9. Las capas no sustituyen unas a otras
+## 🧱 9. Las capas no sustituyen unas a otras
 
 Una visión útil es:
 
-```text
-transporte       → TLS
-acceso           → autenticación y autorización
-secretos         → credenciales y claves
-aplicación       → validación y programación segura
-infraestructura  → puertos, permisos y actualizaciones
-```
+| Capa | Mecanismo o responsabilidad |
+|---|---|
+| Transporte | TLS |
+| Acceso | autenticación y autorización |
+| Secretos | credenciales y claves |
+| Aplicación | validación y programación segura |
+| Infraestructura | puertos, permisos y actualizaciones |
 
 Añadir HTTPS no elimina la necesidad de las demás capas.
 

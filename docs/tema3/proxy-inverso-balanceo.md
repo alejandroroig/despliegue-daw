@@ -9,12 +9,10 @@ En la sesión anterior Nginx actuó como servidor web y puerta de entrada. Ahora
 
 En nuestro despliegue esos backends no son “otro Nginx”: cada `app-*` contiene Escaparate y su **Tomcat embebido**. Desde esta sesión ya existe de forma explícita la cooperación:
 
-```text
-servidor web / proxy
-Nginx
-   ↓
-servidor de aplicaciones
-Spring Boot + Tomcat embebido
+```mermaid
+flowchart LR
+    C["Cliente"] --> N["Nginx<br/>servidor web + proxy"]
+    N --> A["Spring Boot + Tomcat<br/>servidor de aplicaciones"]
 ```
 
 Si existen varias copias equivalentes del backend, el mismo punto de entrada puede repartir entre ellas las peticiones. Esto introduce dos problemas que estudiaremos juntos: qué ocurre cuando una copia deja de responder y qué pasa si una réplica guarda localmente datos que después necesita cualquiera de las demás.
@@ -27,26 +25,25 @@ Si existen varias copias equivalentes del backend, el mismo punto de entrada pue
 
 Cuando Nginx sirve un fichero estático, él mismo produce la respuesta:
 
-```text
-GET /css/estilos.css
-        ↓
-      Nginx
-        ↓
-/srv/www/web/css/estilos.css
+```mermaid
+flowchart LR
+    C["GET /css/estilos.css"] --> N["Nginx"]
+    N --> F["/srv/www/web/css/estilos.css"]
+    F --> N
+    N --> C
 ```
 
 Un **proxy inverso** hace algo distinto. Recibe una petición, selecciona otro servidor, se la reenvía, espera la respuesta y después la devuelve al cliente:
 
-```text
-GET /api/productos
-        ↓
-      Nginx
-        ↓
-       app
-        ↓
-      Nginx
-        ↓
-    navegador
+```mermaid
+sequenceDiagram
+    participant C as Navegador
+    participant N as Nginx
+    participant A as app
+    C->>N: GET /api/productos
+    N->>A: reenvía petición
+    A-->>N: respuesta
+    N-->>C: respuesta
 ```
 
 Para el navegador sigue existiendo un único origen. No necesita saber el nombre interno de la aplicación ni el puerto 8080.
@@ -65,11 +62,11 @@ En esta sesión trabajaremos únicamente con **proxy inverso**.
 
 Con un proxy inverso podemos decidir qué hacer según la petición:
 
-```text
-/                 → ficheros del frontend
-/css/...          → ficheros del frontend
-/api/...          → aplicación
-```
+| Ruta | Destino |
+|---|---|
+| `/` | ficheros del frontend |
+| `/css/...` | ficheros del frontend |
+| `/api/...` | aplicación |
 
 Esto aporta varias ventajas que iremos utilizando durante el módulo:
 
@@ -196,12 +193,10 @@ Las tres piezas necesarias son:
 
 No hace falta memorizar estas directivas. Lo importante es entender el problema que resuelven:
 
-```text
-nombre estable de servicio
-        ↓
-DNS interno de Docker
-        ↓
-IP actual del contenedor
+```mermaid
+flowchart LR
+    N["Nombre estable<br/>app-2"] --> D["DNS interno<br/>de Docker"]
+    D --> I["IP actual<br/>del contenedor"]
 ```
 
 ### 3.3. El proxy completo
@@ -224,12 +219,11 @@ location /api/ {
 
 Las tres directivas nuevas tienen un único objetivo: **que una copia caída no bloquee una petición durante demasiado tiempo**.
 
-```text
-intenta conectar
-      ↓
-en 2 s no responde
-      ↓
-prueba otra copia
+```mermaid
+flowchart LR
+    A["Intenta conectar"] --> Q{"¿responde<br/>a tiempo?"}
+    Q -->|sí| R["usa la respuesta"]
+    Q -->|no| O["prueba otra copia"]
 ```
 
 `proxy_next_upstream_tries 3` limita el intento a las tres copias existentes.
@@ -242,11 +236,11 @@ Nginx utiliza aquí una comprobación **pasiva**: no pregunta continuamente si l
 
 Si `app-2` se detiene:
 
-```text
-app-1  ✅
-app-2  ❌
-app-3  ✅
-```
+| Réplica | Estado |
+|---|---|
+| `app-1` | ✅ disponible |
+| `app-2` | ❌ caída |
+| `app-3` | ✅ disponible |
 
 una petición puede intentar primero `app-2`. Como hemos reducido el tiempo de conexión, Nginx no espera un minuto: abandona ese intento rápidamente y puede probar otra copia.
 
@@ -254,7 +248,7 @@ Las peticiones siguientes se siguen repartiendo entre los destinos disponibles.
 
 Cuando `app-2` vuelve, `resolver` + `resolve` permiten que Nginx vuelva a localizarla por su nombre y la reincorpore al grupo sin tener que reiniciar el proxy.
 
-### 4.1. No es lo mismo que el `healthcheck` de Compose
+**No es lo mismo que el `healthcheck` de Compose.**
 
 Ya utilizaste un `healthcheck` con PostgreSQL. Se parecen, pero hacen trabajos diferentes:
 
@@ -300,18 +294,21 @@ La base de datos puede ser común y registrar la referencia al fichero, pero eso
 
 Así puede ocurrir:
 
-```text
-POST fichero
-→ app-1
-→ fichero guardado en app-1
-
-GET fichero
-→ app-2
-→ 404
-
-GET fichero
-→ app-1
-→ 200
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant N as Nginx
+    participant A1 as app-1
+    participant A2 as app-2
+    C->>N: POST fichero
+    N->>A1: guardar
+    A1-->>C: creado
+    C->>N: GET fichero
+    N->>A2: buscar
+    A2-->>C: 404
+    C->>N: GET fichero
+    N->>A1: buscar
+    A1-->>C: 200
 ```
 
 No es aleatorio: es una consecuencia directa del reparto.
@@ -365,18 +362,15 @@ Este volumen resuelve el problema **porque las tres réplicas están en la misma
 
 El proxy inverso concentra el tráfico de entrada en un único componente:
 
-```text
-cliente
-  │
-  ▼
-Nginx
-  │
-  ├── app-1
-  ├── app-2
-  └── app-3
-       │
-       ▼
-   base de datos
+```mermaid
+flowchart LR
+    C["Cliente"] --> N["Nginx"]
+    N --> A1["app-1"]
+    N --> A2["app-2"]
+    N --> A3["app-3"]
+    A1 --> D[("Base de datos")]
+    A2 --> D
+    A3 --> D
 ```
 
 Los servicios internos no necesitan publicar sus puertos hacia el anfitrión para comunicarse dentro de la red de Docker.
@@ -385,10 +379,7 @@ Esta concentración tendrá una consecuencia importante en la siguiente sesión:
 
 El principio general es:
 
-```text
-una puerta pública
-→ una política común de entrada
-```
+> **Una sola puerta pública permite aplicar una política común de entrada.**
 
 ---
 
