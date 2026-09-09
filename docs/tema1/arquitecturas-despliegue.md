@@ -11,6 +11,17 @@ Desplegar no es "subir archivos a un servidor". Significa preparar todo lo neces
 
 Ese es el problema que recorre todo el módulo.
 
+!!! abstract "Mapa de la sesión"
+    Durante esta sesión construiremos un primer mapa del despliegue: **qué significa desplegar**, qué cambia entre entornos, cómo interviene HTTP, cómo se organizan las piezas de una arquitectura y cómo aplicaremos estas ideas al **proyecto del módulo**.
+
+```mermaid
+flowchart LR
+    A["Despliegue"] --> B["Entornos"]
+    B --> C["HTTP"]
+    C --> D["Arquitectura"]
+    D --> E["Proyecto del módulo"]
+```
+
 ---
 
 ## 🕰️ 1. Del despliegue artesanal al despliegue reproducible
@@ -29,20 +40,23 @@ Ese modelo sigue existiendo, pero cuanto más crecen una aplicación, un equipo 
 
 El despliegue moderno intenta convertir ese procedimiento artesanal en un **proceso reproducible, trazable y progresivamente automatizado**.
 
-```mermaid
-flowchart TB
-    subgraph MOD["Hoy: flujo reproducible"]
-        direction TB
-        B1["Commit"] --> B2["Validar y construir"]
-        B2 --> B3["Desplegar y verificar"]
-        B3 --> B4["Monitorizar"]
-    end
+| Despliegue artesanal | Despliegue reproducible |
+|---|---|
+| Pasos manuales y difíciles de repetir | Procedimiento versionado y repetible |
+| La validación suele llegar al final | Validación y pruebas antes de desplegar |
+| El servidor puede acumular cambios hechos a mano | La configuración se declara y puede reconstruirse |
+| Cuesta saber qué versión está funcionando | Código, artefactos y cambios son trazables |
+| Volver atrás depende de recordar qué se tocó | Se intenta que rollback y recuperación formen parte del proceso |
 
-    subgraph ANT["Antes: despliegue artesanal"]
-        direction TB
-        A1["Código"] --> A2["Pasos manuales"] --> A3["Servidor"]
-    end
-```
+![De desplegar archivos a desplegar procesos: comparación entre un despliegue manual y un flujo reproducible](img/despliegue-manual-reproducible.png)
+
+*Figura 1. De desplegar archivos a desplegar procesos. Elaboración propia.*
+
+La imagen resume el cambio importante sin convertirlo en una comparación entre tecnologías concretas. En el lado izquierdo, el despliegue depende sobre todo de **pasos manuales y conocimiento que permanece en la persona**. En el derecho, ese conocimiento se traslada progresivamente al **proceso**: control de versiones, revisión, pruebas, construcción, despliegue, monitorización y feedback.
+
+Las herramientas cambian con los años; la idea que interesa conservar es esta:
+
+> **un despliegue profesional intenta que el camino desde el código hasta producción pueda entenderse, repetirse, comprobarse y mejorarse.**
 
 !!! note "Una comparación deliberadamente simplificada"
     No significa que antes todo se hiciera por FTP ni que hoy todas las empresas utilicen Kubernetes, microservicios o nube pública. La tendencia importante es otra: **el camino entre escribir código y ponerlo delante de usuarios se ha convertido en una parte explícita del producto, versionada, comprobable y cada vez más automatizada**.
@@ -120,74 +134,56 @@ Separar contenido estático y dinámico permite que cada parte sea atendida por 
 
 A lo largo del módulo distinguiremos dos responsabilidades que a veces se mezclan bajo la palabra *servidor*:
 
-```text
-servidor web
-→ recibe HTTP, sirve recursos y puede reenviar peticiones
+| Pieza | Responsabilidad principal |
+|---|---|
+| **Servidor web** | Recibe peticiones HTTP de los usuarios, les entrega los archivos estáticos y redirige el tráfico. |
+| **Servidor de aplicaciones** | Ejecuta el código que genera respuestas dinámicas. |
 
-runtime / servidor de aplicaciones
-→ ejecuta el código que genera respuestas dinámicas
-```
-
-En aplicaciones modernas ambas responsabilidades pueden estar empaquetadas de formas distintas. Por ejemplo, una aplicación Spring Boot puede llevar su propio servidor HTTP embebido, mientras Nginx actúa delante como servidor web y proxy. Más adelante construirás precisamente esa cooperación.
+En el desarrollo moderno, ambas piezas trabajan en equipo. Por ejemplo, el servidor web (**Nginx**) atiende al usuario y sirve lo estático, pero le pasa el resto de peticiones a nuestra aplicación (**Spring Boot**) para que ejecute la lógica pesada por detrás. Más adelante construirás precisamente esta cooperación.
 
 ---
 
 ## 🧱 5. Capas lógicas y unidades de despliegue
 
-Cuando hablamos de **capas** describimos responsabilidades lógicas:
+Cuando hablamos de **capas lógicas** describimos **responsabilidades dentro de la aplicación**, no necesariamente máquinas distintas. De forma general, distinguimos tres grandes bloques:
 
-```text
-presentación
-lógica de negocio
-datos
-```
+- **Presentación**: lo que interactúa con el usuario.
+- **Lógica de negocio**: donde se procesa la información y se aplican las reglas.
+- **Datos**: donde la información se almacena y se recupera.
 
-Eso no determina automáticamente cuántas máquinas, contenedores o servicios hacen falta.
+Estas capas ayudan a **organizar el código**, pero **no determinan por sí solas cómo se despliega una aplicación**.
 
-Una aplicación con tres capas puede ejecutarse entera en un ordenador:
+![Capas lógicas y formas de despliegue](img/capas-logicas-despliegue.png)
 
-```mermaid
-flowchart LR
-    N["Navegador"] --> A["Aplicación"]
-    A --> D[("Base de datos")]
-```
+*Figura 2. Una misma organización lógica puede desplegarse de formas distintas. Elaboración propia.*
 
-o distribuir sus componentes:
+La figura muestra que una misma organización lógica puede materializarse de formas muy distintas.
 
-```mermaid
-flowchart LR
-    N["Navegador"] --> A["Aplicación"]
-    A --> D[("Base de datos<br/>en otro nodo")]
-```
+En un **despliegue sencillo**, presentación, lógica de negocio y datos se ejecutan dentro de un mismo servidor. Es una opción fácil de comprender y administrar, adecuada para entornos de desarrollo, prácticas o aplicaciones pequeñas.
 
-!!! info "Cómo leer los diagramas de este módulo"
-    Cada caja representa una **unidad o componente desplegado de forma independiente**, no necesariamente una máquina física. Puede ejecutarse en una máquina física, una máquina virtual, un contenedor, un servicio PaaS o un servicio administrado. Varias unidades pueden incluso compartir el mismo host.
+En un **despliegue distribuido**, las responsabilidades se reparten entre distintos **nodos**. En el ejemplo:
 
-Cuando el sistema crece aparecen más piezas:
+- un nodo atiende la entrada web y el frontend;
+- otro ejecuta la lógica de negocio;
+- otro mantiene los datos.
 
-```mermaid
-flowchart LR
-    C["Cliente"] --> P["Proxy inverso<br/>balanceador"]
-    P --> A1["Aplicación<br/>réplica 1"]
-    P --> A2["Aplicación<br/>réplica 2"]
-    A1 --> D[("Base de datos")]
-    A2 --> D
-```
+Un **nodo** representa aquí una unidad de ejecución diferenciada, pero no necesariamente una máquina física. Puede ser una máquina virtual, un contenedor o un servicio gestionado, y varios nodos podrían incluso compartir el mismo host.
 
-Cada nueva pieza puede mejorar una propiedad concreta, como seguridad, disponibilidad o rendimiento, pero también aumenta el coste y la complejidad operativa.
+Distribuir el sistema puede facilitar el **aislamiento, el escalado o la evolución independiente** de sus componentes, pero también introduce más comunicaciones, configuración y complejidad operativa.
 
-!!! tip "La regla del despliegue"
-    No existe una arquitectura universalmente mejor. Una solución es buena cuando su complejidad es proporcional al problema que resuelve.
+!!! tip "No confundas capa y nodo"
+    **Capas lógicas** y **nodos de despliegue** responden a preguntas diferentes:
+
+    - una capa indica **qué responsabilidad tiene una parte de la aplicación**;
+    - un nodo indica **dónde y cómo se ejecuta esa parte**.
 
 ---
 
 ## 🧩 6. Monolito o microservicios
 
-Esta decisión es distinta de separar capas.
+Hasta ahora hemos visto que las **capas lógicas** no determinan cómo se distribuye físicamente una aplicación. Hay otra decisión diferente: **cómo se divide la propia lógica de negocio en unidades desplegables**.
 
-Las capas indican **qué responsabilidades existen**. Monolito y microservicios indican **en cuántas unidades independientes se divide y despliega la lógica de negocio**.
-
-Una aplicación **monolítica** se construye y despliega como una unidad. Una arquitectura de **microservicios** divide la lógica en servicios autónomos que pueden tener ciclos de despliegue y escalado independientes.
+Una aplicación **monolítica** concentra esa lógica en una única aplicación que se construye y despliega como una unidad. Una arquitectura de **microservicios** la divide en varios servicios autónomos, cada uno con su propio ciclo de despliegue y, potencialmente, de escalado.
 
 | | Monolito | Microservicios |
 |---|---|---|
@@ -197,8 +193,8 @@ Una aplicación **monolítica** se construye y despliega como una unidad. Una ar
 | **Complejidad operativa** | Menor | Mucho mayor |
 | **Cuándo encaja** | Equipos pequeños o medianos, producto joven | Sistemas grandes con dominios y equipos realmente independientes |
 
-!!! warning "Moderno no significa microservicios"
-    Un monolito bien modularizado sigue siendo una solución perfectamente actual. Dividir un sistema en microservicios introduce red, fallos parciales, observabilidad distribuida, coordinación de datos y más infraestructura. Solo compensa cuando existe un problema que justifica ese coste.
+!!! warning "Varios nodos no significa microservicios"
+    Un monolito puede ejecutarse en varias réplicas o nodos para mejorar disponibilidad o capacidad. Lo que lo hace monolítico es que la aplicación sigue siendo **una única unidad lógica de despliegue**, no que exista una sola máquina o un solo proceso.
 
 También existen otros modelos, como PaaS, serverless o arquitecturas orientadas a eventos. Los irás encontrando en otros contextos, pero no necesitas dominarlos ahora para aprender a desplegar.
 
@@ -280,9 +276,13 @@ Si la dirección de PostgreSQL está escrita dentro del código, tendrás que mo
 
 ## 🛍️ 9. Escaparate: el hilo conductor del módulo
 
+Hasta ahora hemos hablado de despliegue de forma general. A partir de este punto vamos a aplicar esas ideas sobre una misma aplicación que evolucionará durante todo el módulo.
+
+**Escaparate** será ese proyecto de referencia: una aplicación sencilla desde el punto de vista funcional, pero preparada para ir incorporando progresivamente distintas decisiones de despliegue.
+
 ### 9.1. Arquitectura inicial de Escaparate
 
-Durante el curso desplegarás una aplicación llamada **Escaparate**, un pequeño catálogo de productos. La aplicación está deliberadamente hecha para que el problema interesante no sea programarla, sino desplegarla.
+Escaparate es un pequeño catálogo de productos. La aplicación está deliberadamente hecha para que el problema interesante no sea programarla, sino desplegarla.
 
 Al principio del módulo utilizarás su distribución integrada:
 
@@ -297,14 +297,14 @@ flowchart TB
 
 En esta primera versión:
 
-- el frontend está formado por HTML, CSS y JavaScript, pero se sirve desde la propia aplicación Spring Boot;
-- frontend y API salen inicialmente del **mismo contenedor y del mismo puerto**;
-- el backend se empaqueta como `escaparate.war`;
-- los datos viven en PostgreSQL;
-- las imágenes subidas se almacenan inicialmente en el filesystem;
-- la configuración de base de datos y almacenamiento puede recibirse desde fuera.
+- el frontend está hecho con HTML, CSS y JavaScript y se entrega desde la propia aplicación Spring Boot;
+- frontend y API funcionan juntos en el **mismo contenedor** y comparten el mismo puerto;
+- la aplicación se empaqueta como `escaparate.war`;
+- los datos se guardan en PostgreSQL;
+- las imágenes subidas se almacenan inicialmente en el sistema de archivos;
+- la conexión a la base de datos y la ubicación de almacenamiento se configuran desde fuera de la aplicación.
 
-Más adelante utilizarás otras distribuciones para estudiar qué ocurre cuando algunas piezas se despliegan por separado. Separar el frontend no convierte a Escaparate en microservicios: la lógica de negocio seguirá siendo un único monolito.
+Más adelante separaremos algunas de estas piezas para estudiar cómo cambia el despliegue. Aunque el frontend llegue a desplegarse por separado, **Escaparate seguirá siendo un monolito**, porque su lógica de negocio continuará formando una única aplicación.
 
 ### 9.2. Endpoints para observar el sistema
 
@@ -323,29 +323,28 @@ Los utilizarás más adelante para comprobar readiness, balanceo, escalado y com
 
 ## 🔄 10. Del código al usuario
 
-La aplicación no salta directamente desde el editor hasta producción. El recorrido moderno se parece más a esto:
+Entre escribir código y poner una aplicación a disposición de sus usuarios existe todo un **proceso de construcción, publicación, ejecución y observación**. El objetivo es que ese recorrido pueda repetirse de forma fiable y que los cambios realizados puedan identificarse, comprobarse y mejorar con el tiempo.
 
-```mermaid
-flowchart LR
-    C["Código<br/>+ Git"] --> B["Build<br/>+ pruebas"]
-    B --> A["Artefacto"]
-    A --> G["Registro"]
-    G --> D["Despliegue<br/>staging → producción"]
-    D --> O["Monitorización"]
-    O -. "feedback" .-> C
-```
+![Del código al usuario: recorrido de una aplicación desde el desarrollo hasta su uso real](img/del-codigo-al-usuario.png)
 
-No vas a automatizar todo esto en la primera semana. El propósito de este esquema es que puedas ubicar cada herramienta cuando aparezca:
+*Figura 3. Del código al usuario: un despliegue entendido como proceso trazable y reproducible. Elaboración propia.*
 
-- Git da trazabilidad al código y a la configuración.
-- Docker ayuda a empaquetar de forma reproducible.
-- Un registry distribuye las imágenes.
-- Nginx puede actuar como servidor web, proxy o balanceador.
-- TLS protege las comunicaciones.
-- Logs y métricas permiten observar el sistema.
-- CI valida y construye automáticamente.
-- CD automatiza la publicación y el despliegue.
-- Kubernetes declara y mantiene el estado deseado de un conjunto de contenedores.
+La figura representa el **recorrido general que iremos construyendo durante el módulo**. No significa que todas esas etapas estén automatizadas desde el principio ni que todos los proyectos utilicen exactamente las mismas herramientas.
+
+A medida que avancemos, distintas tecnologías irán resolviendo problemas concretos dentro de ese proceso:
+
+- **Git** mantiene el historial del código y de la configuración versionable.
+- **Docker** permite empaquetar la aplicación y sus dependencias de forma reproducible.
+- Un **registry** almacena y distribuye las imágenes construidas.
+- **Nginx** puede servir contenido web, actuar como proxy inverso o repartir tráfico.
+- **TLS/HTTPS** protege las comunicaciones.
+- **Logs y métricas** permiten observar y diagnosticar el sistema.
+- **CI** automatiza comprobaciones y construcción.
+- **CD** automatiza la publicación y el despliegue.
+- **Kubernetes** permite declarar y mantener el estado deseado de conjuntos de contenedores.
+
+!!! tip "Qué debes retener ahora"
+    No necesitas dominar todavía todas estas herramientas. Lo importante es entender que **desplegar no es una acción aislada**, sino un proceso que conecta el código con su construcción, publicación, ejecución y observación, y que genera información para seguir mejorándolo.
 
 ---
 
@@ -364,30 +363,26 @@ Imagina que hoy te piden poner Escaparate en producción. Tienes el código y un
 9. Que construir, comprobar, publicar, desplegar y volver atrás sea cada vez más **automático**.
 10. Que varias instancias puedan ser **orquestadas**, reemplazadas y actualizadas progresivamente.
 
-Cada punto tiene su lugar en el curso:
+Cada una de estas necesidades irá encontrando respuesta a lo largo del módulo:
 
-| Problema | Dónde se trabaja |
+| Necesidad | Dónde se trabaja |
 |---|---|
-| 1 · Versionado y documentación | Sesión 2 |
-| 2 · Contenedores, imágenes y despliegue reproducible | Sesiones 3 a 5 |
-| 3 · Configuración y secretos externos | Sesión 5 y refuerzos posteriores |
-| 4 · Publicación y ejecución web: servidor web, proxy y aplicaciones | Sesiones 6 a 10 |
-| 5 · Seguridad de la entrada: HTTPS y control de acceso | Dentro del bloque anterior |
-| 6 · Observabilidad y diagnóstico | Dentro del bloque anterior |
-| 7 · Servidor de aplicaciones, estado y rendimiento | Cierre del bloque anterior |
-| 8 · Integración y despliegue continuos | A partir de la sesión 11 |
-| 9 · Orquestación, actualizaciones progresivas y nube | Tramo final del módulo |
+| 1 · Versionado y documentación | **Tema 1 · Sesión 2** |
+| 2 · Ejecución reproducible y dependencias | **Tema 2 · Sesiones 3 a 5** |
+| 3 · Configuración y secretos externos | **Tema 2 · Sesión 5**, y de forma recurrente después |
+| 4 · Nombres, puertos y publicación web | **Tema 3 · Sesión 6** |
+| 5 · Punto de entrada, proxy y balanceo | **Tema 3 · Sesión 7** |
+| 6 · HTTPS y exposición segura de servicios | **Tema 3 · Sesión 8** |
+| 7 · Estado, logs y métricas | **Tema 3 · Sesión 9** |
+| 8 · Disponibilidad, sesiones y rendimiento | **Tema 3 · Sesión 10** |
+| 9 · Integración y despliegue continuos | **Tema 4 · Sesiones 11 a 13** |
+| 10 · Orquestación y actualizaciones progresivas | **Tema 5 · Sesiones 14 a 16** |
 
-Ese es el mapa del módulo:
+Visto en conjunto, el módulo sigue una progresión sencilla: primero aprendemos a **controlar y reproducir** el despliegue, después a **publicarlo y operarlo**, y finalmente a **automatizarlo y orquestarlo**:
 
-```text
-manual
-  ↓
-reproducible
-  ↓
-automatizado
-  ↓
-orquestado
+```mermaid
+flowchart LR
+    V["Versionar"] --> R["Hacer reproducible"] --> P["Publicar y operar"] --> A["Automatizar"] --> O["Orquestar"]
 ```
 
 ---
@@ -396,13 +391,12 @@ orquestado
 
 Al terminar esta primera sesión deberías poder:
 
-- explicar qué significa desplegar una aplicación y por qué no equivale a que "funcione en mi ordenador";
-- distinguir contenido estático y dinámico;
-- diferenciar la responsabilidad de un servidor web de la pieza que ejecuta la aplicación dinámica;
-- entender que las capas lógicas de una aplicación no determinan cuántas máquinas o servicios necesita;
-- interpretar códigos y algunas cabeceras HTTP como primeras pistas de diagnóstico;
-- identificar las cinco piezas básicas de un despliegue: estáticos, artefacto/runtime, datos, configuración y secretos;
-- distinguir entre lo que puedes observar desde fuera, lo que puedes inferir y lo que no puedes conocer sin acceso al sistema.
+- explicar qué significa **desplegar una aplicación** y por qué no basta con que funcione en el equipo de desarrollo;
+- distinguir **contenido estático y dinámico** e identificar el papel del servidor web y de la aplicación;
+- diferenciar **capas lógicas, nodos de despliegue y unidades de ejecución**;
+- interpretar **códigos de estado y cabeceras HTTP** como primeras pistas de diagnóstico;
+- reconocer las piezas básicas de un despliegue: **aplicación, datos, configuración, secretos y recursos estáticos**;
+- distinguir entre lo que puedes **observar, inferir o desconocer** al analizar un sistema desde fuera.
 
 ---
 
@@ -410,20 +404,15 @@ Al terminar esta primera sesión deberías poder:
 
 ??? tip "Abrir resumen"
 
-    - Una aplicación que solo funciona en el equipo del desarrollador todavía no está desplegada.
-    - El despliegue moderno intenta sustituir procedimientos manuales por procesos reproducibles, trazables y progresivamente automatizados.
-    - Desarrollo, staging y producción son entornos distintos. El artefacto debería mantenerse; la configuración cambia.
-    - Un buen despliegue debe ser reproducible, trazable, configurable, seguro, observable, escalable y actualizable.
-    - Las capas separan responsabilidades; las unidades de despliegue indican dónde y cómo se ejecutan los componentes.
-    - Monolito no significa antiguo y microservicios no significa automáticamente mejor.
-    - HTTP es también una herramienta de diagnóstico: códigos y cabeceras ayudan a localizar problemas.
-    - Un despliegue incluye estáticos, artefacto/runtime, datos, configuración y secretos.
-    - Configuración y secretos no deben quedar incorporados al artefacto.
-    - Escaparate comienza como un monolito integrado con frontend y API en Spring Boot, PostgreSQL y almacenamiento de imágenes en filesystem.
-    - El camino completo va desde código y repositorio hasta build, pruebas, artefacto, despliegue, verificación y monitorización.
-    - El módulo avanza desde procedimientos manuales hacia despliegues reproducibles, automatizados y finalmente orquestados.
-    - Observar no es lo mismo que inferir: una buena diagnosis distingue la evidencia de aquello que solo parece probable.
+    - Una aplicación que solo funciona en el equipo del desarrollador **todavía no está desplegada**.
+    - El objetivo es sustituir pasos manuales por procesos cada vez más **reproducibles, trazables y automatizados**.
+    - Los entornos pueden cambiar, pero conviene mantener el mismo **artefacto** y externalizar la **configuración y los secretos**.
+    - **Capas lógicas y despliegue no son lo mismo**: las capas describen responsabilidades; los nodos indican dónde y cómo se ejecutan.
+    - Un **monolito** puede ser una solución actual y profesional. Los microservicios solo tienen sentido cuando su complejidad está justificada.
+    - **HTTP también sirve para diagnosticar**: códigos, cabeceras y comportamiento de las peticiones ofrecen evidencias sobre el sistema.
+    - Un despliegue profesional debe poder **observarse, actualizarse y reproducirse** de forma controlada.
+    - El módulo avanzará progresivamente desde el **versionado y la reproducibilidad** hasta la **publicación, automatización y orquestación**.
 
 ---
 
-En la primera actividad aplicarás este mapa a sistemas ya desplegados: observarás lo que exponen y distinguirás entre **evidencia, inferencia y aspectos que no pueden conocerse desde fuera**.
+En la primera actividad aplicarás estas ideas sobre sistemas ya desplegados: observarás qué información exponen y distinguirás entre **evidencias, inferencias y aspectos que no pueden conocerse desde fuera**.

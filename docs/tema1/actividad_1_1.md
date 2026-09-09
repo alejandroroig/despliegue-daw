@@ -12,6 +12,11 @@ La parte más importante de esta actividad será distinguir entre:
 - **lo que puedes deducir razonablemente**;
 - **lo que no puedes saber desde fuera**.
 
+!!! abstract "Cómo vas a trabajar"
+    **Predice → observa → recoge evidencias → interpreta → concluye**
+
+    No intentes descubrir toda la arquitectura. El objetivo es aprender a distinguir entre **lo que puedes demostrar**, **lo que solo puedes inferir** y **lo que permanece oculto desde fuera**.
+
 ---
 
 ## Qué vas a practicar
@@ -34,9 +39,6 @@ Comprueba:
 ```bash
 curl --version
 ```
-
-!!! warning "Trabajar con otros sistemas operativos"
-    En el aula se trabajará sobre Linux. Si utilizas tu propio portátil con Windows, los comandos son prácticamente los mismos, aunque hay tres diferencias que conviene recordar: en PowerShell es preferible escribir `curl.exe`; para descartar la salida, se utiliza `NUL` en lugar de `/dev/null`, y para dividir una orden en varias líneas, PowerShell usa el acento grave `` ` `` y CMD usa `^`.
 
 ---
 
@@ -70,27 +72,11 @@ actividad-1.1/
 
     En la próxima sesión aprenderás la sintaxis básica de Markdown, darás formato al documento y enlazarás correctamente las imágenes antes de incorporarlo a tu repositorio.
 
-Antes de tocar nada, en el fichero `actividad-1.1.md` escribe dos o tres líneas por sitio indicando **qué esperas encontrar**. 
+Antes de utilizar ninguna herramienta, en el fichero `actividad-1.1.md` escribe una breve predicción para cada sitio:
 
-- contenido estático o dinámico;
-- pocas o muchas peticiones;
-- pocas o muchas cookies;
-- posibles capas intermedias;
-- arquitectura aparentemente sencilla o compleja.
-
-Puedes seguir este esquema: 
-
-```text
-PREDICCIÓN INICIAL
-
-Web de apuntes
-Creo que será principalmente...
-Creo que su despliegue será simple/complejo porque...
-
-Amazon
-Creo que será principalmente...
-Creo que su despliegue será simple/complejo porque...
-```
+- ¿esperas que sea principalmente estático o dinámico?
+- ¿esperas una carga sencilla o muchas peticiones y recursos?
+- ¿crees que podrás descubrir fácilmente cómo está desplegado?
 
 No se evalúa acertar. Al final volverás a estas predicciones.
 
@@ -111,6 +97,8 @@ Si algún sitio rechaza la petición `HEAD`, usa un `GET` normal descartando el 
 curl -sS -D - -o /dev/null https://direccion
 ```
 
+Antes de sacar conclusiones, busca **pistas** en la respuesta. Además de `Content-Type`, fíjate especialmente en cabeceras relacionadas con **servidor, caché, CDN, proxy o redirecciones**. No tienen por qué aparecer todas ni existe una única combinación correcta.
+
 Recoge para cada sitio la información siguiente:
 
 ```text
@@ -118,14 +106,14 @@ WEB DE APUNTES
 Código:
 Content-Type:
 Server, si aparece:
-2 o 3 cabeceras relevantes:
+2 o 3 cabeceras que te den alguna pista:
 Qué puedo afirmar a partir de ellas:
 
 AMAZON
 Código:
 Content-Type:
 Server, si aparece:
-2 o 3 cabeceras relevantes:
+2 o 3 cabeceras que te den alguna pista:
 Qué puedo afirmar a partir de ellas:
 ```
 
@@ -185,13 +173,13 @@ Anota los datos como texto normal:
 WEB DE APUNTES
 Peticiones totales aproximadas:
 Datos transferidos aproximados:
-Dominios diferentes aproximados:
+¿Se descargan recursos desde otros dominios? ¿Cuáles?
 ¿Aparecen peticiones fetch/xhr?:
 
 AMAZON
 Peticiones totales aproximadas:
 Datos transferidos aproximados:
-Dominios diferentes aproximados:
+¿Se descargan recursos desde otros dominios? ¿Cuáles?
 ¿Aparecen peticiones fetch/xhr?:
 ```
 
@@ -205,28 +193,34 @@ Después responde:
 
 ## Paso 5: Evidencia, inferencia y límites
 
-Para Amazon, analiza las cinco piezas del despliegue. **No necesitas recrear una tabla en Markdown**. Escribe cinco apartados como estos:
+Ahora analiza Amazon utilizando las piezas básicas de un despliegue.
+
+Para cada una, clasifica lo que sabes como:
+
+- **Observado**: existe una evidencia directa.
+- **Inferido**: hay indicios, pero no puedes demostrarlo.
+- **No observable**: no dispones de información suficiente desde fuera.
 
 ```text
 RECURSOS ESTÁTICOS
-¿Tengo evidencia?: sí / no / no es observable desde fuera
-Evidencia o explicación:
+Clasificación: observado / inferido / no observable
+Evidencia o razonamiento:
 
-RUNTIME / SERVIDOR DE APLICACIONES
-¿Tengo evidencia?: sí / no / no es observable desde fuera
-Evidencia o explicación:
+APLICACIÓN / RUNTIME
+Clasificación: observado / inferido / no observable
+Evidencia o razonamiento:
 
 DATOS
-¿Tengo evidencia?: sí / no / no es observable desde fuera
-Evidencia o explicación:
+Clasificación: observado / inferido / no observable
+Evidencia o razonamiento:
 
-CONFIGURACIÓN POR ENTORNO
-¿Tengo evidencia?: sí / no / no es observable desde fuera
-Evidencia o explicación:
+CONFIGURACIÓN
+Clasificación: observado / inferido / no observable
+Evidencia o razonamiento:
 
 SECRETOS
-¿Tengo evidencia?: sí / no / no es observable desde fuera
-Evidencia o explicación:
+Clasificación: observado / inferido / no observable
+Evidencia o razonamiento:
 ```
 
 Cuando respondas **sí**, debes indicar qué has visto. Cuando respondas **no es observable desde fuera**, puedes añadir una inferencia razonable, pero dejando claro que no la has demostrado.
@@ -256,39 +250,32 @@ curl -s -o /dev/null -w "%{http_code}\n" https://direccion/ruta-inventada-12345
 
 ---
 
-## Verificación
-
-Para dar por válida la práctica se comprobará:
-
-- que las cabeceras recogidas son coherentes con las respuestas reales;
-- que has identificado alguna señal de caché o capa intermedia si aparece;
-- que has comparado la carga real de ambos sitios desde DevTools;
-- que no mezclas evidencia e inferencia en el análisis final;
-- que tus capturas justifican lo que afirmas, aunque todavía no estén insertadas dentro del documento.
-
-Si un sitio ha cambiado desde que hiciste la práctica, tu captura lo justifica: por eso se piden capturas y no transcripciones a mano.
-
----
-
 ## Qué se entrega
 
-- [ ] `actividad-1.1.md`.
-- [ ] Carpeta `img/` con las capturas utilizadas y nombres reconocibles.
-- [ ] Predicción inicial.
-- [ ] Registro de las cabeceras observadas en ambos sitios.
-- [ ] Comparación de caché en dos peticiones.
-- [ ] Comparación de los datos observados en Network.
-- [ ] Análisis final de qué has podido observar, qué puedes inferir y qué no puedes saber desde fuera.
-- [ ] Conclusión breve.
-- [ ] Carpeta completa comprimida como `actividad-1.1.zip`.
+Entrega `actividad-1.1.zip` con esta estructura:
 
-!!! info "Dónde se entrega"
-    Comprime la carpeta completa `actividad-1.1/` como `actividad-1.1.zip` y súbela a la tarea correspondiente de Aules. Debe incluir el fichero `actividad-1.1.md` y la carpeta `img/` con las capturas. **No se evalúa todavía la sintaxis Markdown ni es necesario insertar las imágenes en el documento. Conserva esta carpeta: en la próxima sesión darás formato al fichero, enlazarás las capturas y lo incorporarás a tu repositorio.**
+```text
+actividad-1.1/
+├── actividad-1.1.md
+└── img/
+    └── capturas...
+
+El documento debe contener:
+
+- [ ] predicciones iniciales;
+- [ ] cabeceras y análisis de ambos sitios;
+- [ ] comparación de caché;
+- [ ] observaciones realizadas con DevTools;
+- [ ] clasificación entre evidencia, inferencia y aspectos no observables;
+- [ ] conclusión final.
+
+!!! info "Importante"
+    Comprime la carpeta completa `actividad-1.1/` como `actividad-1.1.zip` y súbela a la tarea correspondiente de Aules. Todavía no se evalúa la sintaxis Markdown ni es necesario insertar las imágenes en el documento. Conserva la carpeta: en la próxima sesión le darás formato, enlazarás las capturas y la incorporarás a tu repositorio.
 
 ---
 
 ## ✅ Cierre
 
-Al terminar tienes un método inicial para mirar cualquier sitio web desde fuera y hacerte una idea razonable de lo que hay detrás. Más importante todavía: has practicado la diferencia entre decir **“esto lo he visto”** y **“esto lo estoy suponiendo”**.
+Ya tienes un primer método para analizar un sistema web desde fuera: **observar, recoger evidencias e interpretar sin confundir hechos con suposiciones**.
 
-Esa diferencia será esencial durante todo el módulo: diagnosticar no consiste en adivinar, sino en reunir evidencias y saber dónde están los límites de lo que puedes observar.
+Esa forma de trabajar será fundamental cuando tengas que diagnosticar tus propios despliegues.
