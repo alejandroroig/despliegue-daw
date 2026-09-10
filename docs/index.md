@@ -3,7 +3,7 @@
 Módulo de **Desarrollo de Aplicaciones Web (DAW)**
 
 !!! info "Descarga de diapositivas"
-    [Descarga las diapositivas](diapositivas/presentacion.pdf){target="_blank" rel="noopener"}
+    [Descarga las diapositivas](diapositivas/presentacion_modulo_v2.pdf){target="_blank" rel="noopener"}
 
 Escribir una aplicación es la mitad del trabajo. La otra mitad es conseguir que funcione fuera de tu ordenador: en un servidor, con su base de datos, servida por HTTPS, sin caerse cuando llega gente y sin que actualizar una versión sea una noche en vela. De eso va este módulo.
 

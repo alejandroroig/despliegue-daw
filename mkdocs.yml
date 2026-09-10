@@ -7,17 +7,17 @@ theme:
   custom_dir: overrides
   palette:
     - scheme: default
-      primary: indigo
-      accent: light blue
+      primary: teal
+      accent: cyan
       toggle:
         icon: material/weather-night
         name: Modo oscuro
     - scheme: slate
-      primary: indigo
-      accent: light blue
+      primary: teal
+      accent: cyan
       toggle:
         icon: material/weather-sunny
-        name: Modo claro
+        name: Modo Claro
   features:
     - navigation.top
     - navigation.tracking

@@ -1,7 +1,7 @@
 # 🚀 Arquitecturas web y proceso de despliegue
 
 !!! info "Descarga de diapositivas"
-    [Descarga las diapositivas](diapositivas/arquitecturas-despliegue.pdf){target="_blank" rel="noopener"}
+    [Descarga las diapositivas](diapositivas/arquitecturas_despliegue_v2.pdf){target="_blank" rel="noopener"}
 
 ---
 
