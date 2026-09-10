@@ -7,3 +7,7 @@ soluciones/
 
 # Salida de mkdocs build
 site/
+
+
+.DS_Store
+**/.DS_Store
