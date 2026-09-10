@@ -2,35 +2,46 @@
 
 ## Contexto
 
-La base de datos de pruebas ya puede viajar como una imagen. Ahora llega el encargo principal: **empaquetar Escaparate** para que cualquier equipo con Docker pueda ejecutarlo sin tener instalado Java ni Maven.
+La base de datos de pruebas ya puede viajar como una imagen. Ahora llega el encargo principal: **empaquetar Escaparate** para que cualquier equipo con Docker pueda ejecutarlo sin tener Java ni Maven instalados.
 
-Trabajarás sobre la misma aplicación que incorporaste al repositorio en la actividad 1.2:
+Construirás dos versiones:
 
-```text
-daw-despliegue/
-└── escaparate/
-```
+- una primera imagen deliberadamente sencilla;
+- una segunda preparada para reducir trabajo repetido, tamaño y privilegios.
 
-No se entrega otra distribución para esta sesión.
+Después compararás ambas con datos reales.
 
-Vas a construir la imagen dos veces. La primera será deliberadamente sencilla; la segunda estará pensada para reducir trabajo repetido, tamaño y privilegios. Después compararás ambas con datos reales.
+!!! abstract "Cómo vas a trabajar"
+    **Inspeccionar → construir → medir → modificar → optimizar → comparar → publicar**
+
+    No se trata de conseguir únicamente que Escaparate arranque. El objetivo es identificar **qué problema resuelve cada mejora del Dockerfile**.
+
+---
 
 ## Qué vas a practicar
 
-- **Escribir** un `Dockerfile` para una aplicación Java que necesita compilarse.
-- **Entender** el contexto de construcción y el efecto de `COPY`.
-- **Medir** cómo afecta el orden de las instrucciones a la caché de construcción.
-- **Reducir** el tamaño de una imagen mediante una construcción multietapa.
-- **Ejecutar** el proceso con un usuario sin privilegios.
-- **Publicar** una imagen y distinguir una etiqueta fija de una etiqueta móvil.
+- Escribir un Dockerfile para una aplicación Java que necesita compilarse.
+- Distinguir Dockerfile y contexto de construcción.
+- Observar el efecto de la caché.
+- Reducir el contenido final mediante una construcción multietapa.
+- Ejecutar la aplicación con un usuario sin privilegios.
+- Medir tiempo de construcción y tamaño de imagen.
+- Publicar una imagen con una referencia estable y otra móvil.
+- Comprobar mediante GitHub Actions que el Dockerfile puede construirse desde un entorno limpio.
+
+---
 
 ## Requisitos previos
 
-- Actividad 2.1 terminada y la imagen `ghcr.io/<usuario>/escaparate-db:1.0.0` publicada.
-- El proyecto recibido en la actividad 1.2 dentro de `escaparate/`.
-- La credencial que utilizaste en la actividad 2.1 para autenticar Docker en `ghcr.io`. En el itinerario simplificado será el PAT `DAW - Curso` creado en la actividad 1.2; si elegiste la alternativa de mínimo privilegio, será el PAT classic específico de GHCR.
-- Docker funcionando y espacio libre suficiente.
-- Tu rama de esta sesión:
+Necesitas:
+
+- la Actividad 2.1 terminada;
+- `ghcr.io/<usuario>/escaparate-db:1.0.0` publicada;
+- el proyecto dentro de `escaparate/`;
+- Docker funcionando;
+- la credencial utilizada para GHCR.
+
+Prepara la rama:
 
 ```bash
 git switch main
@@ -38,54 +49,52 @@ git pull --ff-only
 git switch -c sesion-04
 ```
 
-!!! info "Documenta la actividad en el repositorio"
-    Crea al comenzar la sesión:
+Crea también:
 
-    ```text
-    entregas/
-    └── tema2/
-        └── actividad-2.2/
-            ├── actividad-2.2.md
-            └── img/
-    ```
+```text
+entregas/
+└── tema2/
+    └── actividad-2.2/
+        ├── actividad-2.2.md
+        └── img/
+```
 
-    Documenta en `actividad-2.2.md` las respuestas, mediciones, reflexiones y resultados que se pidan durante la actividad. Guarda las capturas en `img/` e insértalas en el Markdown mediante rutas relativas.
-
-    Los ficheros técnicos de despliegue no se duplican dentro de `entregas/`: permanecerán en `practicas/` o en `escaparate/`, según se indique.
+!!! info "Evidencias"
+    Documenta solo las respuestas, mediciones, incidencias y **cuatro evidencias** solicitadas. Los Dockerfile reales permanecerán en `practicas/docker/app/`.
 
 ---
 
-## Paso 1: Reconoce el terreno
+## Paso 1: Reconoce la aplicación que vas a empaquetar
 
-Antes de escribir un `Dockerfile`, inspecciona `escaparate/` y responde:
+Antes de escribir el Dockerfile, busca en `escaparate/` las respuestas a estas preguntas:
 
-- ¿Con qué herramienta se compila?
-- ¿Qué fichero declara las dependencias?
-- ¿Qué artefacto se genera y en qué carpeta?
-- ¿Qué versión de Java necesita el proyecto?
-- ¿Qué variables utiliza Escaparate para localizar PostgreSQL?
-- ¿Qué puerto escucha la aplicación?
+1. ¿Con qué herramienta se compila?
+2. ¿Qué fichero declara las dependencias?
+3. ¿Qué artefacto se genera y en qué directorio?
+4. ¿Qué versión de Java necesita?
+5. ¿Qué variables utiliza para conectarse a PostgreSQL?
+6. ¿En qué puerto escucha?
 
-Busca las respuestas en el propio proyecto: `pom.xml`, `README.md` y configuración de Spring.
+Consulta `pom.xml`, el README y la configuración de Spring.
 
 !!! info "Arquitectura que vas a empaquetar"
-    Esta distribución de Escaparate integra el frontend y la API en la misma aplicación Spring Boot. El WAR es ejecutable y, al arrancarlo, Spring Boot levanta su **Tomcat embebido**, que atiende HTTP en el puerto 8080.
+    El frontend y la API forman parte de la misma aplicación Spring Boot. El WAR es ejecutable y arranca su **Tomcat embebido** en el puerto 8080.
 
-    Por tanto, la imagen que vas a construir contiene conceptualmente:
+    La imagen de Escaparate será, conceptualmente:
 
     ```text
     JRE
       ↓
-    WAR de Escaparate
+    WAR ejecutable
       ↓
     Spring Boot + Tomcat embebido
     ```
 
-    No instalarás un Tomcat externo en el `Dockerfile`. PostgreSQL seguirá siendo otro contenedor independiente.
+    PostgreSQL seguirá siendo un contenedor independiente.
 
 ---
 
-## Paso 2: La versión ingenua
+## Paso 2: Construye una primera versión sencilla
 
 Crea:
 
@@ -96,108 +105,95 @@ practicas/
         └── Dockerfile.ingenuo
 ```
 
-Escribe una primera versión sencilla que:
+Escribe una versión que:
 
 1. parta de `maven:3.9.16-eclipse-temurin-21-alpine`;
 2. establezca un directorio de trabajo;
 3. copie el proyecto completo;
-4. lo compile;
-5. indique qué debe ejecutar el contenedor al arrancar.
+4. compile con Maven;
+5. arranque el WAR generado.
 
-Utiliza `escaparate/` como **contexto de construcción**, aunque el `Dockerfile` esté almacenado en `practicas/docker/app/`.
-
-Construye la imagen como:
+Utiliza:
 
 ```text
-escaparate:ingenua
+Dockerfile
+→ practicas/docker/app/Dockerfile.ingenuo
+
+contexto
+→ escaparate/
+
+imagen
+→ escaparate:ingenua
+```
+
+Mide la construcción con el mismo procedimiento que utilizarás después:
+
+```bash
+time docker build \
+  -f practicas/docker/app/Dockerfile.ingenuo \
+  -t escaparate:ingenua \
+  escaparate/
 ```
 
 Anota:
 
-- duración total de la construcción;
-- **Content Size** de la imagen.
+- duración total;
+- `SIZE` mostrado por:
 
-!!! info "Content Size y Disk usage no son lo mismo"
-    Docker puede mostrar varias cifras relacionadas con el tamaño de una imagen:
+```bash
+docker image ls escaparate:ingenua
+```
 
-    - **Content Size** representa el tamaño lógico del contenido de la imagen, es decir, el conjunto de capas que forman esa imagen. Es la medida que utilizaremos para comparar la versión ingenua y la optimizada.
-    - **Disk usage** refleja el espacio que Docker está utilizando localmente para almacenar imágenes, capas y otros datos asociados. Puede verse afectado por capas compartidas con otras imágenes y por la forma en que Docker gestiona su almacenamiento local, por lo que no es una medida tan adecuada para comparar dos imágenes concretas.
+!!! tip "Compara siempre con la misma métrica"
+    No utilices `docker system df` para comparar las dos imágenes. En esta actividad tomaremos como referencia la columna `SIZE` de `docker image ls`.
 
-    En esta actividad, cuando se pida el **tamaño de una imagen**, anota siempre su **Content Size** y utiliza la misma métrica en todas las comparaciones.
+### Comprueba que funciona
 
-    Si trabajas desde terminal, puedes consultar el tamaño de la imagen con:
-
-    ```bash
-    docker image ls escaparate:ingenua
-    ```
-
-    La columna `SIZE` es la medida que utilizaremos para la comparación.
-
-!!! tip "Mide siempre de la misma forma"
-    En Linux puedes anteponer `time` al comando de construcción. Utiliza el mismo procedimiento en las cuatro mediciones para que la comparación tenga sentido.
-
-### Ponla en marcha
-
-Crea la red que utilizarán ambos contenedores:
+Crea una red:
 
 ```bash
 docker network create escaparate-red
 ```
 
-Arranca en ella:
+Arranca en esa red:
 
-1. tu imagen de PostgreSQL de la actividad 2.1;
+1. tu PostgreSQL de la Actividad 2.1;
 2. `escaparate:ingenua`.
 
-En ambos `docker run` utiliza:
+Utiliza `--network escaparate-red` en ambos contenedores y pasa a Escaparate las variables de conexión que identificaste en el Paso 1.
 
-```text
---network escaparate-red
-```
+!!! info "Primero PostgreSQL"
+    Revisa los logs de la base de datos y espera a que termine su inicialización antes de arrancar Escaparate.
 
-Configura la aplicación mediante las variables que identificaste en el paso 1. No escribas las credenciales dentro del `Dockerfile`.
-
-!!! info "Espera a que PostgreSQL esté listo"
-    Antes de arrancar Escaparate, comprueba que el contenedor de PostgreSQL ha terminado su inicialización. Puedes revisar sus logs. Así evitas confundir un problema de arranque de la base de datos con un problema de red o configuración de la aplicación.
-
-**Comprueba:**
+Comprueba:
 
 ```text
 http://localhost:8080/
-```
-
-muestra el catálogo y:
-
-```text
 http://localhost:8080/api/salud/listo
 ```
 
-responde correctamente.
-
-**Evidencia 1:** catálogo funcionando y listado de imágenes donde se vea el `SIZE` de `escaparate:ingenua`. Anota la duración de la construcción en `actividad-2.2.md`.
-
-!!! tip "Si Escaparate no encuentra PostgreSQL"
-    Mira primero los logs de la aplicación. Comprueba después el valor de `DB_HOST` y recuerda que dos contenedores solo pueden resolverse por nombre cuando comparten una red adecuada.
+**Evidencia 1:** Escaparate funcionando y listado de imágenes donde se vea el `SIZE` de `escaparate:ingenua`. Anota el tiempo de construcción en `actividad-2.2.md`.
 
 ---
 
-## Paso 3: Toca el código
+## Paso 3: Observa el problema de caché
 
-Haz un cambio insignificante en un fichero de código fuente: por ejemplo, añade un comentario en el fichero `EscaparateApplication.java`.
-
-Vuelve a construir `escaparate:ingenua`.
+Haz un cambio insignificante en una clase Java —por ejemplo, un comentario— y reconstruye **la misma imagen ingenua** con el mismo comando.
 
 Anota:
 
-- duración de la segunda construcción;
-- qué pasos se han reutilizado;
-- si Maven ha tenido que resolver otra vez las dependencias.
+- duración;
+- qué pasos aparecen como reutilizados;
+- qué parte ha tenido que repetirse.
 
-Anota qué pasos se reconstruyen y cuáles se reutilizan. No necesitas una captura independiente de esta construcción si la comparación queda documentada en `actividad-2.2.md`.
+!!! question "Interpreta"
+    ¿Por qué cambiar una sola clase obliga a repetir tanto trabajo si el Dockerfile contiene `COPY . .` antes de compilar?
+
+No necesitas una captura independiente de este paso si has documentado claramente el resultado.
 
 ---
 
-## Paso 4: La versión optimizada
+## Paso 4: Construye la versión optimizada
 
 Crea ahora:
 
@@ -209,83 +205,109 @@ practicas/
         └── Dockerfile
 ```
 
-La versión nueva debe mejorar cuatro aspectos.
+La segunda versión debe mejorar cuatro aspectos.
 
-### 4.1 Contexto limpio
+### 4.1. Reduce el contexto
 
-Crea también:
+Crea:
 
 ```text
 escaparate/.dockerignore
 ```
 
-El fichero debe excluir del contexto, como mínimo:
+Excluye, como mínimo:
 
-- `.git` como regla preventiva, aunque en esta estructura el repositorio real está fuera del contexto `escaparate/`;
 - `target/`;
 - configuración local de IDE;
 - `.env` y variantes locales;
 - `uploads/`.
 
-!!! note "Por qué `.dockerignore` está dentro de `escaparate/`"
-    En esta práctica el contexto de construcción es `escaparate/`. Docker busca las reglas de exclusión en la raíz del contexto, por eso este fichero está junto al código aunque los `Dockerfile` de la práctica estén en `practicas/docker/app/`.
+Puedes añadir otras reglas justificadas.
 
-### 4.2 Capas reutilizables
+!!! note "Dónde debe estar `.dockerignore`"
+    Como el contexto es `escaparate/`, el fichero debe estar en la raíz de esa carpeta, aunque el Dockerfile esté en `practicas/docker/app/`.
 
-Organiza la etapa de construcción para que la información necesaria para resolver dependencias se copie **antes** que el código fuente.
+### 4.2. Aprovecha mejor la caché
 
-El objetivo es que modificar una clase Java no obligue a repetir una descarga de dependencias que no ha cambiado.
+En la etapa de construcción:
 
-### 4.3 Construcción multietapa
+1. copia primero `pom.xml`;
+2. prepara las dependencias;
+3. copia después `src/`;
+4. compila la aplicación.
 
-Utiliza:
+El objetivo es que un cambio únicamente en código no obligue a repetir todos los pasos relacionados con dependencias.
 
-- una primera etapa basada en `maven:3.9.16-eclipse-temurin-21-alpine` con las herramientas necesarias para compilar;
-- una etapa final basada en `eclipse-temurin:21.0.12_8-jre-alpine-3.24` que contenga únicamente Java de ejecución y el artefacto generado.
+### 4.3. Separa construcción y ejecución
 
-### 4.4 Ejecuta sin privilegios innecesarios
-
-La imagen final debe ejecutar Escaparate con un usuario sin privilegios.
-
-Además, Escaparate utiliza almacenamiento de imágenes en filesystem. Define mediante `APP_STORAGE_PATH` una ruta de la imagen final que:
-
-- exista;
-- sea escribible por el usuario de la aplicación;
-- no obligue a ejecutar el proceso como `root`.
-
-Construye esta versión como:
+Utiliza dos etapas:
 
 ```text
-escaparate:optimizada
+BUILD
+maven:3.9.16-eclipse-temurin-21-alpine
+
+RUNTIME
+eclipse-temurin:21.0.12_8-jre-alpine-3.24
 ```
 
-Comprueba que funciona exactamente igual que la ingenua.
+La etapa final debe contener únicamente lo necesario para ejecutar el WAR.
 
-Comprueba también desde dentro del contenedor:
+### 4.4. Ejecuta con menos privilegios
+
+En la etapa final:
+
+- crea un usuario sin privilegios;
+- prepara una ruta escribible para las imágenes subidas;
+- configura `APP_STORAGE_PATH`;
+- ejecuta Escaparate con ese usuario.
+
+Construye:
+
+```bash
+time docker build \
+  -f practicas/docker/app/Dockerfile \
+  -t escaparate:optimizada \
+  escaparate/
+```
+
+Comprueba que funciona con la misma base de datos y configuración que la imagen ingenua.
+
+Comprueba también:
 
 ```bash
 docker exec <contenedor> id
 ```
 
-y que la ruta indicada por `APP_STORAGE_PATH` es escribible.
+y:
 
-**Evidencia 2:** listado de imágenes donde se comparen los `SIZE` de `escaparate:ingenua` y `escaparate:optimizada`, junto con la comprobación de que el proceso optimizado no se ejecuta como `root`.
+```bash
+docker exec <contenedor> sh -c \
+  'printf "%s\n" "$APP_STORAGE_PATH"; test -w "$APP_STORAGE_PATH" && echo "writable"'
+```
+
+**Evidencia 2:** comparación de `SIZE` entre `escaparate:ingenua` y `escaparate:optimizada`, junto con la comprobación de que la versión optimizada no se ejecuta como `root`.
 
 ---
 
-## Paso 5: Toca de nuevo el código
+## Paso 5: Comprueba la mejora de caché
 
-Haz otro cambio insignificante en el código y reconstruye:
+Haz otro cambio mínimo en una clase Java y reconstruye:
 
 ```text
 escaparate:optimizada
 ```
 
-Anota la duración.
+con exactamente el mismo comando utilizado en el Paso 4.
 
-**Evidencia 3:** salida de la reconstrucción optimizada donde se vea qué pasos se han reutilizado después de modificar únicamente el código.
+Anota:
 
-Los cambios de código realizados en los pasos 3 y 5 solo servían para provocar invalidaciones de caché. Antes de continuar, **deshaz esos cambios temporales** y comprueba que no quedan modificaciones accidentales en el código de Escaparate.
+- duración;
+- qué pasos se reutilizan;
+- qué pasos deben repetirse.
+
+**Evidencia 3:** fragmento de la salida de construcción donde se vea qué pasos se han reutilizado tras modificar únicamente el código.
+
+Después **deshaz los cambios temporales** de los pasos 3 y 5. Comprueba con Git que no queda ninguna modificación accidental en el código de Escaparate.
 
 ---
 
@@ -293,39 +315,33 @@ Los cambios de código realizados en los pasos 3 y 5 solo servían para provocar
 
 Completa:
 
-| | Construcción inicial | Tras modificar código | Content Size final |
-|---|---|---|---|
-| Imagen ingenua | | | |
-| Imagen optimizada | | | |
+| | Construcción inicial | Tras modificar código | `SIZE` final |
+|---|---:|---:|---:|
+| **Ingenua** | | | |
+| **Optimizada** | | | |
 
-Utiliza para ambas filas la misma medida de tamaño. No mezcles `Content Size` con `Disk usage`.
+Responde:
 
-Responde brevemente:
+1. ¿Qué trabajo reutilizó la imagen optimizada que la ingenua tuvo que repetir?
+2. ¿Qué contiene la imagen ingenua que la imagen final no necesita? Indica al menos tres elementos.
+3. ¿Qué mejora explica principalmente la reducción del tiempo de reconstrucción?
+4. ¿Qué mejora explica principalmente la reducción de tamaño?
+5. ¿Qué decisiones mejoran seguridad aunque no reduzcan necesariamente el tiempo de build?
 
-1. ¿Qué trabajo ha podido reutilizar la versión optimizada después de modificar código?
-2. ¿Qué contiene la imagen ingenua que no necesita el contenedor final? Nombra al menos tres elementos.
-3. De lo que sobra en la imagen ingenua, ¿qué es solo peso innecesario y qué podría aumentar además la superficie de ataque?
-
-No se evalúa que tus tiempos coincidan con los de otra persona. Se evalúa que expliques **tus propias mediciones**.
+!!! info "Tus datos son los que importan"
+    No se evalúa que los tiempos coincidan con los de otro equipo. Se evalúa que interpretes correctamente **tus propias mediciones**.
 
 ---
 
-## Paso 7: Publica y cierra la sesión
+## Paso 7: Publica la imagen validada
 
-Si cerraste la sesión de GHCR al terminar la actividad 2.1, vuelve a autenticar **Docker** utilizando la misma credencial que usaste entonces. No necesitas crear otro token.
-
-En el itinerario simplificado será el PAT `DAW - Curso` creado en la actividad 1.2. Si elegiste la alternativa de mínimo privilegio, utiliza el PAT classic específico de GHCR con permiso `write:packages`.
+Autentica Docker en GHCR si es necesario:
 
 ```bash
 docker login ghcr.io -u <tu-usuario>
 ```
 
-Cuando Docker solicite la contraseña, pega el PAT correspondiente, no tu contraseña de GitHub.
-
-!!! info "Git y GHCR siguen siendo autenticaciones distintas"
-    Este inicio de sesión afecta a Docker contra `ghcr.io`. No cambia la autenticación que utiliza Git para trabajar con el repositorio privado en `github.com`.
-
-Publica la imagen final en GitHub Container Registry con dos etiquetas:
+Publica la imagen optimizada con dos referencias:
 
 ```text
 ghcr.io/<usuario>/escaparate:sesion-04
@@ -334,48 +350,24 @@ ghcr.io/<usuario>/escaparate:latest
 
 En esta actividad:
 
-- `sesion-04` identifica el resultado concreto que acabas de validar;
-- `latest` es una etiqueta móvil que podría apuntar a otra imagen en el futuro.
+- `sesion-04` identifica de forma estable **por convención** el resultado validado de esta sesión;
+- `latest` es una referencia móvil que podría cambiar más adelante.
 
-Configura el paquete como **público**.
+Configura el paquete como público.
 
-!!! info "Repositorio privado, imagen pública"
-    El repositorio `daw-despliegue` seguirá siendo privado durante el curso. La imagen de GHCR se hace pública para que pueda verificarse desde un equipo externo sin utilizar credenciales del alumno. En un proyecto real podría mantenerse privada y limitar el acceso a usuarios o sistemas autorizados.
+!!! note "Todavía no es una release de Escaparate"
+    `sesion-04` identifica el resultado de esta práctica. Más adelante utilizarás etiquetas de release reales como `v1.0.0`.
 
-!!! note "Todavía no son releases de Escaparate"
-    Estas etiquetas identifican el resultado de tu práctica de empaquetado. Más adelante trabajarás con versiones reales de la aplicación y entonces aparecerán etiquetas de release como `v1.0.0` y `v2.0.0`.
+!!! question "Reflexiona"
+    Si hoy descargas `latest` y mañana esa etiqueta apunta a otra imagen, ¿qué podría ocurrir al repetir el despliegue? ¿Cuál de las dos referencias utilizarías para describir esta práctica de forma reproducible?
 
-### 7.1 Comprueba la descarga anónima
+---
 
-Como ya hiciste en la sesión anterior, verifica brevemente que la imagen publicada no depende de tu copia local:
+## Paso 8: Añade una comprobación automática de construcción
 
-```bash
-docker logout ghcr.io
-```
+El workflow creado en el Tema 1 ya comprueba la estructura del repositorio. Ahora añadirá una segunda comprobación: **construir la imagen optimizada desde un entorno limpio**.
 
-Elimina las referencias locales publicadas y vuelve a descargar la etiqueta fija:
-
-```bash
-docker image rm ghcr.io/<usuario>/escaparate:sesion-04
-docker image rm ghcr.io/<usuario>/escaparate:latest
-docker pull ghcr.io/<usuario>/escaparate:sesion-04
-```
-
-Si alguna referencia no puede eliminarse porque un contenedor la está utilizando, elimina primero ese contenedor.
-
-**Comprueba:** el paquete aparece en GitHub con ambas etiquetas y `sesion-04` puede descargarse sin autenticación.
-
-### 7.2 Amplía la comprobación automática
-
-Desde la actividad 1.2 tu repositorio contiene:
-
-```text
-.github/
-└── workflows/
-    └── validar.yml
-```
-
-Hasta ahora ese workflow solo revisa aspectos básicos del repositorio. **Sustituye el contenido completo de `validar.yml`** por el siguiente:
+Sustituye `.github/workflows/validar.yml` por:
 
 ```yaml
 name: Validar repositorio
@@ -392,7 +384,7 @@ jobs:
 
     steps:
       - name: Descargar repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Comprobar estructura básica
         run: |
@@ -423,7 +415,7 @@ jobs:
 
     steps:
       - name: Descargar repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Construir la imagen de Escaparate
         run: |
@@ -433,130 +425,137 @@ jobs:
             escaparate/
 ```
 
-No necesitas interpretar todavía cada línea. Copia el fichero tal cual. La intención sí debe quedarte clara: cuando abras la Pull Request, GitHub conservará la comprobación anterior y además intentará construir la misma imagen optimizada que acabas de construir manualmente, pero desde un entorno limpio.
+No necesitas estudiar todavía todo el YAML. La idea es importante:
 
-Esta comprobación **no publica ninguna imagen** y no sustituye el trabajo manual de esta sesión. Solo verifica que el `Dockerfile` versionado realmente puede construir el artefacto.
+```text
+Pull Request
+      ↓
+comprobar estructura
+      ↓
+construir Dockerfile
+      ↓
+solo integrar si funciona
+```
 
-### 7.3 Cierra la rama
+El workflow **no publica** la imagen; únicamente comprueba que el Dockerfile versionado puede construirse en una máquina limpia.
 
-Antes de cerrar la sesión, revisa `actividad-2.2.md` y comprueba que contiene las respuestas, la tabla de mediciones, las reflexiones y las capturas solicitadas.
+---
 
-Después:
+## Paso 9: Documenta e integra
 
-1. registra `Dockerfile.ingenuo`, `Dockerfile`, `.dockerignore` y la documentación de la actividad;
-2. publica `sesion-04`;
-3. abre una Pull Request hacia `main`;
-4. revisa los cambios y espera a que terminen las comprobaciones automáticas.
+Revisa `actividad-2.2.md`. Debe contener:
 
-La PR debe mostrar correctamente, como mínimo:
+- mediciones de las dos imágenes;
+- respuestas del Paso 6;
+- reflexión sobre `latest`;
+- cuatro evidencias;
+- incidencias relevantes y cómo las resolviste.
+
+!!! tip "No documentes lo que ya está versionado"
+    No copies el contenido completo de los Dockerfile en el informe. Los ficheros reales ya están en `practicas/docker/app/`.
+
+Registra:
+
+- `Dockerfile.ingenuo`;
+- `Dockerfile`;
+- `escaparate/.dockerignore`;
+- workflow actualizado;
+- documentación de la actividad.
+
+Publica `sesion-04` y abre:
+
+```text
+sesion-04 → main
+```
+
+La Pull Request debe terminar con:
 
 ```text
 Comprobar repositorio  ✓
 Construir imagen       ✓
 ```
 
-Si la construcción automática falla, abre el detalle del trabajo y compara el error con la construcción que realizaste en local. Corrige antes de fusionar.
+Si falla la construcción automática, abre el detalle y compara el error con el build local antes de corregirlo.
 
-**Evidencia 4:** captura de la Pull Request antes de fusionarla, con las dos comprobaciones automáticas en verde, y del paquete de GHCR donde se vean `sesion-04` y `latest`. Puedes utilizar una o dos capturas si es necesario para que la información sea legible.
+**Evidencia 4:** Pull Request con ambas comprobaciones correctas y paquete de GHCR mostrando `sesion-04` y `latest`. Utiliza dos capturas si una sola no resulta legible.
 
-Guarda la evidencia en `entregas/tema2/actividad-2.2/img/`, enlázala desde `actividad-2.2.md` y publica los últimos cambios.
-
-Comprueba que la Pull Request se actualiza con el nuevo commit. Cuando toda la documentación esté incluida, fusiónala mediante **Create a merge commit** y actualiza tu `main` local.
-
-**Comprueba:**
-
-- la PR aparece fusionada;
-- `entregas/tema2/actividad-2.2/` está en `main`;
-- `practicas/docker/app/Dockerfile.ingenuo`, `practicas/docker/app/Dockerfile` y `escaparate/.dockerignore` están en `main`;
-- la imagen optimizada se ejecuta con un usuario sin privilegios y dispone de una ruta escribible para `APP_STORAGE_PATH`;
-- el grafo permite identificar la rama `sesion-04` y su fusión.
-
-!!! question "Reflexiona"
-    Si hoy descargas `latest` y mañana alguien vuelve a publicar una imagen distinta con esa misma etiqueta, ¿qué puede ocurrir la siguiente vez que ejecutes "la misma" referencia? ¿Cuál de las dos etiquetas utilizarías en un procedimiento que deba ser reproducible?
-
----
-
-## Verificación
-
-Para dar por válida la práctica se podrá comprobar, sustituyendo `<usuario>`:
+Fusiona mediante **Create a merge commit** y actualiza:
 
 ```bash
-docker logout ghcr.io 2>/dev/null || true
-docker rm -f verifica bd 2>/dev/null || true
-docker network create escaparate-red 2>/dev/null || true
-
-docker pull ghcr.io/<usuario>/escaparate-db:1.0.0
-docker pull ghcr.io/<usuario>/escaparate:sesion-04
-
-docker image ls ghcr.io/<usuario>/escaparate:sesion-04
-
-docker run -d --name bd \
-  --network escaparate-red \
-  -e POSTGRES_USER=profesor \
-  -e POSTGRES_PASSWORD=otra-distinta \
-  -e POSTGRES_DB=escaparate \
-  ghcr.io/<usuario>/escaparate-db:1.0.0
-
-sleep 10
-
-docker run -d --name verifica \
-  --network escaparate-red \
-  -p 8080:8080 \
-  -e DB_HOST=bd \
-  -e DB_PORT=5432 \
-  -e DB_NAME=escaparate \
-  -e DB_USER=profesor \
-  -e DB_PASSWORD=otra-distinta \
-  ghcr.io/<usuario>/escaparate:sesion-04
-
-sleep 15
-
-curl -fsS http://localhost:8080/api/salud/vivo
-curl -fsS http://localhost:8080/api/salud/listo
-docker exec verifica id
-docker exec verifica sh -c 'printf "%s\n" "$APP_STORAGE_PATH"; test -w "$APP_STORAGE_PATH" && echo "storage writable"'
-
-docker rm -f verifica bd
+git switch main
+git pull --ff-only
 ```
-
-Y debe observarse:
-
-- Las imágenes se descargan sin iniciar sesión.
-- Escaparate arranca y su Tomcat embebido sirve tanto el frontend como la API desde el mismo contenedor.
-- `/api/salud/vivo` responde mientras el proceso está activo.
-- `/api/salud/listo` confirma que PostgreSQL está disponible.
-- El proceso no se ejecuta como `root`.
-- `APP_STORAGE_PATH` está definido y es escribible por el usuario del contenedor.
-- En el repositorio están `practicas/docker/app/Dockerfile.ingenuo`, `practicas/docker/app/Dockerfile` y `escaparate/.dockerignore`.
-- La Pull Request muestra correctamente la construcción automática de la imagen.
-- En el repositorio están `entregas/tema2/actividad-2.2/actividad-2.2.md` y su carpeta `img/`.
-- La entrega ha llegado a `main` mediante la Pull Request de `sesion-04`.
 
 ---
 
 ## Qué se entrega
 
-- [ ] `entregas/tema2/actividad-2.2/actividad-2.2.md` con respuestas, mediciones y reflexiones.
-- [ ] `entregas/tema2/actividad-2.2/img/` con las cuatro evidencias solicitadas, enlazadas mediante rutas relativas.
-- [ ] `practicas/docker/app/Dockerfile.ingenuo`.
-- [ ] `practicas/docker/app/Dockerfile`.
-- [ ] `escaparate/.dockerignore`.
-- [ ] Tabla con las cuatro mediciones y el **Content Size** de ambas imágenes.
-- [ ] Respuestas razonadas del paso 6.
-- [ ] Imagen optimizada ejecutándose con usuario sin privilegios y `APP_STORAGE_PATH` escribible.
-- [ ] Imagen pública en `ghcr.io` con `sesion-04` y `latest`.
-- [ ] Workflow ampliado con la construcción automática de la imagen y comprobación correcta en la PR.
+Antes de terminar, comprueba:
+
+- [ ] `actividad-2.2.md` con mediciones, respuestas, reflexión y cuatro evidencias;
+- [ ] `practicas/docker/app/Dockerfile.ingenuo`;
+- [ ] `practicas/docker/app/Dockerfile`;
+- [ ] `escaparate/.dockerignore`;
+- [ ] imagen pública con `sesion-04` y `latest`;
+- [ ] workflow capaz de construir la imagen en la Pull Request;
 - [ ] Pull Request `sesion-04 → main` fusionada.
 
 !!! info "Dónde queda la entrega"
-    La evidencia de la actividad queda versionada en el repositorio privado. El paquete de GHCR es público únicamente para permitir su comprobación sin credenciales.
+    Los ficheros y evidencias quedan en el repositorio privado. La imagen de GHCR se mantiene pública para facilitar su comprobación.
+
+??? info "Cómo se comprobará"
+    El profesor podrá descargar las imágenes publicadas y arrancar Escaparate con una PostgreSQL configurada con valores diferentes.
+
+    En lugar de utilizar tiempos fijos, se esperará a que cada servicio esté realmente disponible.
+
+    ```bash
+    docker rm -f verifica bd 2>/dev/null || true
+    docker network create escaparate-red 2>/dev/null || true
+
+    docker pull ghcr.io/<usuario>/escaparate-db:1.0.0
+    docker pull ghcr.io/<usuario>/escaparate:sesion-04
+
+    docker run -d --name bd \
+      --network escaparate-red \
+      -e POSTGRES_USER=profesor \
+      -e POSTGRES_PASSWORD=prueba-verificacion \
+      -e POSTGRES_DB=escaparate \
+      ghcr.io/<usuario>/escaparate-db:1.0.0
+
+    until docker exec bd \
+      pg_isready -U profesor -d escaparate >/dev/null 2>&1; do
+      sleep 1
+    done
+
+    docker run -d --name verifica \
+      --network escaparate-red \
+      -p 8080:8080 \
+      -e DB_HOST=bd \
+      -e DB_PORT=5432 \
+      -e DB_NAME=escaparate \
+      -e DB_USER=profesor \
+      -e DB_PASSWORD=prueba-verificacion \
+      ghcr.io/<usuario>/escaparate:sesion-04
+
+    until curl -fsS http://localhost:8080/api/salud/listo >/dev/null; do
+      sleep 2
+    done
+
+    curl -fsS http://localhost:8080/api/salud/vivo
+    curl -fsS http://localhost:8080/api/salud/listo
+    docker exec verifica id
+    docker exec verifica sh -c \
+      'printf "%s\n" "$APP_STORAGE_PATH"; test -w "$APP_STORAGE_PATH" && echo "storage writable"'
+
+    docker rm -f verifica bd
+    ```
 
 ---
 
 ## ✅ Cierre
 
-Escaparate ya puede viajar como una imagen. Cualquier equipo con Docker puede descargarla y ejecutar la misma aplicación sin instalar Java, Maven ni las herramientas que utilizaste para compilarla.
+Escaparate ya puede viajar como una imagen que contiene lo necesario para ejecutarse, pero no las herramientas utilizadas para compilarla.
 
-También has comprobado que "meter la aplicación en Docker" no consiste solo en conseguir que arranque. El contexto que envías, el orden de las capas, las herramientas que dejas dentro y el usuario con el que ejecutas el proceso afectan al tiempo de construcción, al tamaño y a la seguridad de la imagen.
+También has comprobado que **optimizar una imagen no significa una única cosa**: el contexto, la caché, la construcción multietapa y los privilegios resuelven problemas diferentes.
 
-Sin embargo, poner en marcha el sistema completo todavía exige recordar varios comandos: crear una red, iniciar PostgreSQL con su configuración y después arrancar Escaparate con la suya. En la próxima sesión escribirás ese procedimiento en un fichero versionado para que el conjunto completo pueda levantarse de forma reproducible con un único comando.
+En la próxima sesión dejarás de arrancar manualmente cada contenedor y describirás el sistema completo mediante Docker Compose.

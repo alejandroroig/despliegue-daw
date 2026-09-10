@@ -2,51 +2,49 @@
 
 ## Contexto
 
-Hasta ahora poner en marcha Escaparate exige recordar varias órdenes: crear una red, arrancar PostgreSQL con su configuración, esperar a que esté preparado y después iniciar la aplicación.
+Hasta ahora poner en marcha Escaparate exige recordar varias órdenes: crear una red, arrancar PostgreSQL, pasar configuración, esperar a que esté preparado y después iniciar la aplicación.
 
-Tu encargo es convertir ese procedimiento en **infraestructura declarada en un fichero** y versionarla junto al resto del proyecto.
+Tu objetivo es convertir ese procedimiento en **infraestructura declarada en un fichero versionado**.
 
-Escaparate mantiene la arquitectura utilizada en las sesiones anteriores:
+El despliegue de esta sesión tendrá solo dos servicios:
 
 ```text
-Navegador
-    │
-    ▼
-Escaparate
-Spring Boot + Tomcat embebido
-(frontend + API)
-    │
-    ▼
-PostgreSQL
+navegador → app → bd
 ```
 
-El despliegue tendrá únicamente **dos servicios**, `app` y `bd`. Al finalizar, solo la aplicación publicará un puerto hacia el equipo anfitrión.
+- `app`: Escaparate, con frontend + API y Tomcat embebido;
+- `bd`: PostgreSQL.
 
-Este es el estado final **de este tema**, no de la arquitectura completa del módulo. En el siguiente bloque Nginx se colocará delante y acabará convirtiéndose en la puerta de entrada, mientras `app` permanecerá como la pieza que ejecuta la lógica de la aplicación.
+Al finalizar, solo `app` publicará un puerto hacia el anfitrión.
+
+!!! abstract "Cómo vas a trabajar"
+    **Declarar → diagnosticar → persistir → aislar → configurar → esperar → documentar**
+
+    No se trata únicamente de conseguir que `docker compose up -d` funcione. Debes entender **qué declara cada parte del YAML y qué problema resuelve**.
+
+---
 
 ## Qué vas a practicar
 
-- **Describir** un despliegue completo con Docker Compose.
-- **Resolver** servicios por su nombre dentro de la red de Compose.
-- **Comprobar** qué ocurre con los datos al detener, eliminar o recrear contenedores.
-- **Distinguir** comunicación interna y puertos publicados hacia el anfitrión.
-- **Separar** configuración versionable de valores locales.
-- **Esperar** a que una dependencia esté realmente preparada.
-- **Diagnosticar** un conjunto mediante estado y logs.
-- **Documentar** un procedimiento reproducible.
+- Describir varios servicios mediante Docker Compose.
+- Utilizar nombres de servicio dentro de la red.
+- Distinguir red interna y puertos publicados.
+- Comprobar el ciclo de vida de un volumen.
+- Externalizar valores mediante `.env`.
+- Esperar a una condición real con `healthcheck`.
+- Diagnosticar mediante `ps`, `logs` y `config`.
+- Documentar un despliegue que otra persona pueda reproducir.
+
+---
 
 ## Requisitos previos
 
-Debes tener publicadas las imágenes de las actividades anteriores:
+Debes tener publicadas:
 
 ```text
 ghcr.io/<usuario>/escaparate-db:1.0.0
 ghcr.io/<usuario>/escaparate:sesion-04
 ```
-
-Las dos imágenes son públicas, por lo que Compose podrá descargarlas sin iniciar sesión en GHCR.
-
-El repositorio `daw-despliegue` continúa siendo privado. Las operaciones Git utilizan la autenticación configurada anteriormente.
 
 Prepara tu rama:
 
@@ -63,7 +61,7 @@ practicas/
 └── compose/
 ```
 
-y la carpeta de entrega:
+y:
 
 ```text
 entregas/
@@ -73,11 +71,12 @@ entregas/
         └── img/
 ```
 
-Los ficheros técnicos permanecerán en `practicas/compose/`. En `entregas/` solo guardarás documentación y evidencias.
+!!! info "Evidencias"
+    Solo se piden **cuatro evidencias**. Los ficheros técnicos permanecen en `practicas/compose/`; en `entregas/` documentarás decisiones, resultados y reflexiones.
 
 ---
 
-## Paso 1: Levanta Escaparate con Compose
+## Paso 1: Declara y diagnostica el conjunto
 
 Crea:
 
@@ -117,19 +116,19 @@ volumes:
   datos-bd:
 ```
 
-!!! info "Ruta de persistencia en PostgreSQL 18"
-    Esta actividad utiliza PostgreSQL 18. Para las prácticas del módulo el volumen se monta en:
+!!! info "PostgreSQL 18"
+    Para esta versión utilizamos el volumen en:
 
     ```text
     /var/lib/postgresql
     ```
 
-    No reutilices automáticamente ejemplos de versiones anteriores que utilicen `/var/lib/postgresql/data`.
+    No copies automáticamente ejemplos antiguos que monten `/var/lib/postgresql/data`.
 
-Este fichero contiene dos decisiones que iremos corrigiendo:
+El fichero contiene dos decisiones que corregirás durante la práctica:
 
-- un error deliberado en la conexión de `app` con PostgreSQL;
-- un puerto de PostgreSQL publicado temporalmente hacia el anfitrión.
+- un **error deliberado** en la conexión de `app`;
+- PostgreSQL publica temporalmente un puerto hacia el anfitrión.
 
 Levanta el conjunto:
 
@@ -138,7 +137,7 @@ cd practicas/compose
 docker compose up -d
 ```
 
-No empieces modificando el YAML al azar. Diagnostica primero:
+Antes de cambiar nada:
 
 ```bash
 docker compose ps
@@ -146,65 +145,62 @@ docker compose logs app
 docker compose logs bd
 ```
 
-La aplicación debe dejar una pista sobre el nombre de host al que está intentando conectarse.
+Busca en los logs de `app` el host al que intenta conectarse y compáralo con los nombres de servicio del YAML.
 
-Compara ese nombre con los servicios declarados en `compose.yaml`, corrige el problema y vuelve a levantar el conjunto.
+Corrige el problema y vuelve a aplicar:
 
-**Comprueba:**
+```bash
+docker compose up -d
+```
+
+Comprueba:
 
 ```text
 http://localhost:8080/
-```
-
-muestra el catálogo y:
-
-```text
 http://localhost:8080/api/salud/listo
 ```
 
-responde correctamente.
+**Evidencia 1:** fragmento de logs donde se vea la pista del fallo inicial.
 
-**Captura 1:** línea relevante de los logs antes de corregir el error.
-
-**Captura 2:** `docker compose ps` y Escaparate funcionando después de la corrección.
+**Evidencia 2:** `docker compose ps` y Escaparate funcionando después de la corrección.
 
 !!! question "Reflexiona"
-    Una vez corregido, la aplicación puede utilizar `bd` como nombre de host. ¿Quién proporciona ese nombre y por qué no necesitas conocer la dirección IP del contenedor?
+    Una vez corregido, `app` puede utilizar `bd` como host. ¿Quién proporciona ese nombre y por qué no necesitas conocer la IP del contenedor?
 
 ---
 
-## Paso 2: Comprueba qué significa persistir
+## Paso 2: Comprueba qué persiste
 
 Con el conjunto funcionando, añade desde Escaparate un producto cuyo nombre incluya tu apellido.
 
-Antes de cada operación escribe en `actividad-2.3.md` si esperas que ese producto continúe existiendo.
+Antes de cada operación, anota qué esperas que ocurra con ese producto.
 
-### Caso A: detener y volver a arrancar
+### 2.1. Detener y volver a arrancar
 
 ```bash
 docker compose stop
 docker compose start
 ```
 
-Comprueba el producto.
+Comprueba el catálogo.
 
-### Caso B: desmontar y volver a crear los contenedores
+### 2.2. Eliminar y recrear contenedores
 
 ```bash
 docker compose down
 docker compose up -d
 ```
 
-Espera a que Escaparate esté disponible y comprueba de nuevo el producto.
+Espera a que Escaparate vuelva a estar disponible y comprueba el producto.
 
-### Caso C: eliminar también el volumen
+### 2.3. Eliminar también el volumen
 
 ```bash
 docker compose down -v
 docker compose up -d
 ```
 
-Vuelve a comprobar el catálogo.
+Comprueba de nuevo el catálogo.
 
 Completa:
 
@@ -215,25 +211,26 @@ Completa:
 | `down -v` + `up` | | | |
 
 !!! question "Reflexiona"
-    Si los contenedores se eliminan con `down` pero el producto reaparece, ¿dónde estaba almacenado realmente?
+    Si `down` elimina los contenedores pero el producto reaparece, ¿dónde estaban realmente los datos?
 
-    ¿Qué cambia al utilizar `down -v`?
+    ¿Qué cambia con `down -v`?
 
-    Si se tratara de una base de datos real, ¿qué mecanismo adicional necesitarías para recuperar los datos después de perder también el volumen?
+    Si también perdieras el volumen de una base de datos real, ¿qué mecanismo necesitarías para recuperar la información?
 
 ---
 
-## Paso 3: Publica solo lo necesario
+## Paso 3: Publica solo la aplicación
 
-En el punto de partida PostgreSQL publica:
+En el YAML inicial PostgreSQL tenía:
 
-```text
-5433:5432
+```yaml
+ports:
+  - "5433:5432"
 ```
 
-pero la única aplicación que necesita hablar con la base de datos es `app`, que ya comparte con ella la red de Compose.
+Pero `app` ya puede comunicarse con `bd` dentro de la red de Compose.
 
-Elimina la publicación del puerto de `bd` y vuelve a aplicar el despliegue:
+Elimina la publicación de PostgreSQL y aplica:
 
 ```bash
 docker compose up -d
@@ -246,28 +243,28 @@ docker compose ps
 curl -fsS http://localhost:8080/api/salud/listo
 ```
 
-Al finalizar debe cumplirse:
+El estado final debe corresponder a:
 
 ```text
-Desde el anfitrión:
-app:8080     accesible
-bd:5432      no publicado
+DESDE EL ANFITRIÓN
 
-Dentro de la red de Compose:
+localhost:8080 → app
+PostgreSQL      no publicado
+
+
+DENTRO DE COMPOSE
+
 app → bd:5432
-funciona
 ```
 
-No necesitas crear una prueba adicional para demostrar la comunicación interna: si `/api/salud/listo` responde mientras `bd` no publica ningún puerto, la aplicación está llegando a PostgreSQL a través de la red interna.
-
 !!! question "Reflexiona"
-    ¿Qué diferencia hay entre que un servicio sea accesible **dentro de una red Docker** y que tenga un puerto **publicado hacia el anfitrión**?
+    ¿Qué diferencia hay entre que un servicio sea accesible **dentro de la red de Compose** y que tenga un puerto **publicado hacia el anfitrión**?
 
 ---
 
 ## Paso 4: Saca los valores locales del YAML
 
-`compose.yaml` va a entrar en Git. Las credenciales locales no.
+El `compose.yaml` se versionará. Los valores locales no deben quedar escritos directamente en él.
 
 Crea:
 
@@ -279,13 +276,7 @@ practicas/
     └── .env.example
 ```
 
-Utiliza variables de Compose para sacar del YAML, como mínimo:
-
-- usuario de PostgreSQL;
-- contraseña;
-- nombre de la base de datos.
-
-Puedes usar claves como:
+Saca del YAML, como mínimo:
 
 ```text
 BD_USUARIO
@@ -293,50 +284,63 @@ BD_CLAVE
 BD_NOMBRE
 ```
 
-### `.env`
+Utiliza interpolación:
 
-Contiene los valores que utilizas en tu equipo y **no se versiona**.
-
-### `.env.example`
-
-Contiene las mismas claves con valores ficticios o sustituibles y **sí se versiona**.
-
-Comprueba que `.env` está ignorado:
-
-```bash
-git check-ignore -v practicas/compose/.env
+```yaml
+POSTGRES_USER: ${BD_USUARIO}
+POSTGRES_PASSWORD: ${BD_CLAVE}
+POSTGRES_DB: ${BD_NOMBRE}
 ```
 
-Comprueba también que Compose puede interpretar la configuración:
+y reutiliza esos valores para configurar la conexión de `app`.
+
+### 4.1. `.env`
+
+Contiene tus valores locales y **no se versiona**.
+
+### 4.2. `.env.example`
+
+Contiene las mismas claves con valores ficticios y **sí se versiona**.
+
+Por ejemplo:
+
+```text
+BD_USUARIO=usuario
+BD_CLAVE=cambia-esta-clave
+BD_NOMBRE=escaparate
+```
+
+Comprueba:
 
 ```bash
+git check-ignore -v .env
 docker compose config
 ```
 
-!!! warning "Revisa la salida antes de capturarla"
-    `docker compose config` puede mostrar valores ya interpolados. No publiques ni captures una salida que contenga una contraseña real.
+!!! warning "Revisa antes de capturar"
+    `docker compose config` puede mostrar los valores ya interpolados. No incluyas una contraseña real en una captura.
 
-Levanta de nuevo el conjunto y comprueba que continúa funcionando.
+Levanta de nuevo el conjunto y verifica que sigue funcionando.
 
-**Captura 3:** fragmento relevante de `compose.yaml`, `.env.example` y resultado de `git check-ignore` que demuestre que `.env` no entrará en Git.
+**Evidencia 3:** fragmento relevante de `compose.yaml`, `.env.example` y `git check-ignore` demostrando que `.env` queda fuera de Git.
 
 ---
 
-## Paso 5: Contenedor iniciado no significa servicio preparado
+## Paso 5: Demuestra que arrancado no significa preparado
 
-Hasta ahora `depends_on` establece un orden de arranque, pero no garantiza que PostgreSQL esté preparado para aceptar conexiones.
+Hasta ahora `depends_on` establece una dependencia de arranque, pero no espera necesariamente a que PostgreSQL haya terminado su inicialización.
 
-Vas a provocar esa diferencia de forma controlada.
+Vas a hacer visible esa diferencia.
 
-### 5.1. Introduce un retraso reproducible
+### 5.1. Introduce temporalmente un retraso
 
-Desmonta el conjunto eliminando el volumen:
+Empieza con un volumen vacío:
 
 ```bash
 docker compose down -v
 ```
 
-Crea:
+Crea temporalmente:
 
 ```text
 practicas/compose/00-delay.sql
@@ -348,26 +352,22 @@ con:
 SELECT pg_sleep(20);
 ```
 
-Este fichero solo existe para esta práctica. Introduce una pausa durante la primera inicialización de un volumen vacío.
-
-Monta **solo ese fichero** en `bd`:
+Monta **solo ese fichero** en `bd` como:
 
 ```text
 /docker-entrypoint-initdb.d/00-delay.sql
 ```
 
-y hazlo en modo solo lectura:
+y en modo:
 
 ```text
 :ro
 ```
 
 !!! warning "No montes el directorio completo"
-    La imagen `escaparate-db:1.0.0` ya contiene `01-schema.sql` y `02-data.sql`.
+    La imagen de base de datos ya contiene `01-schema.sql` y `02-data.sql`. Si montaras un directorio completo sobre `/docker-entrypoint-initdb.d/`, ocultarías esos ficheros.
 
-    Si montaras una carpeta local completa sobre `/docker-entrypoint-initdb.d/`, ocultarías esos ficheros. Monta únicamente `00-delay.sql`.
-
-Levanta el conjunto:
+Levanta:
 
 ```bash
 docker compose up -d
@@ -381,36 +381,40 @@ docker compose logs app
 docker compose logs bd
 ```
 
-Comprueba qué ocurre cuando `app` intenta comenzar mientras PostgreSQL todavía está inicializándose.
+Comprueba qué ocurre mientras PostgreSQL continúa inicializándose.
 
-### 5.2. Espera a una condición real
+### 5.2. Espera a PostgreSQL de verdad
 
-Añade al servicio `bd` un `healthcheck` basado en `pg_isready`.
+Añade a `bd` un `healthcheck` basado en:
 
-La comprobación debe verificar que PostgreSQL acepta **conexiones TCP**, no únicamente que el proceso existe.
+```text
+pg_isready
+```
 
-Después cambia `depends_on` para que `app` espere a:
+La comprobación debe realizar una conexión TCP contra:
+
+```text
+127.0.0.1
+```
+
+y utilizar las variables `POSTGRES_USER` y `POSTGRES_DB` **dentro del contenedor**.
+
+Después cambia la dependencia de `app` para esperar:
 
 ```text
 service_healthy
 ```
 
-No necesitas esperar un número fijo de segundos para comprobar Escaparate. Utiliza:
+!!! info "Recuerda el doble `$`"
+    En el healthcheck necesitarás expresiones como:
 
-```bash
-for i in {1..30}; do
-    if curl -fsS http://localhost:8080/api/salud/listo; then
-        break
-    fi
-    sleep 2
-done
-```
+    ```text
+    $${POSTGRES_USER}
+    ```
 
-El bucle consulta una condición real cada dos segundos y termina en cuanto la aplicación está preparada.
+    para que Compose no las sustituya antes de crear el contenedor.
 
-### 5.3. Repite un arranque limpio
-
-Comprueba la solución desde cero una vez:
+Repite desde cero:
 
 ```bash
 docker compose down -v
@@ -423,121 +427,98 @@ Observa:
 docker compose ps
 ```
 
-y utiliza el bucle anterior hasta que Escaparate esté preparado.
+y espera a Escaparate mediante una condición real:
 
-**Comprueba:**
+```bash
+for i in {1..30}; do
+    if curl -fsS http://localhost:8080/api/salud/listo; then
+        break
+    fi
+    sleep 2
+done
+```
 
-- `bd` pasa a estado `healthy`;
-- `app` comienza después de que se cumpla esa condición;
-- `/api/salud/listo` termina respondiendo;
-- el catálogo funciona.
+Comprueba:
 
-**Captura 4:** estado final de `docker compose ps`, mostrando `bd` saludable, junto con la comprobación satisfactoria de readiness.
+- `bd` alcanza `healthy`;
+- `app` comienza después de cumplirse esa condición;
+- `/api/salud/listo` termina respondiendo.
+
+**Evidencia 4:** `docker compose ps` mostrando `bd` saludable y la comprobación satisfactoria de readiness.
 
 !!! question "Reflexiona"
-    "El contenedor se ha iniciado" y "el servicio está preparado" no significan lo mismo.
-
     ¿Qué comprueba `pg_isready`?
 
-    ¿Qué diferencia conceptual hay entre una comprobación de **liveness** y una de **readiness**?
+    ¿Por qué «contenedor arrancado» y «servicio preparado» no significan lo mismo?
+
+    ¿Qué diferencia conceptual hay entre **liveness** y **readiness**?
+
+### 5.3. Retira el retraso artificial
+
+`00-delay.sql` solo servía para hacer visible el problema.
+
+Antes de continuar:
+
+1. elimina su montaje de `compose.yaml`;
+2. borra `00-delay.sql`;
+3. conserva el `healthcheck` y `service_healthy`;
+4. comprueba un arranque limpio final.
+
+```bash
+docker compose down -v
+docker compose up -d
+```
+
+El despliegue definitivo **no debe introducir una espera artificial de 20 segundos**.
 
 ---
 
-## Paso 6: Completa el procedimiento del repositorio
+## Paso 6: Completa la puesta en marcha
 
-En el `README.md` principal dejaste pendiente el apartado:
+En el README principal dejaste pendiente:
 
 ```text
-Puesta en marcha
+## Puesta en marcha
 ```
 
-Complétalo para que una persona que acaba de clonar el repositorio pueda levantar Escaparate sin preguntarte nada.
+Complétalo para que una persona que acaba de clonar el repositorio pueda levantar el sistema sin preguntarte nada.
 
 Debe explicar:
 
-- qué necesita tener instalado;
-- dónde está `compose.yaml`;
+- requisito de Docker;
+- ubicación de `compose.yaml`;
 - cómo crear `.env` a partir de `.env.example`;
-- qué valores debe completar;
+- qué valores deben completarse;
 - cómo arrancar;
 - URL del catálogo;
 - endpoint de readiness;
-- cómo detener sin borrar datos;
-- cómo desmontar eliminando también los volúmenes;
-- qué consecuencia tiene esta última operación.
+- cómo detener conservando los datos;
+- cómo desmontar;
+- qué ocurre si se utiliza `down -v`.
 
 !!! tip "La prueba del compañero"
-    Un procedimiento es reproducible cuando otra persona puede ejecutarlo sin preguntarte qué comando falta ni qué querías decir.
+    Un procedimiento es reproducible cuando otra persona puede ejecutarlo sin preguntarte qué comando falta.
 
 ---
 
-## Paso 7: Amplía la comprobación automática
+## Paso 7: Valida Compose automáticamente
 
-El repositorio ya contiene:
+Amplía `.github/workflows/validar.yml` para conservar las comprobaciones anteriores y añadir una tercera:
 
 ```text
-.github/
-└── workflows/
-    └── validar.yml
+Validar Docker Compose
 ```
 
-Sustituye su contenido por:
+El job debe:
+
+1. hacer checkout;
+2. copiar `.env.example` a `.env`;
+3. ejecutar `docker compose config`;
+4. fallar si la configuración no puede interpretarse.
+
+Puedes utilizar:
 
 ```yaml
-name: Validar repositorio
-
-on:
-  pull_request:
-    branches: [main]
-  workflow_dispatch:
-
-jobs:
-  estructura:
-    name: Comprobar repositorio
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Descargar repositorio
-        uses: actions/checkout@v4
-
-      - name: Comprobar estructura básica
-        run: |
-          test -f escaparate/pom.xml
-          test -f escaparate/mvnw
-          test -f practicas/README.md
-
-      - name: Comprobar ficheros que no deben versionarse
-        shell: bash
-        run: |
-          prohibidos="$(
-            git ls-files \
-              | grep -E '(^|/)\.env($|\.)|(^|/)target/|\.class$' \
-              | grep -vE '(^|/)\.env\.example$' \
-              || true
-          )"
-
-          if [ -n "$prohibidos" ]; then
-            echo "Se han encontrado ficheros que no deberían estar versionados:"
-            echo "$prohibidos"
-            exit 1
-          fi
-
-  construir-imagen:
-    name: Construir imagen
-    needs: estructura
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Descargar repositorio
-        uses: actions/checkout@v4
-
-      - name: Construir la imagen de Escaparate
-        run: |
-          docker build \
-            -f practicas/docker/app/Dockerfile \
-            -t escaparate:validacion \
-            escaparate/
-
   validar-compose:
     name: Validar Docker Compose
     needs: estructura
@@ -545,7 +526,7 @@ jobs:
 
     steps:
       - name: Descargar repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Preparar valores de ejemplo
         working-directory: practicas/compose
@@ -556,37 +537,45 @@ jobs:
         run: docker compose config > /dev/null
 ```
 
-No necesitas estudiar todavía la sintaxis de GitHub Actions.
+!!! info "Qué demuestra este job"
+    Parte de un checkout limpio. Si puede crear `.env` desde el fichero de ejemplo e interpretar el Compose, la configuración básica necesaria para reproducir el despliegue está versionada.
 
-La nueva comprobación añade una garantía concreta:
-
-```text
-checkout limpio
-→ .env.example
-→ docker compose config
-→ configuración reproducible
-```
-
-No levanta los servicios ni necesita tus credenciales locales.
+    Este job **no levanta los servicios**.
 
 ---
 
-## Paso 8: Cierra la rama
+## Paso 8: Documenta e integra
 
-Revisa `actividad-2.3.md` y comprueba que contiene:
+Revisa `actividad-2.3.md`. Debe contener:
 
-- diagnóstico del primer fallo;
+- diagnóstico del fallo inicial;
 - tabla de persistencia;
-- reflexiones pedidas;
-- explicación de la exposición de puertos;
-- las cuatro capturas solicitadas.
+- reflexión sobre puertos;
+- reflexión sobre healthcheck, liveness y readiness;
+- cuatro evidencias;
+- incidencias relevantes.
 
-Después:
+Registra:
 
-1. registra los cambios;
-2. publica `sesion-05`;
-3. abre una Pull Request hacia `main`;
-4. espera a que terminen las comprobaciones.
+- `compose.yaml`;
+- `.env.example`;
+- README actualizado;
+- workflow actualizado;
+- documentación y capturas.
+
+!!! warning "No debe quedar"
+    Antes del commit final comprueba que:
+
+    - `.env` no está versionado;
+    - `00-delay.sql` ya no existe;
+    - PostgreSQL no publica ningún puerto;
+    - el healthcheck y `service_healthy` permanecen en el Compose definitivo.
+
+Publica `sesion-05` y abre:
+
+```text
+sesion-05 → main
+```
 
 La PR debe mostrar:
 
@@ -596,119 +585,80 @@ Construir imagen         ✓
 Validar Docker Compose   ✓
 ```
 
-Si `Validar Docker Compose` falla, revisa el detalle. La comprobación parte de un checkout limpio y crea `.env` desde `.env.example`, por lo que un fallo suele indicar que falta configuración versionable o que `compose.yaml` no puede interpretarse fuera de tu equipo.
-
-Cuando todo esté correcto, fusiona mediante **Create a merge commit** y actualiza tu `main` local.
-
----
-
-## Verificación
-
-La práctica podrá comprobarse desde un clon limpio:
+Cuando todo esté correcto, fusiona mediante **Create a merge commit** y actualiza:
 
 ```bash
-git clone https://github.com/<usuario>/daw-despliegue.git verifica
-cd verifica/practicas/compose
-
-cp .env.example .env
+git switch main
+git pull --ff-only
 ```
-
-Después de completar los valores:
-
-```bash
-docker compose up -d
-docker compose ps
-
-curl -fsS http://localhost:8080/
-curl -fsS http://localhost:8080/api/salud/vivo
-curl -fsS http://localhost:8080/api/salud/listo
-```
-
-PostgreSQL no debe publicar ningún puerto hacia el anfitrión.
-
-También se probará un arranque completamente nuevo:
-
-```bash
-docker compose down -v
-docker compose up -d
-
-for i in {1..30}; do
-    if curl -fsS http://localhost:8080/api/salud/listo; then
-        exit 0
-    fi
-    sleep 2
-done
-
-echo "Escaparate no ha alcanzado el estado ready"
-exit 1
-```
-
-Debe observarse:
-
-- los dos servicios están en ejecución;
-- `bd` aparece como `healthy`;
-- `app` espera a que PostgreSQL esté preparado;
-- el catálogo integrado responde en el puerto 8080;
-- `/api/salud/vivo` y `/api/salud/listo` responden;
-- PostgreSQL no publica puerto hacia el anfitrión;
-- `compose.yaml` no contiene credenciales reales;
-- `.env` no está registrado en Git;
-- `.env.example` sí está versionado;
-- `Validar Docker Compose` termina correctamente;
-- la sección `Puesta en marcha` permite reproducir el despliegue;
-- los cambios han llegado a `main` mediante la PR de `sesion-05`.
 
 ---
 
 ## Qué se entrega
 
-- [ ] `practicas/compose/compose.yaml` final con `app` y `bd`.
-- [ ] Tabla del experimento `stop`, `down` y `down -v`.
-- [ ] Diagnóstico del fallo deliberado de conexión.
-- [ ] PostgreSQL sin puerto publicado hacia el anfitrión.
-- [ ] `.env.example` versionado y `.env` correctamente ignorado.
-- [ ] `practicas/compose/00-delay.sql`.
-- [ ] `healthcheck` de PostgreSQL y dependencia con `service_healthy`.
-- [ ] Un arranque limpio comprobado mediante readiness.
-- [ ] Sección `Puesta en marcha` completa en `README.md`.
-- [ ] Workflow con `Validar Docker Compose`.
-- [ ] `entregas/tema2/actividad-2.3/actividad-2.3.md`.
-- [ ] `entregas/tema2/actividad-2.3/img/` con las cuatro capturas.
+Antes de terminar, comprueba:
+
+- [ ] `practicas/compose/compose.yaml` final con `app` y `bd`;
+- [ ] PostgreSQL sin puerto publicado;
+- [ ] volumen de base de datos declarado;
+- [ ] `.env.example` versionado y `.env` ignorado;
+- [ ] `healthcheck` de PostgreSQL y dependencia `service_healthy`;
+- [ ] **sin** `00-delay.sql` ni espera artificial en el despliegue final;
+- [ ] sección `Puesta en marcha` completa;
+- [ ] workflow con `Validar Docker Compose`;
+- [ ] `actividad-2.3.md` con tabla, reflexiones y cuatro evidencias;
 - [ ] Pull Request `sesion-05 → main` fusionada.
+
+!!! info "Dónde queda la entrega"
+    La infraestructura y la documentación quedan versionadas en el repositorio. `.env` permanece únicamente en cada equipo.
+
+??? info "Cómo se comprobará"
+    La práctica podrá reproducirse desde un clon limpio.
+
+    Tras copiar `.env.example` a `.env` y completar los valores, se podrá ejecutar:
+
+    ```bash
+    docker compose up -d
+
+    for i in {1..30}; do
+        if curl -fsS http://localhost:8080/api/salud/listo; then
+            break
+        fi
+        sleep 2
+    done
+
+    docker compose ps
+    curl -fsS http://localhost:8080/
+    curl -fsS http://localhost:8080/api/salud/vivo
+    curl -fsS http://localhost:8080/api/salud/listo
+    ```
+
+    Debe observarse:
+
+    - `bd` saludable;
+    - `app` preparado;
+    - catálogo accesible por `8080`;
+    - PostgreSQL sin puerto publicado;
+    - `.env` fuera de Git;
+    - `compose.yaml` válido desde `.env.example`.
 
 ---
 
 ## ✅ Cierre
 
-Con esta sesión ya no necesitas recordar una secuencia de órdenes para poner en marcha Escaparate. La aplicación, PostgreSQL, su red, la persistencia, la configuración y el orden de arranque están descritos en un fichero versionado.
+Escaparate ya puede levantarse como un **conjunto declarado y versionado**: servicios, red, persistencia, configuración y dependencia de arranque están descritos en el repositorio.
 
-También has separado tres ideas que serán importantes durante el resto del módulo:
+Durante la práctica has separado tres ideas importantes:
 
 ```text
-contenedor iniciado
+contenedor arrancado
 ≠ servicio preparado
 
-servicio accesible en la red interna
-≠ puerto publicado hacia fuera
+red interna
+≠ puerto publicado
 
 contenedor
 ≠ dato persistente
 ```
 
-A partir de ahora puedes entregar el repositorio a otra persona y pedirle que levante el sistema siguiendo la sección `Puesta en marcha`.
-
-En el siguiente bloque empezarás a construir la **capa de publicación** que faltaba. Nginx aparecerá delante de Escaparate para servir contenido, responder a distintos nombres y reenviar peticiones.
-
-La arquitectura evolucionará de:
-
-```text
-cliente → Spring Boot/Tomcat embebido
-```
-
-a:
-
-```text
-cliente → Nginx → Spring Boot/Tomcat embebido
-```
-
-Ahí empezará a verse de forma práctica la cooperación entre **servidor web** y **servidor de aplicaciones/runtime**.
+En el siguiente tema añadirás Nginx delante de `app`. El sistema seguirá ejecutando la misma aplicación, pero aparecerá una nueva capa de publicación como punto de entrada.

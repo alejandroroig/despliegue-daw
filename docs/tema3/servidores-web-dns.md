@@ -5,92 +5,107 @@
 
 ---
 
-Un servidor web puede asumir la entrada HTTP de un sistema y servir directamente recursos estáticos. Esto permite separar el trabajo de **entregar ficheros** del trabajo de **ejecutar lógica de aplicación**.
+En el Tema 2 conseguiste levantar Escaparate como un conjunto reproducible formado por `app` y `bd`. Hasta ahora, el navegador accedía directamente a Spring Boot mediante el puerto publicado de la aplicación.
 
-En el Tema 2 ya empaquetaste la segunda responsabilidad: Escaparate es una aplicación Spring Boot cuyo WAR ejecutable arranca un **Tomcat embebido**. En esta sesión no sustituimos esa pieza; añadimos Nginx delante.
+En este tema aparece una nueva capa: **Nginx se convierte en la puerta de entrada HTTP**. Servirá directamente los recursos estáticos y permitirá que la aplicación Java quede detrás, dentro de la red del despliegue.
 
-En esta sesión incorporaremos Nginx delante de una aplicación web y utilizaremos dos sitios distintos para estudiar raíces de documentos, hosts virtuales, compresión, caché y resolución de nombres. El reenvío de peticiones dinámicas aparecerá únicamente como conexión con el backend; su funcionamiento se estudiará en la siguiente sesión.
+!!! abstract "Mapa de la sesión"
+    **Separar → publicar → nombrar → diagnosticar → optimizar**
 
-La idea central será separar dos responsabilidades:
-
-| Tipo de respuesta | Quién la produce |
-|---|---|
-| **Recursos estáticos** | Nginx lee el fichero y lo entrega |
-| **Respuestas dinámicas** | La aplicación ejecuta lógica y genera la respuesta |
-
-A partir de esa separación veremos por qué un servidor web puede aplicar políticas específicas de entrega, como compresión o caché, sin confundirlas con el comportamiento de la aplicación.
+    Hoy estudiaremos la entrega de contenido estático, los hosts virtuales, la relación entre DNS y HTTP y algunas políticas que un servidor web puede aplicar a los recursos que sirve.
 
 ---
 
-## 🗂️ 1. Qué hace un servidor web
+## 🗂️ 1. Qué aporta un servidor web
 
-Un **servidor web** es un programa que escucha peticiones HTTP y devuelve respuestas HTTP. Cuando sirve contenido estático, su trabajo fundamental consiste en relacionar una URL con un recurso del sistema de ficheros y entregarlo con las cabeceras adecuadas.
+Un **servidor web** escucha peticiones HTTP y devuelve respuestas HTTP. Cuando sirve contenido estático, relaciona una URL con un fichero y lo entrega con las cabeceras apropiadas.
 
-Una configuración suele definir una **raíz de documentos**:
+Por ejemplo, si la raíz del sitio es:
 
-| El navegador pide | El servidor busca | Si no está |
-|---|---|---|
-| `/` | el fichero índice de la raíz | normalmente `403` si no hay índice y no se permite listar |
-| `/css/estilos.css` | `<raíz>/css/estilos.css` | `404` |
-| `/img/logo.png` | `<raíz>/img/logo.png` | `404` |
-
-La raíz marca el punto desde el que el servidor busca los recursos que puede publicar. Eso no significa que absolutamente todo su contenido tenga que ser accesible, porque las reglas pueden restringir rutas concretas, pero sí convierte esos ficheros en candidatos a ser servidos.
-
-Por eso no deben aparecer accidentalmente en una raíz pública:
-
-- ficheros `.env`;
-- copias de seguridad;
-- scripts SQL;
-- credenciales;
-- notas internas.
-
-Un servidor web tampoco sustituye a la aplicación. Nginx no ejecuta por sí mismo la lógica de negocio de una aplicación. Para contenido dinámico necesita reenviar la petición al proceso que sí puede generarlo.
-
-En esta sesión la separación será:
-
-| Petición | Responsable |
-|---|---|
-| HTML, CSS, JS e imágenes | Nginx los lee del disco |
-| `/api/...` | la aplicación genera la respuesta |
-
----
-
-## ⚙️ 2. Apache y Nginx
-
-**Apache HTTP Server** y **Nginx** son dos servidores web maduros capaces de servir contenido estático, aplicar reglas HTTP y actuar como proxy.
-
-Su diseño histórico es diferente. Apache es muy modular y admite varios modelos de procesamiento mediante sus MPM. Nginx nació con una arquitectura orientada a eventos y se popularizó especialmente como servidor de estáticos y como punto de entrada delante de otras aplicaciones.
-
-En este módulo trabajaremos con **Nginx** porque una sola herramienta nos permitirá estudiar progresivamente:
-
-```mermaid
-flowchart LR
-    S6["Sesión 6<br/>estáticos + hosts virtuales"]
-    S7["Sesión 7<br/>proxy + balanceo"]
-    S8["Sesión 8<br/>HTTPS + acceso"]
-    S9["Sesión 9<br/>observabilidad"]
-    S6 --> S7 --> S8 --> S9
+```text
+/srv/www/escaparate
 ```
 
-No se trata de afirmar que Nginx sea universalmente mejor. Apache sigue siendo una opción perfectamente válida y muy extendida.
+una petición a:
 
-!!! info "Para saber más: diferencias habituales"
+```text
+/css/app.css
+```
+
+puede terminar leyendo:
+
+```text
+/srv/www/escaparate/css/app.css
+```
+
+La raíz de documentos marca desde dónde se buscan los recursos públicos. Por eso no deben aparecer accidentalmente dentro de ella secretos, copias de seguridad, scripts SQL o ficheros internos.
+
+### 1.1. Estático y dinámico
+
+Un servidor web y una aplicación no cumplen exactamente la misma función:
+
+| Petición | Quién produce la respuesta |
+|---|---|
+| HTML, CSS, JavaScript e imágenes | Nginx lee y entrega el fichero |
+| `/api/...` | Spring Boot ejecuta lógica y genera la respuesta |
+
+En nuestro despliegue, Nginx podrá recibir ambas peticiones, pero no las resolverá de la misma forma:
+
+```text
+recurso estático
+→ Nginx lo sirve directamente
+
+/api/...
+→ Nginx lo reenvía a la aplicación
+→ Spring Boot genera la respuesta
+```
+
+El reenvío dinámico aparecerá hoy únicamente como conexión con el backend. En la siguiente sesión estudiarás el **proxy inverso** con detalle.
+
+### 1.2. Apache y Nginx
+
+Apache HTTP Server y Nginx son servidores web maduros capaces de servir estáticos y actuar como proxy. No existe una regla general que convierta a uno en «mejor» que al otro.
+
+En este módulo utilizaremos **Nginx** porque la misma herramienta nos permitirá estudiar progresivamente:
+
+- contenido estático y hosts virtuales;
+- proxy inverso y balanceo;
+- HTTPS y control de acceso;
+- logs y observabilidad.
+
+??? info "Diferencias habituales"
     | | Apache | Nginx |
     |---|---|---|
-    | Procesamiento | Configurable mediante varios MPM | Orientado a eventos desde el diseño |
-    | Configuración | Central y, si se habilita, por directorio con `.htaccess` | Central |
-    | Módulos | Ecosistema muy amplio | Módulos integrados o dinámicos |
-    | Uso frecuente | Hosting, aplicaciones, servidor general | Estáticos, proxy y punto de entrada |
+    | Procesamiento | configurable mediante distintos MPM | arquitectura orientada a eventos |
+    | Configuración | central y, si se habilita, por directorio con `.htaccess` | central |
+    | Ecosistema | muy amplio | ampliamente utilizado como servidor web y proxy |
+    | Uso frecuente | hosting y servidor web general | estáticos, proxy y punto de entrada |
 
 ---
 
-## 🧱 3. Incorporar Nginx al despliegue
+## 🧱 2. Nginx como nueva puerta de entrada
 
-Nginx no estaba en el despliegue del Tema 2. En esta sesión lo añadiremos como un nuevo servicio de Compose.
+Nginx no sustituye a Escaparate. La aplicación sigue ejecutándose mediante **Spring Boot + Tomcat embebido**. Lo que cambia es qué pieza recibe primero las conexiones públicas.
 
-### 3.1. Servicio, configuración y contenido
+La arquitectura evoluciona desde:
 
-Un esquema simplificado será:
+```text
+navegador → app → bd
+```
+
+hacia:
+
+```text
+                 ┌→ frontend estático
+navegador → web ─┤
+                 └→ /api/ → app → bd
+```
+
+Además, en esta sesión `web` servirá un segundo sitio dedicado a documentación.
+
+### 2.1. Servicio, configuración y contenido
+
+En Compose añadiremos un servicio similar a:
 
 ```yaml
 services:
@@ -99,133 +114,139 @@ services:
     ports:
       - "80:80"
     volumes:
-      - <configuracion>:/etc/nginx/conf.d:ro
-      - <sitio-web>:/srv/www/web:ro
-      - <documentacion>:/srv/www/docs:ro
+      - ../nginx/conf.d:/etc/nginx/conf.d:ro
+      - ../nginx/sitio-escaparate/escaparate:/srv/www/escaparate:ro
+      - ../nginx/sitio-docs:/srv/www/docs:ro
 ```
 
-Hay tres ideas importantes:
+La idea es separar tres cosas:
 
-- **La imagen de Nginx es genérica.** No necesitamos construir una nueva para cambiar un sitio durante esta sesión.
-- **La configuración entra desde fuera** mediante un montaje de solo lectura.
-- **El contenido estático también puede montarse desde fuera**, de forma que Nginx se limite a servirlo.
+| Elemento | De dónde procede |
+|---|---|
+| **Nginx** | imagen oficial |
+| **Configuración** | fichero versionado montado desde el repositorio |
+| **Contenido estático** | directorios versionados montados en modo de solo lectura |
 
-!!! info "La raíz predeterminada de la imagen oficial"
-    La imagen oficial de Nginx trae preparado `/usr/share/nginx/html` como directorio web predeterminado. Es una convención de la imagen, no una ruta obligatoria. Podemos utilizar raíces propias como `/srv/www/web` y `/srv/www/docs`; la directiva `root` de cada bloque `server` decide qué contenido sirve cada sitio.
+La imagen oficial utiliza `/usr/share/nginx/html` como ubicación web predeterminada, pero no estamos obligados a usarla. Cada bloque `server` puede declarar su propia raíz mediante `root`.
 
-La aplicación `app` continúa existiendo y sigue ejecutando su lógica mediante Spring Boot + Tomcat embebido, pero deja de publicar su puerto 8080 hacia el anfitrión. El único puerto público del conjunto será el 80 de `web`.
+`app` continúa dentro del proyecto Compose, pero **deja de publicar su puerto 8080 al anfitrión**. También `bd` permanece sin publicar. La única entrada pública será el puerto 80 de `web`.
 
-Esta es la primera cooperación práctica entre las dos responsabilidades que recorrerán el tema:
+!!! info "Dos copias del frontend durante esta transición"
+    La imagen de `app` todavía contiene el frontend integrado de sesiones anteriores. No desaparece físicamente, pero el navegador deja de utilizar esa copia: desde ahora Nginx sirve la distribución estática montada en `web`.
 
-```mermaid
-flowchart LR
-    C["Navegador"] --> N["Nginx<br/>servidor web + entrada"]
-    N --> E["Contenido<br/>estático"]
-    N --> A["Spring Boot + Tomcat<br/>ejecución dinámica"]
-    A --> D[("Base de datos<br/>bd")]
-```
+### 2.2. Validar antes de recargar
 
-El frontend integrado que todavía contiene la imagen de `app` no desaparece físicamente, pero deja de ser la copia que recibe el navegador. Desde esta sesión, los ficheros públicos los sirve Nginx.
-
-### 3.2. Validar y recargar antes de aplicar
-
-La configuración de un servidor web es código de infraestructura. Un error de sintaxis puede impedir que el servicio arranque o que una recarga se aplique.
-
-Nginx puede validar su configuración:
-
-```bash
-nginx -t
-```
-
-En un contenedor Compose:
+La configuración de Nginx forma parte de la infraestructura. Antes de aplicarla conviene comprobar su sintaxis:
 
 ```bash
 docker compose exec web nginx -t
 ```
 
-Si la validación es correcta, se puede pedir a Nginx que recargue la configuración:
+Si es correcta, puedes recargarla sin recrear el contenedor:
 
 ```bash
 docker compose exec web nginx -s reload
 ```
 
-La secuencia profesional es:
+La rutina es:
 
-```mermaid
-flowchart LR
-    E["Editar"] --> V["Validar<br/>nginx -t"]
-    V --> R["Recargar"]
-    R --> C["Comprobar"]
+```text
+editar
+  ↓
+validar
+  ↓
+recargar
+  ↓
+comprobar
 ```
 
-Reiniciar el contenedor entero para aplicar cada cambio funciona, pero oculta una capacidad importante del servidor: **puede recargar su configuración sin sustituir el proceso por un despliegue completamente nuevo**.
+!!! tip "Primero valida"
+    Reiniciar el contenedor después de cada cambio puede funcionar, pero oculta una capacidad útil del servidor: **recargar una configuración válida sin sustituir el contenedor**.
 
 ---
 
-## 🧾 4. Diagnóstico básico al servir ficheros
+## 🏠 3. De un nombre al sitio correcto
 
-Cuando un sitio está correctamente montado pero no se muestra como esperas, tres detalles explican muchos fallos.
+Dos sitios pueden compartir **la misma dirección IP y el mismo puerto**. Para entender cómo es posible hay que separar dos decisiones:
 
-### 4.1. Tipo MIME
+1. **DNS** lleva el nombre hasta una dirección IP.
+2. **HTTP**, mediante la cabecera `Host`, ayuda a Nginx a decidir qué sitio debe responder.
 
-La respuesta HTTP incluye una cabecera `Content-Type`. Algunos valores habituales son:
+La idea queda resumida en la siguiente figura:
 
-- `text/html`;
-- `text/css`;
-- `application/javascript`;
-- `image/png`.
+![Infografía DNS y Host](img/dns-y-host-ip-y-sitio-web.png)
 
-El navegador utiliza ese valor para interpretar el recurso. Un CSS puede existir y descargarse, pero no aplicarse correctamente si llega con un tipo inesperado.
+*Figura 1. Resolución DNS y selección del sitio mediante la cabecera HTTP `Host`. Elaboración propia.*
 
-### 4.2. Índice
+La clave es sencilla:
 
-Cuando se solicita un directorio, el servidor suele buscar un fichero como `index.html`.
+- `escaparate.127.0.0.1.nip.io` y `docs.127.0.0.1.nip.io` pueden resolver a la **misma IP**;
+- ambos nombres pueden llegar al **mismo Nginx** por el puerto 80;
+- la cabecera `Host` permite que Nginx sepa si debe responder con el **sitio del catálogo** o con el **sitio de documentación**.
 
-Si no existe, puede devolver `403` o, si se ha configurado expresamente, mostrar el listado del directorio mediante `autoindex`.
-
-### 4.3. Permisos y rutas
-
-Nginx debe poder:
-
-- **leer** los ficheros;
-- **atravesar** los directorios que los contienen.
-
-Con montajes desde el anfitrión también conviene comprobar que la ruta configurada con `root` coincide con la ruta que realmente existe dentro del contenedor.
-
-!!! tip "Tres síntomas que conviene reconocer"
-    - `404` con el recurso aparentemente existente → revisa `root`, la ruta solicitada y el montaje.
-    - `403` sobre un directorio → revisa permisos, fichero índice o si el listado está permitido.
-    - Página sin estilos o recurso rechazado → revisa la URL del recurso y su `Content-Type`.
-
-No es necesario memorizar todas las causas posibles. Lo importante es relacionar el síntoma con el primer lugar que conviene inspeccionar.
-
----
-
-## 🏠 5. Hosts virtuales por nombre
-
-Una misma dirección IP y un mismo puerto pueden servir varios sitios diferentes.
-
-### 5.1. La cabecera `Host` decide qué sitio responde
+### 3.1. DNS resuelve el nombre
 
 Cuando escribes:
 
 ```text
-http://docs.ejemplo.test/informes/
+http://docs.127.0.0.1.nip.io/
 ```
 
-primero el nombre se resuelve a una dirección IP. Después el nombre también viaja dentro de la petición HTTP:
+el sistema necesita obtener primero una dirección IP.
+
+Un registro `A` relaciona un nombre con una IPv4:
+
+| Registro | Contiene | Ejemplo de uso |
+|---|---|---|
+| `A` | dirección IPv4 | nombre que apunta directamente a una máquina |
+| `CNAME` | otro nombre | alias de otro nombre DNS |
+
+En esta sesión configurarás únicamente el comportamiento asociado a registros `A`; de `CNAME` basta con reconocer su función.
+
+El **TTL** indica durante cuánto tiempo puede mantenerse una respuesta DNS en caché antes de consultarla de nuevo.
+
+Puedes observar una respuesta con:
+
+```bash
+dig web.127.0.0.1.nip.io
+dig +short web.127.0.0.1.nip.io
+```
+
+Para el laboratorio utilizaremos `nip.io`, que devuelve la dirección IP incluida dentro del propio nombre. Así:
+
+```text
+escaparate.127.0.0.1.nip.io
+docs.127.0.0.1.nip.io
+```
+
+pueden resolver ambos a:
+
+```text
+127.0.0.1
+```
+
+sin registrar un dominio propio.
+
+!!! info "`/etc/hosts` y DNS no son la misma fuente"
+    El navegador utiliza el resolutor del sistema, que puede consultar `/etc/hosts`. `dig`, en cambio, realiza una consulta DNS y no utiliza ese fichero para resolver el nombre solicitado.
+
+    Por eso un nombre puede funcionar en el navegador mediante `/etc/hosts` y no existir en DNS.
+
+### 3.2. `Host` selecciona el sitio
+
+Después de resolver el nombre, la petición HTTP conserva el nombre solicitado:
 
 ```http
-GET /informes/ HTTP/1.1
-Host: docs.ejemplo.test
+GET / HTTP/1.1
+Host: docs.127.0.0.1.nip.io
 ```
 
-Nginx puede utilizar `Host` para escoger un bloque `server`:
+Nginx puede seleccionar un bloque `server` mediante `server_name`:
 
 ```nginx
 server {
     listen 80;
-    server_name docs.ejemplo.test;
+    server_name docs.127.0.0.1.nip.io;
 
     root /srv/www/docs;
     index index.html;
@@ -240,39 +261,31 @@ Las directivas principales son:
 
 | Directiva | Función |
 |---|---|
-| `listen 80` | puerto en el que atiende el bloque |
+| `listen` | puerto en el que atiende el bloque |
 | `server_name` | nombre o nombres que seleccionan el sitio |
 | `root` | raíz de documentos |
-| `index` | fichero que se busca al pedir un directorio |
-| `location` | reglas aplicadas a determinadas rutas |
+| `index` | fichero utilizado al solicitar un directorio |
+| `location` | reglas para determinadas rutas |
 | `autoindex on` | permite listar un directorio sin índice |
 
-Así pueden coexistir:
+Así, una sola instancia de Nginx puede servir:
 
-| Nombre solicitado | Sitio |
-|---|---|
-| `web.ejemplo.test` | sitio principal |
-| `docs.ejemplo.test` | documentación e informes |
+```text
+escaparate.127.0.0.1.nip.io
+→ catálogo
 
-Los dos nombres pueden apuntar a la misma dirección IP, utilizar el puerto 80 y terminar en el mismo servidor Nginx.
-
-La secuencia completa puede visualizarse así:
-
-```mermaid
-flowchart LR
-    N["docs.ejemplo.test"] -->|DNS| IP["203.0.113.10"]
-    IP -->|HTTP<br/>Host: docs.ejemplo.test| NG["Nginx"]
-    NG --> D["sitio docs"]
-    NG -. otro Host .-> W["sitio web"]
+docs.127.0.0.1.nip.io
+→ documentación
 ```
 
-DNS permite llegar hasta la máquina correcta. La cabecera HTTP `Host` permite después decidir qué sitio debe responder.
+aunque ambos nombres lleguen a la misma dirección y al puerto 80.
 
-### 5.2. Qué ocurre cuando ningún nombre coincide
+!!! tip "La frase que debes recordar"
+    **DNS decide dónde conectar; `Host` ayuda a elegir qué sitio responde.**
 
-Si ningún `server_name` coincide, Nginx utiliza un servidor por defecto. Si no se declara explícitamente, el comportamiento puede sorprender porque uno de los sitios configurados termina respondiendo a nombres que no eran suyos.
+### 3.3. Nombres desconocidos
 
-Es preferible expresar la decisión:
+Si ningún `server_name` coincide, Nginx utiliza un servidor por defecto. Es mejor declarar explícitamente qué debe ocurrir:
 
 ```nginx
 server {
@@ -282,82 +295,118 @@ server {
 }
 ```
 
-Ahora la política es clara:
-
-```mermaid
-flowchart LR
-    H["Host recibido"] --> Q{"¿coincide con<br/>server_name?"}
-    Q -->|sí| S["sitio correspondiente"]
-    Q -->|no| D["default_server<br/>404"]
-```
+De esta forma, un nombre no reconocido no termina mostrando accidentalmente otro sitio configurado.
 
 ---
 
-## 🗜️ 6. Compresión y caché de contenido estático
+## 🧾 4. Diagnóstico al servir contenido estático
 
-Un servidor web también puede optimizar cómo entrega los ficheros.
+Cuando un sitio no se muestra como esperas, evita cambiar varias cosas a la vez. Algunos síntomas ofrecen pistas bastante directas.
 
-### 6.1. Compresión
+| Síntoma | Primeras comprobaciones |
+|---|---|
+| `404` | `root`, URL solicitada y montaje del fichero |
+| `403` al pedir un directorio | permisos, `index` o `autoindex` |
+| página sin estilos | URL del CSS y `Content-Type` |
+| Nginx no arranca o no recarga | `nginx -t` y logs |
 
-HTML, CSS y JavaScript son texto y suelen comprimirse muy bien.
+### 4.1. Raíz, índice y permisos
 
-En Nginx esta funcionalidad la aporta el módulo HTTP gzip (`ngx_http_gzip_module`). Al utilizar sus directivas estamos **activando y configurando funcionalidad modular del servidor web**; no estamos modificando Escaparate.
+Cuando se solicita un directorio, Nginx busca normalmente un fichero `index.html`. Si no existe y el listado no está permitido, la petición puede terminar en `403`.
 
-El cliente anuncia qué codificaciones acepta:
+Nginx necesita además:
+
+- permiso de lectura sobre los ficheros;
+- permiso para atravesar los directorios;
+- una ruta `root` que coincida con la ubicación real dentro del contenedor.
+
+### 4.2. Tipos MIME
+
+El navegador interpreta cada recurso a partir de `Content-Type`.
+
+Ejemplos:
+
+```text
+text/html
+text/css
+application/javascript
+image/png
+```
+
+Un fichero puede existir y descargarse, pero no funcionar correctamente en el navegador si el servidor lo entrega con un tipo inesperado.
+
+!!! tip "Diagnóstico corto"
+    Antes de editar configuración al azar, comprueba **estado → logs → ruta → cabeceras**.
+
+---
+
+## 🗜️ 5. Entregar mejor los recursos estáticos
+
+Separar la entrega de ficheros de la lógica de aplicación permite aplicar políticas específicas a los recursos estáticos sin modificar Escaparate.
+
+### 5.1. Compresión gzip
+
+HTML, CSS, JavaScript o JSON suelen comprimirse bien.
+
+Nginx puede comprimir la respuesta durante la entrega:
+
+```nginx
+gzip on;
+gzip_vary on;
+gzip_types text/css application/javascript application/json;
+```
+
+El cliente anuncia:
 
 ```http
 Accept-Encoding: gzip
 ```
 
-Si Nginx decide comprimir la respuesta, devuelve:
+y, si Nginx comprime la respuesta, recibe:
 
 ```http
 Content-Encoding: gzip
+Vary: Accept-Encoding
 ```
 
-Una configuración habitual incluye también:
+`text/html` ya está contemplado por el módulo gzip aunque no aparezca en `gzip_types`.
 
-```nginx
-gzip_vary on;
-```
+El fichero almacenado en disco **no cambia**. Nginx comprime la respuesta y el navegador la descomprime automáticamente.
 
-Esto añade la cabecera `Vary: Accept-Encoding`, útil para que una caché pueda distinguir entre la variante comprimida y la no comprimida de una misma respuesta.
+No suele aportar nada volver a comprimir formatos como JPEG o PNG, que ya almacenan su contenido comprimido.
 
-La compresión se realiza **al servir la respuesta**. El fichero guardado en disco no cambia. El navegador recibe los bytes comprimidos y los descomprime automáticamente.
-
-No tiene sentido aplicar gzip indiscriminadamente a formatos como JPEG o PNG, que ya están comprimidos.
-
-Para inspeccionar cabeceras:
+Para comprobar cabeceras:
 
 ```bash
 curl -I -H "Accept-Encoding: gzip" \
-  http://web.ejemplo.test/css/estilos.css
+  http://escaparate.127.0.0.1.nip.io/css/app.css
 ```
 
-Pero `-I` realiza una petición `HEAD`, por lo que no descarga el cuerpo. Para medir bytes reales necesitas una petición completa:
+Para comparar bytes reales hay que realizar una petición completa:
 
 ```bash
 curl -s -H "Accept-Encoding: identity" -o /dev/null \
   -w "sin comprimir: %{size_download} bytes\n" \
-  http://web.ejemplo.test/css/estilos.css
+  http://escaparate.127.0.0.1.nip.io/css/app.css
 
 curl -s -H "Accept-Encoding: gzip" -o /dev/null \
   -w "comprimido:   %{size_download} bytes\n" \
-  http://web.ejemplo.test/css/estilos.css
+  http://escaparate.127.0.0.1.nip.io/css/app.css
 ```
 
-### 6.2. Caché del navegador
+### 5.2. Caché del navegador
 
-`Cache-Control` indica durante cuánto tiempo puede reutilizar el navegador una respuesta.
+La cabecera `Cache-Control` permite indicar durante cuánto tiempo puede reutilizarse una respuesta.
 
-No todos los recursos tienen la misma volatilidad:
+No todos los recursos cambian con la misma frecuencia:
 
-| Recurso | Cambio habitual | Política razonable |
-|---|---|---|
-| HTML | frecuente | caché corta o revalidación |
-| CSS, JS e imágenes versionadas | menos frecuente | caché más larga |
+| Recurso | Política habitual |
+|---|---|
+| HTML | caché corta o revalidación |
+| CSS, JS e imágenes versionadas | caché más larga |
+| respuesta de API | depende del significado y volatilidad del dato |
 
-En Nginx una configuración puede aplicar reglas por extensión. Por ejemplo:
+Para ciertos recursos estáticos podemos utilizar:
 
 ```nginx
 location ~* \.(css|js|png|jpg|jpeg|svg|webp)$ {
@@ -365,115 +414,37 @@ location ~* \.(css|js|png|jpg|jpeg|svg|webp)$ {
 }
 ```
 
-La directiva `expires` genera cabeceras de expiración y una política `Cache-Control` coherente con el plazo indicado.
+Una caché larga tiene un coste: si publicas contenido distinto con el **mismo nombre de fichero**, un navegador puede seguir reutilizando la copia antigua. Por eso las aplicaciones reales suelen versionar o incorporar una huella al nombre de sus recursos.
 
-El inconveniente de una caché larga aparece al publicar una versión nueva. Si un fichero mantiene el mismo nombre, un navegador podría conservar la copia anterior. Por eso en frontends reales es habitual generar nombres versionados o con huellas de contenido.
+### 5.3. Estático y dinámico no significan «cacheable» y «no cacheable»
 
-### 6.3. Estático y dinámico no se entregan igual
+La separación correcta es:
 
-La separación entre servidor web y aplicación también ayuda a decidir cómo tratar cada respuesta:
+| Respuesta | Política |
+|---|---|
+| recurso estático poco cambiante | buen candidato a caché prolongada |
+| HTML que cambia con frecuencia | política más corta |
+| respuesta dinámica | debe decidirse según el dato |
 
-| Recurso | Quién genera la respuesta | Tratamiento habitual |
-|---|---|---|
-| `/css/app.css` | Nginx lee un fichero | buen candidato a gzip y caché larga |
-| `/img/logo.png` | Nginx lee un fichero | buen candidato a caché; gzip aporta poco |
-| `/index.html` | Nginx lee un fichero | suele recibir una caché más corta |
-| `/api/productos` | la aplicación genera la respuesta | la política depende del dato y de cuánto puede cambiar |
-
-!!! warning "Una simplificación incorrecta"
-    **Dinámico ≠ nunca cacheable.**
-
-La regla útil es:
-
-> Cada respuesta necesita una política de caché coherente con la naturaleza y volatilidad del dato.
-
-Una API también puede utilizar caché, pero no conviene aplicar automáticamente a sus respuestas la misma política larga que a un CSS, JavaScript o una imagen versionada.
-
----
-
-
-## 🧭 7. DNS: convertir nombres en direcciones
-
-Los hosts virtuales funcionan por nombre, pero antes ese nombre debe conducir a la máquina correcta.
-
-### 7.1. Resolución del sistema y `dig`
-
-Una aplicación normal pregunta al **resolutor del sistema operativo**. Este puede consultar varias fuentes. En Linux, `/etc/hosts` puede proporcionar una respuesta local antes de acudir al DNS configurado.
-
-Por eso esta línea:
-
-```text
-127.0.0.1 ejemplo.local
-```
-
-puede hacer que el navegador encuentre `ejemplo.local` sin que exista ningún registro DNS real.
-
-`dig` funciona de otra forma: consulta DNS directamente. No utiliza `/etc/hosts` para resolver el nombre solicitado.
-
-Así pueden darse simultáneamente estas dos situaciones:
-
-| Herramienta | Fuente utilizada | Resultado posible |
-|---|---|---|
-| navegador / aplicación | resolutor del sistema, incluido `/etc/hosts` | el nombre funciona |
-| `dig` | DNS | el nombre no existe en DNS |
-
-No hay contradicción. Están consultando fuentes diferentes.
-
-### 7.2. Registros A, CNAME, TTL y `nip.io`
-
-En esta sesión trabajarás principalmente con registros `A`, que relacionan un nombre con una dirección IPv4:
-
-| Registro | Contiene | Uso típico |
-|---|---|---|
-| `A` | una dirección IPv4 | nombre que apunta directamente a una dirección |
-
-También debes **reconocer** un registro `CNAME`: no contiene una dirección, sino otro nombre y se utiliza como alias. No necesitas configurarlo en esta práctica.
-
-El **TTL** indica durante cuánto tiempo puede conservarse una respuesta DNS en caché antes de volver a consultarla.
-
-Un TTL alto reduce consultas, pero hace más lenta una migración. Por eso, si se sabe que un nombre va a cambiar de destino, el TTL se reduce **antes** de la migración, con tiempo suficiente para que caduquen las respuestas antiguas.
-
-Puedes inspeccionar una respuesta con:
-
-```bash
-dig web.127.0.0.1.nip.io
-dig +short web.127.0.0.1.nip.io
-```
-
-Para el laboratorio utilizaremos `nip.io`, un servicio DNS comodín que permite codificar una dirección IP dentro de un nombre. Así, `web.127.0.0.1.nip.io` y `docs.127.0.0.1.nip.io` pueden resolver a `127.0.0.1` sin registrar un dominio propio.
-
-Esto nos permite practicar simultáneamente:
-
-- resolución mediante **DNS real**;
-- **hosts virtuales por nombre**;
-- varios nombres sobre **una sola máquina**.
-
-En la siguiente sesión aplicarás la misma idea sobre la dirección pública de una instancia remota.
+!!! warning "Dinámico no significa nunca cacheable"
+    Una API también puede utilizar caché. Lo importante es **no aplicar automáticamente a todas sus respuestas la misma política que a un CSS o una imagen versionada**.
 
 ---
 
 ## 🎯 Qué debes saber hacer al salir de esta sesión
 
-Al terminar, deberías poder:
+Al terminar deberías poder:
 
-- Explicar qué responsabilidad tiene un servidor web y qué sigue perteneciendo a la aplicación.
-- Incorporar Nginx como servicio de entrada delante de una aplicación.
-- Servir contenido desde una raíz de documentos.
-- Montar configuración y contenido desde Compose en modo de solo lectura.
-- Validar la configuración antes de recargarla.
-- Configurar dos hosts virtuales por nombre sobre una misma dirección y puerto.
-- Explicar la secuencia `DNS → dirección IP → Host HTTP → sitio`.
-- Declarar un servidor por defecto para nombres no reconocidos.
-- Aplicar y comprobar gzip sobre contenido textual, reconociéndolo como funcionalidad aportada por un módulo HTTP de Nginx.
-- Aplicar una política de caché a recursos estáticos y explicar por qué no debe trasladarse automáticamente a cualquier respuesta dinámica.
-- Utilizar `dig` para reconocer una respuesta DNS, una dirección IPv4 y su TTL.
-
-Lo que basta con **reconocer**:
-
-- diferencias generales entre Apache y Nginx;
-- síntomas básicos relacionados con `404`, `403`, permisos y tipos MIME;
-- qué representa un registro `CNAME`;
-- por qué `/etc/hosts` puede afectar al navegador sin modificar lo que devuelve `dig`.
+- explicar la diferencia entre servir un fichero y ejecutar lógica de aplicación;
+- incorporar Nginx como única puerta de entrada pública;
+- configurar raíces de documentos y varios hosts virtuales;
+- validar y recargar Nginx de forma controlada;
+- explicar la secuencia **DNS → dirección → `Host` → sitio**;
+- declarar un servidor por defecto para nombres desconocidos;
+- interpretar síntomas básicos relacionados con `404`, `403`, rutas y tipos MIME;
+- activar y comprobar gzip sobre contenido textual;
+- aplicar una política de caché a recursos estáticos y justificar por qué no debe trasladarse automáticamente a cualquier respuesta dinámica;
+- utilizar `dig` para reconocer una respuesta `A` y su TTL.
 
 ---
 
@@ -481,20 +452,17 @@ Lo que basta con **reconocer**:
 
 ??? tip "Abrir resumen"
 
-    - Nginx puede convertirse en la puerta HTTP del sistema y servir directamente recursos estáticos.
-    - El servidor web puede ser la única pieza publicada, mientras aplicación y base de datos permanecen dentro de la red interna.
+    - Nginx puede actuar como **puerta de entrada HTTP** y servir directamente contenido estático.
+    - Spring Boot continúa ejecutando la lógica dinámica mediante su Tomcat embebido.
+    - Solo Nginx necesita publicar puerto; `app` y `bd` pueden permanecer en la red interna.
     - `root`, `index` y los montajes determinan qué ficheros puede servir cada sitio.
-    - Ante un fallo conviene distinguir síntomas: `404`, `403` y un tipo MIME incorrecto suelen apuntar a problemas diferentes.
     - La configuración se valida con `nginx -t` antes de recargarla.
-    - DNS permite llegar a una dirección; después la cabecera HTTP `Host` permite seleccionar el host virtual.
-    - Un `default_server` explícito evita que un nombre desconocido muestre accidentalmente otro sitio.
-    - Gzip reduce los bytes enviados para contenido textual. `Vary: Accept-Encoding` permite distinguir variantes comprimidas y no comprimidas en cachés.
-    - Los recursos estáticos suelen ser buenos candidatos para caché prolongada; una respuesta dinámica necesita una política acorde con la naturaleza del dato.
-    - Un registro `A` relaciona nombre e IPv4. Un `CNAME` representa un alias y basta con reconocerlo en esta sesión.
-    - El TTL indica cuánto tiempo puede conservarse una respuesta DNS en caché.
-    - El resolutor del sistema puede utilizar `/etc/hosts`; `dig` consulta DNS directamente.
-
+    - **DNS lleva el nombre a una dirección; `Host` permite seleccionar el sitio**.
+    - Un `default_server` explícito evita responder con el sitio equivocado ante nombres desconocidos.
+    - Gzip reduce bytes transferidos en contenido textual sin modificar el fichero original.
+    - La caché debe adaptarse a la volatilidad de cada recurso.
+    - `/etc/hosts` puede afectar al resolutor del sistema, mientras `dig` consulta DNS directamente.
 
 ---
 
-En la actividad aplicarás estos patrones sobre el proyecto del módulo, pero los conceptos de esta sesión son generales: dos sitios pueden compartir servidor, dirección y puerto; DNS conduce hasta la máquina; HTTP selecciona el sitio; y el servidor web puede aplicar políticas específicas a los recursos estáticos. El reenvío de `/api/` se mantendrá como una caja negra hasta la siguiente sesión.
+En la actividad añadirás Nginx al despliegue de Escaparate, publicarás dos sitios sobre el mismo puerto y comprobarás cómo cooperan **DNS, HTTP y el servidor web**. El bloque `/api/` funcionará todavía como una caja negra; en la siguiente sesión estudiarás el proxy inverso.

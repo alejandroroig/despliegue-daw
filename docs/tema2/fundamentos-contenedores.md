@@ -1,23 +1,35 @@
 # 📦 Fundamentos de contenedores
 
-!!!info "Descarga de diapositivas"
+!!! info "Descarga de diapositivas"
     <!-- [Descarga las diapositivas](diapositivas/fundamentos-contenedores.pptx){target="_blank" rel="noopener"} -->
 
 ---
 
-En las primeras sesiones has separado dos problemas: **versionar el proyecto** y conseguir que pueda ejecutarse de forma reproducible fuera del equipo donde se desarrolló. Git resuelve el primero, pero no instala runtimes, bases de datos, bibliotecas ni prepara por sí solo el entorno de ejecución.
+En el Tema 1 preparaste una **fuente de verdad**: el repositorio contiene el código, la configuración versionable y la documentación necesaria para entender un estado del proyecto.
 
-Hoy aparece la herramienta que aborda ese segundo problema: los contenedores. La idea es empaquetar software y dependencias de forma que el mismo artefacto pueda ejecutarse de manera equivalente en distintos entornos.
+Pero Git no instala Java, PostgreSQL ni las bibliotecas que necesita una aplicación. Tampoco garantiza que dos máquinas tengan exactamente el mismo entorno de ejecución.
+
+En esta sesión aparece el segundo gran problema del módulo: **cómo empaquetar y ejecutar software de forma reproducible**.
+
+!!! abstract "Mapa de la sesión"
+    **Entorno reproducible → imagen → contenedor → ejecución → persistencia → construcción → publicación**
+
+    Hoy no necesitas dominar Docker. El objetivo es comprender sus piezas básicas y utilizarlas sobre contenedores reales antes de construir la imagen completa de Escaparate.
 
 ---
 
-## 🧳 1. Lo que hay que mover no es el código
+## 🧳 1. Del código al entorno reproducible
 
-Vuelve a la tabla de las cinco piezas de la primera sesión y quédate con **artefacto y runtime**. Una aplicación puede necesitar su ejecutable, una versión concreta del runtime, servicios auxiliares, variables de entorno, directorios y permisos. Copiar solo el código no reproduce ese conjunto.
+Copiar el código de una aplicación no basta para reproducir su ejecución. También pueden importar:
 
-Contenerizar no significa meter todo eso dentro de un único contenedor. Cada pieza puede empaquetarse por separado: una imagen para PostgreSQL, otra para la aplicación y, más adelante, otra para el servidor web que actuará como punto de entrada.
+- el artefacto construido;
+- el runtime y sus versiones;
+- bibliotecas y herramientas necesarias;
+- configuración externa;
+- servicios auxiliares;
+- directorios, permisos y puertos.
 
-La imagen de una aplicación puede contener a su vez varias piezas internas. En el caso de Escaparate terminarás empaquetando:
+En Escaparate, por ejemplo, la imagen de la aplicación terminará conteniendo:
 
 ```text
 imagen de Escaparate
@@ -26,173 +38,212 @@ imagen de Escaparate
     └── servidor HTTP embebido
 ```
 
-Por tanto, **separar servidor web y servidor de aplicaciones no implica necesariamente instalar ambos como servidores independientes**. Más adelante Nginx será una pieza separada delante de Escaparate, mientras la aplicación seguirá llevando dentro el componente que ejecuta y atiende su código dinámico.
+Eso no significa que todo el sistema deba vivir en un único contenedor. PostgreSQL, la aplicación y, más adelante, Nginx serán **piezas desplegables distintas**.
 
-Históricamente esto se ha resuelto de tres maneras, y las tres siguen existiendo:
+Antes de los contenedores ya existían otras formas de intentar reproducir entornos, y siguen siendo útiles:
 
-| Enfoque | Cómo funciona | Por qué falla |
+| Enfoque | Qué aporta | Limitación habitual |
 |---|---|---|
-| **Documento de instalación** | Un README con cuarenta pasos que alguien sigue a mano | Se desactualiza el primer día; dos personas lo interpretan distinto; nadie lo prueba entero nunca |
-| **Script de aprovisionamiento** | Un guion que instala y configura todo automáticamente | Mejor, pero depende del sistema operativo de destino y de que los paquetes sigan disponibles con la misma versión |
-| **Máquina virtual completa** | Se empaqueta el ordenador entero, sistema operativo incluido | Funciona de verdad, pero pesa gigabytes, tarda minutos en arrancar y no puedes tener veinte a la vez |
+| **Documentación de instalación** | Explica cómo preparar el entorno | Depende de que los pasos se mantengan actualizados y se ejecuten correctamente |
+| **Scripts de aprovisionamiento** | Automatizan gran parte de la preparación | Siguen dependiendo del sistema de destino y de sus paquetes |
+| **Máquina virtual** | Empaqueta un sistema operativo completo | Tiene más sobrecarga y suele necesitar más recursos |
+| **Contenedor** | Empaqueta aplicación y dependencias sobre un entorno aislado | Comparte el núcleo del anfitrión y necesita un motor de contenedores |
 
-El contenedor es el cuarto enfoque: empaqueta de forma reproducible la aplicación y sus dependencias sin tener que llevar un sistema operativo invitado completo. El resultado suele ser mucho más ligero y rápido de crear y arrancar que una máquina virtual.
+El valor del contenedor no es simplemente «instalar cosas sin ensuciar el ordenador». Su ventaja principal para despliegue es poder **crear una unidad reproducible que se ejecuta de forma equivalente en distintos entornos compatibles**.
 
 ---
 
-## 🆚 2. Máquina virtual frente a contenedor
+## 🆚 2. Máquina virtual y contenedor
 
-La diferencia está en **qué se virtualiza**.
+Máquinas virtuales y contenedores permiten ejecutar software en **entornos aislados**, pero lo hacen a niveles diferentes.
 
-```mermaid
-flowchart TB
- subgraph CT["📦 Contenedores"]
-        direction TB
-        HW2["Hardware"] --> SO2["Sistema operativo anfitrión"]
-        SO2 --> DE["Motor de contenedores"]
-        DE --> C1["Contenedor A"]
-        DE --> C2["Contenedor B"]
-        DE --> C3["Contenedor C"]
-    end
-    subgraph VM["💻 Máquinas virtuales"]
-        direction TB
-        HW1["Hardware"] --> SO1["Sistema operativo anfitrión"]
-        SO1 --> HV["Hipervisor"]
-        HV --> G1["SO invitado 1<br/>+ app A"]
-        HV --> G2["SO invitado 2<br/>+ app B"]
-    end
-   
-```
+![Máquina virtual frente a contenedor](img/maquina-virtual-vs-contenedor.png)
 
-Una **máquina virtual** virtualiza el hardware: el hipervisor presenta un ordenador virtual completo y dentro se instala un sistema operativo invitado con su propio núcleo, servicios y gestión de memoria. El aislamiento es fuerte, pero también aumenta el consumo de recursos y el tiempo de arranque.
+*Figura 1. Diferencias básicas entre una máquina virtual y un contenedor. Elaboración propia.*
 
-Un **contenedor** utiliza el núcleo del sistema anfitrión y aísla procesos, red y sistema de ficheros. La imagen empaqueta las bibliotecas y ficheros que necesita la aplicación por encima de ese núcleo. Por eso un contenedor suele arrancar en segundos o menos y sus imágenes acostumbran a ocupar decenas o centenas de megabytes, no varios gigabytes.
+En una **máquina virtual**, el hipervisor proporciona hardware virtual sobre el que se ejecuta un **sistema operativo invitado completo**. Cada VM dispone de su propio núcleo, servicios y entorno de ejecución.
 
-| | Máquina virtual | Contenedor |
-|---|---|---|
-| **Qué incluye** | Sistema operativo invitado completo | Solo la aplicación y sus dependencias |
-| **Tamaño típico** | Gigabytes | Decenas o centenas de megabytes |
-| **Tiempo de arranque** | Minutos | Segundos o menos |
-| **Cuántos caben en una máquina** | Unos pocos | Decenas |
-| **Aislamiento** | Fuerte: núcleos separados | Menor: núcleo compartido |
-| **Cuándo elegirla** | Necesitas otro sistema operativo, aislamiento fuerte o control fino de recursos | Necesitas desplegar la misma aplicación muchas veces, rápido y de forma idéntica |
+Un **contenedor Linux**, en cambio, aísla procesos, red y sistema de ficheros, pero **comparte el núcleo Linux del entorno anfitrión**. El contenedor incorpora la aplicación y las dependencias que necesita, pero no otro kernel ni un sistema operativo invitado completo.
+
+Esta diferencia explica por qué los contenedores suelen requerir **menos recursos y arrancar más rápido**, mientras que una máquina virtual proporciona un aislamiento más completo y permite ejecutar sistemas operativos diferentes.
 
 !!! warning "No son alternativas excluyentes"
-    La pregunta no es «máquina virtual **o** contenedor». En la práctica se combinan: más adelante vas a ejecutar contenedores **dentro de** una máquina virtual y también mediante servicios administrados en la nube, que es exactamente como funciona casi toda la industria. La máquina virtual da el ordenador; el contenedor, la forma de empaquetar lo que corre dentro.
+    Es muy habitual ejecutar **contenedores dentro de máquinas virtuales**. En este módulo harás precisamente eso cuando despliegues contenedores sobre una instancia en la nube: la máquina virtual proporciona el entorno Linux y Docker ejecuta los contenedores dentro de ella.
 
-!!! info "Si algún día lo usas en Windows o macOS"
-    Para ejecutar contenedores Linux en Windows o macOS, Docker utiliza por debajo un entorno Linux virtualizado. En los equipos Linux del aula, los contenedores Linux pueden utilizar directamente el núcleo del anfitrión.
+!!! info "Windows y macOS"
+    Los contenedores Linux necesitan un **núcleo Linux**. Por eso, en Windows o macOS, Docker utiliza normalmente un entorno Linux virtualizado por debajo. En los equipos Linux del aula pueden utilizar directamente el núcleo del propio sistema.
 
 ---
 
-## 🧩 3. Las cuatro palabras que hay que tener claras
+## 🧩 3. Imagen, contenedor y persistencia
 
-### 3.1. Imagen: el paquete
+En Docker aparecen constantemente varias ideas relacionadas, pero no equivalentes:
 
-Una **imagen** es un paquete de solo lectura que contiene el sistema base, el software instalado, tu aplicación y su configuración de fábrica. Es **inmutable**: una vez construida no se modifica; si algo tiene que cambiar, se construye otra.
+- **registro**: lugar donde se almacenan y distribuyen imágenes;
+- **imagen**: plantilla de solo lectura a partir de la cual se crean contenedores;
+- **contenedor**: instancia creada desde una imagen;
+- **volumen**: almacenamiento con un ciclo de vida independiente del contenedor.
 
-Aquí está el cambio de mentalidad de este módulo. Puede que hayas visto Docker presentado como «una forma cómoda de tener una base de datos sin instalarla». Eso es cierto y es útil, pero es lo de menos.
+![Imagen, contenedor y persistencia](img/imagen-contenedor-persistencia.png)
 
-En un flujo basado en contenedores, **la imagen es la unidad de despliegue**: se construye una vez, se identifica con una versión y se ejecuta de forma equivalente en desarrollo, pruebas o producción.
+*Figura 2. Relación entre registro, imagen, contenedor y volumen. Elaboración propia.*
 
-Conviene distinguir dos niveles que volverán a aparecer más adelante:
+La secuencia general es sencilla: una imagen se descarga desde un registro, sirve como punto de partida para crear uno o varios contenedores y cada contenedor incorpora su propia capa de escritura. Si ciertos datos deben sobrevivir aunque el contenedor desaparezca, se almacenan fuera de esa capa.
+
+### 3.1. Registro, imagen y etiqueta
+
+Un **registro** almacena y distribuye imágenes. Docker Hub contiene muchas imágenes públicas que utilizarás durante el curso; para publicar las tuyas utilizaremos GitHub Container Registry, `ghcr.io`.
+
+Una referencia de imagen suele tener esta forma:
+
+```text
+registro/propietario/imagen:etiqueta
+```
+
+Por ejemplo:
+
+```text
+ghcr.io/ana/escaparate-db:1.0.0
+```
+
+| Parte | Valor |
+|---|---|
+| Registro | `ghcr.io` |
+| Propietario | `ana` |
+| Imagen | `escaparate-db` |
+| Etiqueta | `1.0.0` |
+
+Una **imagen** es una plantilla preparada para ejecutarse. Suele incluir:
+
+- un sistema base mínimo;
+- el runtime o las dependencias necesarias;
+- la aplicación;
+- ciertos ficheros de configuración de partida.
+
+!!! warning "`latest` es solo una etiqueta"
+    `latest` no significa automáticamente «la versión más reciente». Es simplemente una etiqueta y puede apuntar a contenidos distintos con el tiempo.
+
+    En este módulo trabajaremos preferentemente con **etiquetas explícitas**, como `1.0.0`.
+
+??? info "Más precisión: etiquetas y digests"
+    Las etiquetas también pueden reasignarse. Cuando necesitas identificar de forma exacta el contenido de una imagen, Docker permite referenciarla mediante su **digest**.
+
+    No necesitas trabajar con digests en esta sesión.
+
+### 3.2. Imagen y contenedor
+
+Una imagen **no es una ejecución concreta**. Lo que Docker crea a partir de ella es un **contenedor**.
+
+Eso significa que una misma imagen puede reutilizarse muchas veces:
+
+```text
+una imagen
+   ├── contenedor A
+   ├── contenedor B
+   └── contenedor C
+```
+
+Todos parten del mismo contenido de solo lectura, pero cada contenedor añade una **capa de escritura propia**. Por eso dos contenedores creados desde la misma imagen pueden acabar teniendo ficheros diferentes.
+
+!!! info "La idea importante"
+    **Imagen** y **contenedor** no son lo mismo: la imagen es el punto de partida reproducible; el contenedor es una instancia concreta creada a partir de ella.
+
+### 3.3. Detener, eliminar y recrear
+
+La capa de escritura pertenece al contenedor, no a la imagen.
+
+Por eso:
+
+- `docker stop` detiene el proceso, pero el contenedor sigue existiendo y conserva sus cambios;
+- `docker start` vuelve a ejecutar ese mismo contenedor;
+- `docker rm` elimina el contenedor y su capa de escritura;
+- crear otro contenedor desde la misma imagen vuelve a partir del estado definido por la imagen.
+
+Este comportamiento será uno de los experimentos principales de la actividad: modificarás un contenedor y comprobarás que **la imagen original no ha cambiado**.
+
+### 3.4. Cuándo hace falta persistencia
+
+Algunos datos no deberían depender de la vida de un contenedor. Por ejemplo:
+
+- datos de una base de datos;
+- ficheros subidos por usuarios;
+- información que debe mantenerse aunque el contenedor se sustituya.
+
+Para esos casos se utilizan mecanismos de almacenamiento externos, como los **volúmenes**.
+
+!!! tip "Regla práctica"
+    Si un dato debe sobrevivir a `docker rm`, no debería quedarse únicamente en la capa de escritura del contenedor.
+
+En esta sesión necesitas entender el problema. Más adelante configurarás estos mecanismos de forma explícita.
+
+### 3.5. Artefacto de aplicación e imagen
+
+Docker no elimina el concepto de artefacto de aplicación. Añade una unidad reproducible alrededor de él.
 
 ```text
 artefacto de aplicación
-→ por ejemplo, un WAR o un JAR
+→ por ejemplo, un WAR o JAR
 
 imagen de contenedor
-→ artefacto de aplicación + runtime + configuración de fábrica
+→ artefacto + runtime + ficheros necesarios para ejecutarlo
 ```
 
-Así, un mismo WAR puede formar parte de una imagen autocontenida o desplegarse sobre un servidor de aplicaciones externo. Docker no elimina el concepto de artefacto de aplicación: añade una unidad de despliegue reproducible alrededor.
+Un mismo WAR podría formar parte de una imagen autocontenida o desplegarse de otra forma sobre un servidor de aplicaciones externo.
 
-### 3.2. Contenedor: una instancia de la imagen
+### 3.6. Cliente y motor
 
-Un **contenedor** es una instancia creada a partir de una imagen. Puede estar creado, en ejecución o detenido. Cuando está en ejecución mantiene uno o varios procesos aislados, con su propio sistema de ficheros, configuración y red.
+Cuando escribes un comando como:
 
-De una misma imagen puedes crear tantos contenedores como quieras. Cada uno tiene su propia capa de escritura y su propio estado, aunque todos partan exactamente del mismo contenido de solo lectura. Esta propiedad permite, por ejemplo, ejecutar varias copias equivalentes de una misma aplicación y repartir tráfico entre ellas.
-
-### 3.3. Registro: dónde viaja
-
-Un **registro** es un servidor donde se publican imágenes para que otras máquinas se las descarguen. Que la imagen viva en un registro es lo que permite que la máquina de producción no necesite tu código, ni Maven, ni Java para compilar: se descarga el paquete ya hecho y lo ejecuta.
-
-Docker Hub es el más conocido y es de donde vas a **descargar** muchas imágenes oficiales, como Nginx o PostgreSQL. Para **publicar** las tuyas este módulo utiliza GitHub Container Registry, `ghcr.io`, porque ya trabajas con una cuenta de GitHub y más adelante los pipelines podrán publicar ahí sin utilizar una credencial personal tuya. Existen muchos otros registros, como AWS ECR, Azure Container Registry o registros privados de empresa.
-
-### 3.4. Etiqueta: qué versión exactamente
-
-El nombre completo de una imagen tiene cuatro partes: `registro/usuario/nombre:etiqueta`. Si no dices el registro, se asume Docker Hub —por eso `nginx` funciona sin más—; las imágenes oficiales tampoco llevan usuario, y si no indicas etiqueta se asume `latest`. Cuando publiques la tuya en el registro de GitHub tendrás que escribir el nombre entero, `ghcr.io/tu-usuario/lo-que-sea:1.0.0`, y ahí se ve bien de dónde sale cada parte.
-
-!!! danger "`latest` no significa «la última»"
-    Significa «la que alguien decidió marcar como `latest` la última vez», y puede cambiar bajo tus pies entre dos despliegues. Un despliegue reproducible **siempre** fija la versión: `postgres:18-alpine`, no `postgres`. Este es uno de los errores que más disgustos da en producción, y a partir de hoy no lo vas a cometer.
-
-```mermaid
-flowchart LR
-    R[("📦 Registro")] -- descarga --> I["Imagen<br/>mi-app:1.0.0"]
-    I -- arranque --> C1["Contenedor 1"]
-    I -- arranque --> C2["Contenedor 2"]
-    C1 -. lo que debe sobrevivir .-> V[("💾 Volumen")]
+```bash
+docker run ...
 ```
 
-!!! info "Quién hace realmente el trabajo"
-    Cuando escribes un comando de Docker no estás ejecutando nada directamente: estás enviando una orden a un **demonio** que corre en la máquina y que es quien descarga imágenes, crea contenedores y los ejecuta. Cliente y demonio, otra vez el modelo de la primera sesión. Parece un detalle, pero explica dos cosas que te encontrarás: que haga falta pertenecer a un grupo concreto del sistema para poder dar esas órdenes, y que el mismo cliente pueda gobernar el motor de otra máquina.
+el comando `docker` actúa como **cliente**. Las operaciones reales —descargar imágenes, crear contenedores, arrancar procesos o montar volúmenes— las realiza el **motor de Docker** que se ejecuta en la máquina.
 
 ---
 
-## 🧱 4. Capas: por qué una imagen no se copia entera
+## 🔄 4. Ciclo de vida de un contenedor
 
-Una imagen no es un bloque: es una **pila de capas** de solo lectura, apiladas una encima de otra. La primera suele ser un sistema base mínimo; encima se añade el runtime; encima, la aplicación; encima, la configuración.
-
-Esto tiene dos consecuencias muy prácticas:
-
-- **Las capas se comparten.** Si tienes cinco imágenes construidas sobre el mismo sistema base, esa capa está en disco una sola vez. Y si descargas una versión nueva de una imagen, solo viajan por la red las capas que han cambiado.
-- **El contenedor añade una capa más, y es de escritura.** Al arrancar, se coloca sobre la pila una capa fina donde va a parar todo lo que el proceso escriba: ficheros temporales, logs, datos. Esa capa **nace y muere con el contenedor**.
-
-Guarda esa última frase, porque es la que explica la sección de persistencia y la que provoca el 90 % de los sustos de quien empieza. En la sesión 4 volverás a las capas desde el otro lado: cómo se construyen y por qué su orden decide cuánto tarda cada compilación.
-
----
-
-## ♻️ 5. El ciclo de vida de un contenedor
-
-### 5.1. Estados y operaciones básicas
-
-Un contenedor pasa por unos estados muy concretos, y confundirlos es el origen de casi todas las preguntas del tipo «lo he borrado y sigue ahí» o «lo he parado y he perdido los datos».
+Una vez creado, un contenedor puede pasar por distintos estados:
 
 ```mermaid
 stateDiagram-v2
     [*] --> creado: crear
-    creado --> enEjecución: arrancar
-    enEjecución --> pausado: pausar
-    pausado --> enEjecución: reanudar
-    enEjecución --> detenido: detener
-    detenido --> enEjecución: arrancar
+    creado --> ejecutando: arrancar
+    ejecutando --> detenido: detener
+    detenido --> ejecutando: arrancar
     detenido --> [*]: eliminar
     creado --> [*]: eliminar
 ```
 
-- **Creado**: existe, tiene su configuración fijada, pero no hay ningún proceso corriendo.
-- **En ejecución**: el proceso principal está vivo. Ojo: si ese proceso termina, el contenedor se detiene. Un contenedor no es una máquina encendida, **es un proceso**.
-- **Pausado**: los procesos están congelados en memoria. Poco frecuente.
-- **Detenido**: el proceso ha terminado, pero el contenedor sigue existiendo **con su capa de escritura intacta**. Puedes volver a arrancarlo y encontrarás tus ficheros.
-- **Eliminado**: se borra el contenedor y, con él, su capa de escritura. Aquí es donde desaparecen los datos.
+- **Creado**: el contenedor existe, pero todavía no está ejecutándose.
+- **Ejecutando**: su proceso principal está activo.
+- **Detenido**: el proceso ha terminado, pero el contenedor sigue existiendo.
+- **Eliminado**: desaparece el contenedor y también su capa de escritura.
 
-Estos son los comandos que vas a usar hoy. No hace falta memorizarlos: hace falta saber qué preguntas responden.
+!!! tip "Contenedor no significa máquina"
+    Un contenedor en ejecución depende de su **proceso principal**. Si ese proceso termina, el contenedor pasa a estar detenido.
 
-| Comando | Qué hace | Para qué lo quieres |
-|---|---|---|
-| `docker pull <imagen>` | Descarga una imagen del registro | Traerte el paquete antes de ejecutarlo |
-| `docker run <imagen>` | Crea **y** arranca un contenedor | El atajo que usarás el 90 % de las veces |
-| `docker ps` / `docker ps -a` | Lista lo que corre / también lo detenido | Saber qué tienes vivo y qué se te ha quedado por ahí |
-| `docker logs <contenedor>` | Muestra su salida | **Primera parada cuando algo no funciona** |
-| `docker exec -it <contenedor> sh` | Abre una shell dentro | Mirar por dentro sin apagar nada |
-| `docker inspect <contenedor>` | Vuelca toda su configuración real | Comprobar puertos, volúmenes y red cuando no cuadran |
-| `docker stop` / `docker start` | Detiene / rearranca | Parar sin perder la capa de escritura |
-| `docker rm` / `docker rmi` | Elimina contenedor / imagen | Limpiar |
-| `docker system df` | Cuánto disco ocupa todo esto | Enterarte antes de quedarte sin espacio |
+---
 
-### 5.2. Construir un `docker run` sin memorizar una línea entera
+## ▶️ 5. Ejecutar, observar y diagnosticar
 
-`docker run` combina varias decisiones. La forma general que utilizarás es:
+No necesitas memorizar todos los comandos. Lo importante es asociar cada uno con una pregunta.
+
+| Pregunta | Comando habitual |
+|---|---|
+| ¿Qué contenedores están ejecutándose? | `docker ps` |
+| ¿Qué contenedores existen, también detenidos? | `docker ps -a` |
+| ¿Qué ha escrito el proceso? | `docker logs <contenedor>` |
+| ¿Qué hay dentro? | `docker exec -it <contenedor> sh` |
+| ¿Con qué configuración arrancó? | `docker inspect <contenedor>` |
+| ¿Quiero detenerlo sin eliminarlo? | `docker stop <contenedor>` |
+| ¿Quiero arrancarlo de nuevo? | `docker start <contenedor>` |
+| ¿Quiero eliminarlo? | `docker rm <contenedor>` |
+
+### 5.1. Construir un `docker run`
+
+La forma general es:
 
 ```text
 docker run [opciones] <imagen>
@@ -208,12 +259,12 @@ Se lee así:
 
 | Parte | Significado |
 |---|---|
-| `-d` | ejecuta el contenedor en segundo plano |
+| `-d` | ejecuta en segundo plano |
 | `--name web-demo` | asigna un nombre reconocible |
 | `-p 8088:80` | publica `anfitrión:contenedor` |
-| `nginx:1.30.4-alpine` | imagen y etiqueta concretas |
+| `nginx:1.30.4-alpine` | imagen y etiqueta |
 
-Después puedes comprobarlo con:
+Puedes comprobarlo con:
 
 ```bash
 docker ps
@@ -226,89 +277,67 @@ y entrar dentro con:
 docker exec -it web-demo sh
 ```
 
-No todas las imágenes incluyen `bash`; las variantes mínimas suelen disponer de `sh`. Una vez dentro, comandos normales de Linux como estos te permiten inspeccionar qué estás ejecutando:
+Las imágenes mínimas no siempre incluyen `bash`, por eso utilizaremos normalmente `sh`.
 
-```bash
-cat /etc/os-release
-pwd
-ls
+### 5.2. Una rutina de diagnóstico
+
+Cuando algo no funcione, empieza siempre por estas tres preguntas:
+
+```text
+1. ¿Está ejecutándose?
+        ↓
+2. ¿Qué dicen los logs?
+        ↓
+3. ¿Necesito inspeccionarlo por dentro?
 ```
 
-En un servidor como Nginx también puedes consultar su configuración para averiguar desde qué directorio sirve los ficheros:
+En comandos:
 
 ```bash
-nginx -T 2>/dev/null | grep -E 'root|index'
+docker ps -a
+docker logs <contenedor>
+docker exec -it <contenedor> sh
 ```
 
-Puedes recorrer parte del ciclo de vida con:
+!!! tip "El reflejo que te interesa adquirir"
+    No empieces recreando contenedores al azar. Primero comprueba **estado → logs → interior**. La mayoría de los errores dejan alguna pista antes de que necesites modificar nada.
 
-```bash
-docker stop web-demo
-docker start web-demo
-docker stop web-demo
-docker rm web-demo
+---
+
+## 🔌 6. Puertos y configuración externa
+
+Un contenedor conectado a una red de Docker no publica automáticamente sus servicios hacia la máquina anfitriona.
+
+Para acceder desde fuera se puede **publicar un puerto**:
+
+```text
+-p anfitrión:contenedor
 ```
 
-Recuerda la diferencia: `stop` detiene el proceso pero conserva el contenedor; `rm` elimina el contenedor y su capa de escritura.
+Por ejemplo:
 
-!!! tip "El reflejo que te va a salvar el curso"
-    Cuando algo no arranque, la secuencia es siempre la misma: mirar si el contenedor está vivo, leer sus logs y, si hace falta, entrar dentro. En ese orden. La inmensa mayoría de los fallos que verás este curso están escritos, con todas sus letras, en la salida del segundo comando.
+```text
+-p 8080:80
+```
 
----
+significa:
 
-## 🔌 6. Puertos: aislado por defecto, expuesto a propósito
+```text
+navegador → localhost:8080 → puerto 80 del contenedor
+```
 
-Un contenedor tiene su propia red y, por defecto, **nada de fuera puede entrar**. Si arrancas un servidor web dentro de un contenedor y no haces nada más, tu navegador no lo verá.
+!!! warning "Publicar es una decisión"
+    Un servicio no debe exponer al anfitrión todos sus puertos por costumbre. Más adelante verás que una base de datos utilizada únicamente por la aplicación puede mantenerse accesible solo dentro de la red del despliegue.
 
-Para llegar a él se **publica un puerto**: se asocia un puerto de la máquina anfitriona con el puerto en el que escucha el proceso dentro. La notación es siempre `anfitrión:contenedor`, en ese orden, y el error clásico es invertirla.
+La otra decisión importante es la **configuración**. La imagen debe poder reutilizarse con valores distintos según el entorno.
 
-Lo importante no es la sintaxis, es la decisión: **publicar un puerto es abrir una puerta**. Hoy publicarás todo lo que quieras ver, porque estás en tu máquina experimentando. Pero apunta la pregunta para dentro de dos sesiones: si el único que tiene que hablar con la base de datos es la aplicación, y la aplicación está en la misma máquina, ¿para qué abrir el puerto de la base de datos al exterior? En la sesión 5 montarás el conjunto entero con la base de datos **sin ningún puerto publicado**, y esa será la primera decisión de seguridad real que tomes en el módulo.
+Con `docker run` puedes pasar variables mediante:
 
----
+```text
+-e NOMBRE=valor
+```
 
-## 💾 7. Qué sobrevive cuando el contenedor muere
-
-Ya sabes la respuesta: la capa de escritura se va con el contenedor. Si arrancas una base de datos sin más y luego eliminas el contenedor, los datos **no están en ninguna parte**. No hay papelera.
-
-!!! info "Hoy necesitas entender el problema"
-    En esta sesión no vas a configurar todavía persistencia real. Lo importante es comprobar que los datos que viven únicamente dentro del contenedor desaparecen cuando ese contenedor se sustituye.
-
-    Más adelante utilizarás volúmenes y montajes para resolver este problema.
-
-Docker ofrece dos formas habituales de sacar datos de esa capa de escritura:
-
-| | Volumen | Montaje de directorio del anfitrión |
-|---|---|---|
-| **Quién lo gestiona** | Docker, en una zona propia del sistema | Tú: es una carpeta tuya que eliges |
-| **Dónde está** | Donde Docker decida; se referencia por nombre | En la ruta exacta que indiques |
-| **Uso típico** | Datos de una base de datos, contenido que la aplicación genera | Ficheros de configuración, código durante el desarrollo |
-| **Portabilidad** | Alta: no depende de la estructura de carpetas de la máquina | Baja: la ruta tiene que existir en cada máquina |
-| **Se comparte entre contenedores** | Sí, montando el mismo volumen | Sí, pero atado a esa máquina |
-
-Como orientación inicial, un **volumen** suele utilizarse para datos que deben sobrevivir al contenedor, mientras que un **montaje de carpeta** permite introducir o compartir ficheros del anfitrión. No necesitas configurar ninguno de los dos en la actividad de hoy.
-
-!!! info "Conexión con Escaparate"
-    Más adelante observarás este problema con los ficheros subidos por la aplicación. Por ahora basta con recordar que **contenedor y dato persistente tienen ciclos de vida distintos**.
-
----
-
-## 🕸️ 8. Para situarnos: cómo se comunicarán varios contenedores
-
-Cuando Docker arranca, crea una red por defecto a la que se conectan todos los contenedores que no digan otra cosa. Ahí dentro se ven entre ellos por dirección IP, pero **no por nombre**: si tu aplicación busca un servidor llamado `basededatos`, no lo va a encontrar.
-
-Se pueden crear redes propias, y en ellas Docker sí resuelve el nombre de cada contenedor automáticamente. Es la forma correcta de conectar varios contenedores entre sí, y también aísla: dos contenedores en redes distintas no se hablan.
-
-Hoy vas a ejecutar contenedores sueltos y no vas a necesitar nada de esto. Pero fíjate en el precio que estás pagando: cada arranque exige recordar la imagen exacta, los puertos, las variables, los volúmenes y la red, todo escrito a mano en una sola línea larguísima que nadie va a recordar mañana. Ese es exactamente el problema que resuelve la sesión 5, y conviene que lo sufras un poco antes de que llegue el remedio.
-
----
-
-## 🔧 9. La configuración entra desde fuera. Siempre
-
-Última pieza, y es la regla de la primera sesión puesta en práctica por primera vez: **el paquete es idéntico en todos los entornos; lo que cambia es lo que le inyectas al arrancarlo**.
-
-Las imágenes bien hechas se configuran con **variables de entorno** que se les pasan en el momento de ejecutarlas: qué usuario y contraseña debe tener la base de datos, en qué dirección está el servidor, en qué modo arrancar. La misma imagen de PostgreSQL vale para tu máquina y para producción; lo único distinto son los valores que recibe.
-
-Con `docker run` se utiliza `-e` una vez por cada variable:
+Por ejemplo:
 
 ```bash
 docker run -d --name ejemplo-bd \
@@ -318,52 +347,74 @@ docker run -d --name ejemplo-bd \
   postgres:18-alpine
 ```
 
-La sintaxis importante es:
+La misma imagen puede arrancar después con otros valores sin necesidad de reconstruirse.
 
-```text
--e NOMBRE=valor
-```
-
-En estas primeras prácticas escribirás valores de prueba directamente para entender el mecanismo. Eso no convierte la línea de comandos en un gestor de secretos: una credencial real requiere mecanismos adecuados y no debe acabar en el repositorio, en una imagen ni en una captura.
-
-Puedes comprobar qué variables recibió un contenedor con:
-
-```bash
-docker inspect ejemplo-bd
-```
-
-!!! danger "Los secretos no se incorporan a una imagen"
-    Si un secreto entra en una imagen publicada, debe considerarse comprometido. Eliminarlo después no garantiza que desaparezca de las capas anteriores de esa imagen y, además, las versiones que ya se hayan distribuido pueden seguir conteniéndolo.
-
-    Las credenciales se proporcionan al ejecutar el contenedor mediante mecanismos de configuración adecuados; no se escriben en el `Dockerfile` ni se versionan.
+!!! danger "Un secreto no debe quedar incorporado a la imagen"
+    En las prácticas utilizarás credenciales de prueba para comprender el mecanismo. Las credenciales reales requieren mecanismos adecuados y no deben escribirse en el Dockerfile, versionarse ni aparecer en capturas.
 
 ---
 
-## 🧾 10. Tu primera imagen: un Dockerfile mínimo
+## 💾 7. Montajes y redes
 
-### 10.1. Las instrucciones `FROM` y `COPY`
+La imagen anterior ha introducido la idea de volumen. Aquí distinguimos brevemente los dos mecanismos de montaje que aparecerán más adelante y situamos cómo se comunicarán varios contenedores.
 
-Hasta ahora has ejecutado imágenes creadas por otras personas. Para crear una propia necesitas un **Dockerfile**, un fichero de texto que describe cómo construirla.
+### 7.1. Volumen y bind mount
 
-Hoy solo necesitas conocer dos instrucciones:
+Cuando un dato debe sobrevivir al contenedor se puede almacenar fuera de su capa de escritura.
+
+| | Volumen | Bind mount |
+|---|---|---|
+| **Quién decide la ubicación** | Docker | Tú |
+| **Referencia** | Nombre del volumen | Ruta del anfitrión |
+| **Uso habitual** | Datos persistentes | Configuración o ficheros del anfitrión |
+| **Dependencia de rutas locales** | Baja | Mayor |
+
+Un **volumen** suele encajar bien con datos gestionados por una aplicación, como los de una base de datos. Un **bind mount** permite montar en el contenedor una ruta concreta del anfitrión.
+
+No utilizarás todavía estos mecanismos en la actividad de hoy. Primero comprobarás qué ocurre cuando los datos permanecen únicamente dentro del contenedor.
+
+### 7.2. Redes entre contenedores
+
+Los contenedores conectados al **bridge por defecto** pueden comunicarse por IP, pero no disponen del descubrimiento automático por nombre que ofrecen las redes bridge creadas por el usuario.
+
+Más adelante crearás una red propia y podrás trabajar con nombres como:
+
+```text
+app → bd
+```
+
+en lugar de depender de direcciones IP concretas.
+
+Por ahora basta con distinguir:
+
+- **publicar un puerto** permite acceder desde el anfitrión;
+- una **red de Docker** permite comunicar contenedores entre sí.
+
+---
+
+## 🧾 8. Construir una imagen: Dockerfile y contexto
+
+Hasta ahora has ejecutado imágenes creadas por otras personas. Para construir una propia necesitas un **Dockerfile**.
+
+### 8.1. `FROM` y `COPY`
+
+En esta sesión solo necesitas dos instrucciones:
 
 | Instrucción | Función |
 |---|---|
-| `FROM` | indica la imagen de la que partes |
-| `COPY` | copia ficheros desde el contexto de construcción a la nueva imagen |
+| `FROM` | indica la imagen de partida |
+| `COPY` | incorpora ficheros desde el contexto de construcción |
 
-Ejemplo genérico:
+Ejemplo:
 
 ```dockerfile
-FROM alpine:3.22
+FROM alpine:3.24
 COPY material/ /datos/
 ```
 
-La primera línea dice "parte de esta imagen existente". La segunda añade contenido propio.
+### 8.2. El contexto de construcción
 
-### 10.2. El contexto de construcción
-
-`COPY` no puede leer cualquier ruta de tu ordenador. Solo puede acceder a ficheros incluidos en el **contexto de construcción**, que es la ruta que aparece al final de `docker build`.
+`COPY` no puede leer cualquier fichero del equipo. Solo puede utilizar rutas incluidas en el **contexto de construcción**.
 
 Imagina:
 
@@ -371,105 +422,95 @@ Imagina:
 repositorio/
 ├── material/
 │   └── ejemplo.txt
-└── docker/
-└── demo/
-    └── Dockerfile
+└── practicas/
+    └── docker/
+        └── demo/
+            └── Dockerfile
 ```
 
-Si te sitúas en `repositorio/`, puedes construir con:
+Desde la raíz del repositorio puedes ejecutar:
 
 ```bash
 docker build \
-  -f docker/demo/Dockerfile \
+  -f practicas/docker/demo/Dockerfile \
   -t ejemplo:1.0.0 \
   .
 ```
 
-Cada parte tiene una función:
-
 | Parte | Significado |
 |---|---|
-| `-f .../Dockerfile` | indica dónde está el Dockerfile |
-| `-t ejemplo:1.0.0` | asigna nombre y etiqueta a la imagen |
-| `.` | utiliza el directorio actual como contexto de construcción |
+| `-f .../Dockerfile` | ubicación del Dockerfile |
+| `-t ejemplo:1.0.0` | nombre y etiqueta de la imagen |
+| `.` | contexto de construcción |
 
-Después puedes comprobar que existe:
+!!! warning "Dockerfile y contexto son decisiones distintas"
+    El Dockerfile puede estar dentro de `practicas/`, mientras el contexto puede ser la raíz del repositorio si necesitas copiar ficheros que se encuentran en otras carpetas.
 
-```bash
-docker image ls ejemplo:1.0.0
-```
-
-!!! warning "El contexto no es la carpeta del Dockerfile"
-    Son dos decisiones diferentes. El Dockerfile puede estar en `practicas/` y el contexto ser la raíz del repositorio si necesita copiar ficheros que están en otras carpetas. En la próxima sesión estudiarás este mecanismo con más detalle y aprenderás a reducir el contexto con `.dockerignore`.
+    En la próxima sesión estudiarás cómo reducir ese contexto mediante `.dockerignore` y cómo aprovechar mejor la caché de construcción.
 
 ---
 
-## 📤 11. Etiquetar y publicar una imagen
+## 📤 9. Publicar una imagen
 
-Una imagen local como:
+Una imagen local:
 
 ```text
-ejemplo:1.0.0
+escaparate-db:1.0.0
 ```
 
-todavía no tiene el nombre completo que necesita GitHub Container Registry. Puedes añadir otra referencia a la misma imagen con:
+puede recibir otra referencia preparada para GHCR:
 
 ```bash
-docker tag ejemplo:1.0.0 ghcr.io/<usuario>/ejemplo:1.0.0
+docker tag escaparate-db:1.0.0 \
+  ghcr.io/<usuario>/escaparate-db:1.0.0
 ```
 
-Para publicar necesitas que **Docker** esté autenticado contra `ghcr.io`:
+Después Docker debe autenticarse contra `ghcr.io`:
 
 ```bash
 docker login ghcr.io -u <usuario>
 ```
 
-Cuando solicite la contraseña, utiliza la credencial que ya preparaste para el curso. En el itinerario simplificado será el PAT `DAW - Curso`; si elegiste la alternativa de mínimo privilegio, utiliza el PAT específico de GHCR.
-
-Esto es independiente de la autenticación que utiliza Git contra `github.com`.
+Cuando solicite la contraseña, utiliza el PAT preparado para el curso. La autenticación de Docker contra `ghcr.io` es independiente de la autenticación de Git contra `github.com`.
 
 Publica:
 
 ```bash
-docker push ghcr.io/<usuario>/ejemplo:1.0.0
+docker push ghcr.io/<usuario>/escaparate-db:1.0.0
 ```
 
-Otra máquina podrá obtenerla con:
+Otra máquina podrá descargarla con:
 
 ```bash
-docker pull ghcr.io/<usuario>/ejemplo:1.0.0
+docker pull ghcr.io/<usuario>/escaparate-db:1.0.0
 ```
 
-Si el paquete es público, esa descarga no necesita autenticación. Para comprobarlo de forma limpia puedes cerrar antes la sesión del registro:
-
-```bash
-docker logout ghcr.io
-```
-
-El flujo completo es:
+El recorrido es:
 
 ```mermaid
 flowchart LR
-    I["Imagen local"] --> T["Etiquetar"]
-    T --> R["Registro<br/>GHCR"]
-    R --> P["Pull"]
-    P --> S["Otra máquina"]
+    L["Imagen local"] --> T["Etiquetar"]
+    T --> R["GHCR"]
+    R --> D["Descargar"]
+    D --> E["Ejecutar"]
 ```
+
+!!! tip "La idea importante"
+    Publicar una imagen separa **construcción** y **ejecución**. La máquina que la ejecuta no necesita disponer de tu código fuente ni repetir el proceso de construcción.
 
 ---
 
 ## 🎯 Qué debes saber hacer al salir de esta sesión
 
-- Explicar la diferencia entre imagen y contenedor, y por qué dos contenedores de la misma imagen son independientes.
-- Construir un `docker run` combinando nombre, segundo plano, puertos y variables de entorno.
-- Diagnosticar siguiendo la rutina: comprobar si está vivo, leer sus logs y entrar dentro.
-- Saber qué desaparece al eliminar un contenedor y qué sobrevive, y por qué.
-- Pasar configuración desde fuera en lugar de escribirla dentro de la imagen.
-- Escribir un Dockerfile mínimo con `FROM` y `COPY` y construirlo eligiendo correctamente Dockerfile y contexto.
-- Etiquetar una imagen, publicarla en GHCR y volver a descargarla sin depender de la copia local.
-- Limpiar: no dejar contenedores corriendo ni imágenes que no vayas a usar.
+Al terminar deberías poder:
 
-Lo que basta con reconocer: el detalle de cómo se apilan las capas, el papel del demonio y qué cambia cuando Docker corre sobre Windows o macOS. La optimización de Dockerfiles, la caché y la construcción multietapa llegan en la próxima sesión.
+- distinguir **imagen, contenedor, registro y etiqueta**;
+- explicar por qué detener un contenedor no equivale a eliminarlo;
+- ejecutar un contenedor combinando nombre, puertos y variables de entorno;
+- diagnosticar siguiendo la secuencia **estado → logs → interior**;
+- explicar por qué los datos de la capa de escritura desaparecen al eliminar el contenedor;
+- escribir un Dockerfile mínimo con `FROM` y `COPY` y elegir correctamente el contexto de construcción;
+- etiquetar, publicar y volver a descargar una imagen desde GHCR.
 
 ---
 
@@ -477,22 +518,17 @@ Lo que basta con reconocer: el detalle de cómo se apilan las capas, el papel de
 
 ??? tip "Abrir resumen"
 
-    - El repositorio guarda el código; el contenedor empaqueta el entorno donde ese código funciona. Son dos problemas distintos y hacen falta los dos.
-    - Una máquina virtual lleva un sistema operativo invitado con su propio núcleo; un contenedor comparte el núcleo del anfitrión y aísla procesos, red y sistema de ficheros. Por eso suele ser mucho más ligero y rápido de crear y arrancar.
-    - No compiten: lo habitual es ejecutar contenedores dentro de máquinas virtuales alquiladas en la nube.
-    - **Imagen** es el paquete de solo lectura, **contenedor** es una instancia creada a partir de ella, **registro** es el servidor donde se publica y **etiqueta** identifica una referencia de esa imagen. En un flujo containerizado, la imagen actúa como unidad de despliegue y puede contener dentro un artefacto de aplicación como un WAR.
-    - `latest` no significa «la última»: significa «la que alguien marcó así». Un despliegue reproducible fija siempre la versión.
-    - Una imagen es una pila de capas de solo lectura que se comparten entre imágenes y entre contenedores; al arrancar se añade encima una capa de escritura que nace y muere con el contenedor.
-    - Un contenedor puede estar creado, ejecutándose o detenido. Cuando se ejecuta, su proceso principal determina su ciclo de vida: si termina, el contenedor se detiene. Detenido conserva su capa de escritura; eliminado, no.
-    - Ante un fallo: comprobar si está vivo, leer los logs y entrar dentro. En ese orden.
-    - Por defecto un contenedor está aislado de la red; publicar un puerto es abrir una puerta deliberadamente, y la notación es `anfitrión:contenedor`.
-    - Para que un dato sobreviva hay que sacarlo de la capa de escritura: volumen gestionado por Docker para los datos, montaje de una carpeta del anfitrión para meter configuración.
-    - En la red por defecto los contenedores no se resuelven por nombre; para eso hacen falta redes propias.
-    - La configuración se puede pasar con `-e NOMBRE=valor` al ejecutar. Las credenciales nunca se escriben dentro de la imagen: quedarían incorporadas al paquete.
-    - Un Dockerfile mínimo puede partir de una imagen con `FROM` y añadir ficheros con `COPY`. `docker build` distingue entre la ruta del Dockerfile (`-f`) y el contexto de construcción.
-    - Publicar en GHCR sigue el patrón `docker tag` → `docker login` → `docker push`. La autenticación de Docker contra `ghcr.io` es independiente de la autenticación de Git contra `github.com`.
+    - Git versiona el proyecto; una **imagen** empaqueta el entorno necesario para ejecutarlo.
+    - Una VM incluye un sistema operativo invitado; un contenedor Linux comparte el núcleo del entorno anfitrión.
+    - **Imagen** es el punto de partida; **contenedor** es una instancia creada desde ella.
+    - Cada contenedor tiene su propia capa de escritura: detenerlo la conserva; eliminarlo la destruye.
+    - `latest` es una etiqueta, no una garantía de «última versión».
+    - Publicar un puerto es una decisión explícita: `anfitrión:contenedor`.
+    - La configuración puede cambiar al arrancar sin reconstruir la imagen.
+    - Los datos persistentes necesitan un ciclo de vida independiente del contenedor.
+    - Dockerfile y contexto de construcción no son lo mismo.
+    - Un registro permite construir una imagen en un lugar y ejecutarla en otro.
 
 ---
 
-
-En la actividad aplicarás estos conceptos al ciclo de vida, almacenamiento, construcción mínima y publicación de imágenes. La sesión siguiente profundizará en cómo construir una imagen de aplicación de forma eficiente y segura.
+En la actividad aplicarás estas ideas sobre Nginx y PostgreSQL: ejecutarás e inspeccionarás contenedores, comprobarás qué ocurre con su estado, construirás una imagen mínima y la publicarás en GHCR.

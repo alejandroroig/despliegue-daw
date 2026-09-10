@@ -8,58 +8,54 @@
 
 ## Contexto
 
-Escaparate ya se levanta con un único `docker compose up -d`, pero el resultado del Tema 2 todavía tiene una arquitectura muy directa:
+Al terminar el Tema 2, el navegador accedía directamente a Escaparate:
 
 ```text
-Navegador
-    │ :8080
-    ▼
-app
-Spring Boot + Tomcat embebido
-(frontend + API)
-    │
-    ▼
-bd
+navegador → app → bd
 ```
 
-En esta sesión aparece una nueva pieza. **Nginx será la única puerta de entrada del despliegue**. Servirá directamente una distribución estática del frontend y un segundo sitio con la documentación del proyecto. Las peticiones dinámicas seguirán llegando a la aplicación Java —Spring Boot con su Tomcat embebido—, pero lo harán a través de Nginx.
-
-El objetivo final es:
+En esta sesión aparece una nueva puerta de entrada:
 
 ```text
-                         ┌── frontend estático
-Navegador ──► web:Nginx ├── documentación
-                         │
-                         └── /api/ ──► app ──► bd
+                 ┌→ frontend estático
+navegador → web ─┼→ documentación
+                 └→ /api/ → app → bd
 ```
 
-Desde el equipo anfitrión solo debe publicarse el puerto 80 de `web`.
+`web` será Nginx. Desde el anfitrión solo se publicará su puerto 80; `app` y `bd` permanecerán dentro de la red de Compose.
+
+!!! abstract "Cómo vas a trabajar"
+    **Añadir → nombrar → separar → proteger → optimizar → comprobar**
+
+    La actividad no pretende que aprendas todavía proxy inverso. El bloque `/api/` se utilizará como una **caja negra** para mantener la aplicación funcionando mientras te centras en Nginx, hosts virtuales, DNS y contenido estático.
+
+---
 
 ## Qué vas a practicar
 
-- **Incorporar** un servidor web como nueva puerta de entrada de un despliegue existente.
-- **Servir** contenido estático desde Nginx y mantener la API detrás de la red interna.
-- **Configurar** dos hosts virtuales por nombre sobre la misma dirección y puerto.
-- **Resolver** nombres con DNS y comprobar el resultado con `dig`.
-- **Configurar** un servidor por defecto para nombres no reconocidos.
-- **Activar, configurar y comprobar** la funcionalidad de compresión gzip de Nginx y aplicar caché sobre contenido estático.
-- **Distinguir** por qué la entrega de recursos estáticos y las respuestas dinámicas no reciben necesariamente la misma política de caché.
-- **Versionar** la configuración del servidor como parte del despliegue.
+- Añadir Nginx como nueva puerta de entrada del despliegue.
+- Servir contenido estático desde raíces distintas.
+- Configurar dos hosts virtuales sobre una misma dirección y puerto.
+- Resolver nombres con DNS y relacionarlos con la cabecera `Host`.
+- Definir qué ocurre con nombres no reconocidos.
+- Comprobar gzip y caché sobre recursos estáticos.
+- Validar y recargar configuración sin recrear el contenedor.
+- Versionar la configuración del servidor web.
+
+---
 
 ## Requisitos previos
 
-- La Actividad 2.3 terminada, con `app` y `bd` funcionando mediante `practicas/compose/compose.yaml`.
-- La imagen pública:
+Necesitas:
 
-```text
-ghcr.io/<usuario>/escaparate:sesion-04
-```
+- la Actividad 2.3 terminada;
+- `ghcr.io/<usuario>/escaparate:sesion-04`;
+- la imagen de base de datos de la Actividad 2.1;
+- `escaparate-estatico.zip`;
+- `escaparate-docs.zip`;
+- el repositorio actualizado.
 
-- La imagen pública de la base de datos de la Actividad 2.1.
-- El paquete `escaparate-estatico.zip`.
-- El paquete `escaparate-docs.zip`.
-- El repositorio `daw-despliegue` actualizado.
-- Tu rama de esta sesión:
+Prepara la rama:
 
 ```bash
 git switch main
@@ -67,7 +63,7 @@ git pull --ff-only
 git switch -c sesion-06
 ```
 
-Crea al comenzar la entrega:
+Crea:
 
 ```text
 entregas/
@@ -77,9 +73,7 @@ entregas/
         └── img/
 ```
 
-Documenta en `actividad-3.1.md` las respuestas, mediciones y reflexiones de la práctica. Guarda las capturas en `img/` y enlázalas mediante rutas relativas.
-
-Los ficheros técnicos no se duplican en `entregas/`. Trabajarás con esta estructura:
+Los ficheros técnicos quedarán en:
 
 ```text
 practicas/
@@ -95,14 +89,12 @@ practicas/
     └── sitio-docs/
 ```
 
-!!! info "Qué se versiona"
-    Al descomprimir `escaparate-estatico.zip` en `sitio-escaparate/`, el ZIP crea una carpeta `escaparate/`. Por tanto, el frontend quedará en `practicas/nginx/sitio-escaparate/escaparate/`. Ese contenido **sí se versiona** en este repositorio docente, porque será el frontend que llevarás contigo a la instancia en la siguiente sesión.
-
-    Descomprime `escaparate-docs.zip` en `practicas/nginx/sitio-docs/`. Este contenido formará parte del repositorio.
+!!! info "Evidencias"
+    Solo se piden **tres evidencias**. Documenta decisiones, resultados y reflexiones; no conviertas `actividad-3.1.md` en una transcripción de comandos.
 
 ---
 
-## Paso 1: Añade la nueva puerta de entrada
+## Paso 1: Añade Nginx como puerta de entrada
 
 Descomprime `escaparate-estatico.zip` dentro de:
 
@@ -110,53 +102,56 @@ Descomprime `escaparate-estatico.zip` dentro de:
 practicas/nginx/sitio-escaparate/
 ```
 
-El ZIP crea automáticamente una carpeta `escaparate/`, por lo que el resultado esperado es:
-
-```text
-practicas/
-└── nginx/
-    └── sitio-escaparate/
-        └── escaparate/
-            ├── index.html
-            └── ...
-```
-
-Comprueba que existe:
+El ZIP crea la carpeta `escaparate/`. Comprueba que existe:
 
 ```text
 practicas/nginx/sitio-escaparate/escaparate/index.html
 ```
 
-No muevas ni aplanes el contenido del ZIP.
+No muevas ni aplanes su contenido.
 
-Ahora modifica `practicas/compose/compose.yaml` para añadir un servicio:
+### 1.1. Añade el servicio `web`
+
+Modifica `practicas/compose/compose.yaml`.
+
+El nuevo servicio debe:
+
+- utilizar `nginx:1.30.4-alpine`;
+- publicar `80:80`;
+- montar `../nginx/conf.d/` en `/etc/nginx/conf.d/` como solo lectura;
+- montar el frontend en `/srv/www/escaparate/` como solo lectura;
+- depender de `app`.
+
+Al mismo tiempo:
+
+- elimina la publicación de `8080` de `app`;
+- mantiene `bd` sin puerto publicado.
+
+!!! info "Por qué usamos `/srv/www/...`"
+    La imagen oficial de Nginx tiene una raíz predeterminada, pero aquí utilizaremos rutas propias. Eso obliga a declarar explícitamente qué directorio pertenece a cada sitio y facilita separar catálogo y documentación.
+
+### 1.2. Configura el primer sitio
+
+Crea:
 
 ```text
-web
+practicas/nginx/conf.d/sitios.conf
 ```
 
-Debe cumplir estas condiciones:
-
-- imagen `nginx:1.30.4-alpine`;
-- publicar `80:80`;
-- montar `../nginx/conf.d/` sobre `/etc/nginx/conf.d/` en modo de solo lectura;
-- montar `../nginx/sitio-escaparate/escaparate/` sobre `/srv/www/escaparate/` en modo de solo lectura;
-- depender de `app` para que la aplicación se inicie antes;
-- `app` debe dejar de publicar su puerto 8080 hacia el anfitrión;
-- `bd` continúa sin publicar PostgreSQL.
-
-!!! info "¿Por qué `/srv/www/...`?"
-    La imagen oficial de Nginx utiliza `/usr/share/nginx/html` como raíz web predeterminada. Aquí no vamos a depender de esa ubicación: montaremos nuestros dos sitios bajo `/srv/www/escaparate` y `/srv/www/docs`. Así las dos raíces quedan organizadas de forma simétrica y tendrás que declararlas explícitamente con `root` en cada host virtual.
-
-Crea `practicas/nginx/conf.d/sitios.conf` con el primer sitio del despliegue. Configura tú `listen`, `server_name`, `root` e `index` utilizando lo visto en teoría.
-
-El sitio responderá al nombre:
+Configura un bloque `server` para:
 
 ```text
 escaparate.127.0.0.1.nip.io
 ```
 
-Dentro de ese bloque incluye **exactamente este fragmento**, que hoy funciona como caja negra:
+Debes decidir, usando la teoría:
+
+- `listen`;
+- `server_name`;
+- `root`;
+- `index`.
+
+Añade además **exactamente este bloque**:
 
 ```nginx
 location /api/ {
@@ -164,75 +159,77 @@ location /api/ {
 }
 ```
 
-!!! danger "El bloque `/api/` no se modifica hoy"
-    Su función es permitir que el JavaScript servido por Nginx siga accediendo a la API. No cambies la directiva ni añadas todavía cabeceras de proxy. En la Actividad 3.2 escribirás y explicarás esta parte completa.
+!!! danger "El bloque `/api/` es una caja negra"
+    No modifiques `proxy_pass` ni añadas todavía cabeceras. Su única función hoy es que el frontend pueda seguir accediendo a la API.
 
-Levanta el conjunto:
+    En la Actividad 3.2 estudiarás esta parte con detalle.
+
+Levanta:
 
 ```bash
+cd practicas/compose
 docker compose up -d
 ```
 
-Comprueba:
+Diagnostica:
 
 ```bash
 docker compose ps
+docker compose logs web
 ```
 
-El resultado debe mostrar una única publicación hacia el anfitrión:
-
-```text
-web → puerto 80
-```
-
-`app` y `bd` no deben mostrar puertos publicados.
-
-Valida además la configuración:
+Valida Nginx:
 
 ```bash
 docker compose exec web nginx -t
 ```
 
-Antes de utilizar el navegador, prueba directamente el host virtual:
+Prueba directamente el host virtual:
 
 ```bash
-curl -I -H "Host: escaparate.127.0.0.1.nip.io" http://127.0.0.1/
+curl -I \
+  -H "Host: escaparate.127.0.0.1.nip.io" \
+  http://127.0.0.1/
 ```
 
-Y comprueba también la parte dinámica:
+y la parte dinámica:
 
 ```bash
-curl -fsS -H "Host: escaparate.127.0.0.1.nip.io" \
+curl -fsS \
+  -H "Host: escaparate.127.0.0.1.nip.io" \
   http://127.0.0.1/api/salud/listo
 ```
 
-**Comprueba:** el frontend lo sirve Nginx, `/api/salud/listo` sigue respondiendo y solo `web` publica un puerto.
+**Comprueba:**
 
-**Captura 1:** `docker compose ps` mostrando que solo `web` publica un puerto.
+- solo `web` publica un puerto;
+- el frontend lo sirve Nginx;
+- `/api/salud/listo` continúa respondiendo.
+
+**Evidencia 1:** `docker compose ps` mostrando que solo `web` publica puerto y una comprobación correcta del sitio.
 
 !!! question "Reflexiona"
-    La imagen `app` sigue conteniendo una copia integrada del frontend. Sin embargo, el navegador ya no la está utilizando. ¿Qué cambio en la arquitectura hace que ahora los ficheros públicos procedan de Nginx y no de Spring Boot?
+    `app` continúa conteniendo una copia del frontend. ¿Por qué el navegador está utilizando ahora la copia servida por Nginx?
 
 ---
 
-## Paso 2: Deja de escribir direcciones y publica un segundo sitio
+## Paso 2: Publica dos sitios sobre la misma dirección
 
-Resuelve primero:
+Antes de configurar el segundo sitio, observa cómo se resuelve el nombre:
 
 ```bash
 dig escaparate.127.0.0.1.nip.io
 ```
 
-Identifica en la respuesta:
+En `actividad-3.1.md` identifica:
 
 - tipo de registro;
 - dirección obtenida;
-- TTL;
-- servidor que ha contestado.
+- TTL.
 
-Repite la consulta y observa el TTL. No es obligatorio que siempre disminuya de la misma forma, porque puede intervenir la caché del resolutor. Lo importante es interpretar qué representa.
+No necesitas copiar toda la salida de `dig`.
 
-Abre después:
+Abre:
 
 ```text
 http://escaparate.127.0.0.1.nip.io/
@@ -240,13 +237,13 @@ http://escaparate.127.0.0.1.nip.io/
 
 No escribas ningún puerto.
 
-Ahora descomprime `escaparate-docs.zip` en:
+### 2.1. Añade la documentación
+
+Descomprime `escaparate-docs.zip` dentro de:
 
 ```text
 practicas/nginx/sitio-docs/
 ```
-
-Asegúrate de que `sitio-docs/` **no** está excluido por `.gitignore`. Si habías añadido una regla para ignorarlo durante una prueba anterior, elimínala.
 
 Añade al servicio `web` un montaje de esa carpeta sobre:
 
@@ -254,9 +251,9 @@ Añade al servicio `web` un montaje de esa carpeta sobre:
 /srv/www/docs
 ```
 
-También en modo de solo lectura.
+en modo de solo lectura.
 
-Crea en `sitios.conf` un **segundo bloque `server`** para:
+Crea un segundo bloque `server` para:
 
 ```text
 docs.127.0.0.1.nip.io
@@ -265,67 +262,70 @@ docs.127.0.0.1.nip.io
 Debe:
 
 - utilizar `/srv/www/docs` como raíz;
-- servir la página inicial de la documentación;
-- permitir el listado automático únicamente en `/informes/`.
+- servir su página inicial;
+- permitir `autoindex` únicamente en `/informes/`.
 
-Después de cambiar la configuración:
+Después:
 
 ```bash
 docker compose exec web nginx -t
 docker compose exec web nginx -s reload
 ```
 
-**Comprueba:**
+Comprueba:
 
 ```text
 http://escaparate.127.0.0.1.nip.io/
-→ catálogo con productos
+→ catálogo
 
 http://docs.127.0.0.1.nip.io/
 → documentación
 
 http://docs.127.0.0.1.nip.io/informes/
-→ listado navegable de informes
+→ listado de informes
 ```
 
-Copia en `actividad-3.1.md` las líneas relevantes de `dig` e indica qué representan el registro, la dirección y el TTL.
-
-**Captura 2:** catálogo y documentación funcionando mediante los dos nombres distintos.
+**Evidencia 2:** catálogo y documentación funcionando mediante los dos nombres diferentes.
 
 !!! question "Reflexiona"
-    Los dos nombres resuelven a `127.0.0.1` y llegan al puerto 80 del mismo contenedor. ¿Qué dato de la petición HTTP permite a Nginx saber qué bloque `server` debe utilizar?
+    Ambos nombres resuelven a `127.0.0.1` y llegan al puerto 80 del mismo Nginx. ¿Qué información de la petición HTTP permite seleccionar un bloque `server` distinto?
 
-!!! warning "Si `nip.io` no resuelve en la red del centro"
-    Añade temporalmente a `/etc/hosts`:
+!!! warning "Si `nip.io` no funciona en la red del centro"
+    Puedes añadir temporalmente:
 
     ```text
     127.0.0.1 escaparate.127.0.0.1.nip.io
     127.0.0.1 docs.127.0.0.1.nip.io
     ```
 
-    El navegador utilizará esas entradas. `dig`, sin embargo, seguirá consultando DNS directamente y no utilizará `/etc/hosts`.
+    a `/etc/hosts` para que el navegador pueda resolver ambos nombres.
 
-    Para conservar la parte de DNS de la actividad, realiza entonces `dig` sobre un nombre público que sí resuelva y documenta su tipo de registro y TTL.
+    Recuerda: `dig` seguirá consultando DNS y no utilizará `/etc/hosts`. Si la red bloquea `nip.io`, documenta ese hecho y realiza la observación DNS sobre otro nombre público que sí pueda resolver.
 
 ---
 
 ## Paso 3: Decide qué ocurre con un nombre desconocido
 
-Prueba un nombre que no hayas configurado:
+Prueba:
 
 ```bash
 curl -i http://cualquier-cosa.127.0.0.1.nip.io/
 ```
 
-Observa qué sitio responde.
+Observa qué sitio responde antes de modificar la configuración.
 
-Añade después un bloque `server` explícito que actúe como **servidor por defecto** y cuya única respuesta sea:
+Añade un bloque `server` explícito que:
 
-```text
-404
+- sea `default_server`;
+- no represente ninguno de tus sitios;
+- devuelva siempre `404`.
+
+Valida y recarga:
+
+```bash
+docker compose exec web nginx -t
+docker compose exec web nginx -s reload
 ```
-
-Valida y recarga Nginx.
 
 Repite la petición.
 
@@ -333,140 +333,123 @@ Repite la petición.
 
 - los dos nombres válidos siguen funcionando;
 - un nombre desconocido devuelve `404`;
-- no se muestra accidentalmente ni el catálogo ni la documentación.
+- no aparece accidentalmente catálogo ni documentación.
 
-Anota en `actividad-3.1.md` qué sitio respondía antes de declarar el servidor por defecto y qué ocurre después.
-
-La comprobación final de este `404` se incluirá junto con la evidencia del paso siguiente.
+En `actividad-3.1.md` explica brevemente qué ocurría antes y después de declarar el servidor por defecto.
 
 !!! question "Reflexiona"
-    ¿Por qué es más seguro declarar explícitamente qué debe ocurrir con un nombre desconocido que aceptar el comportamiento por defecto del servidor?
+    ¿Por qué es preferible decidir explícitamente qué debe responder un nombre desconocido?
 
 ---
 
-## Paso 4: Entrega eficientemente el contenido estático
+## Paso 4: Aplica políticas al contenido estático
 
-Hasta ahora Nginx ya sirve directamente HTML, CSS, JavaScript e imágenes. Ahora vas a comprobar otra ventaja de separar la entrega de contenido estático de la lógica de la aplicación: **el servidor web puede aplicar políticas específicas de compresión y caché**.
+Nginx ya sirve directamente HTML, CSS, JavaScript e imágenes. Ahora aplicarás dos políticas propias de esa capa: **compresión** y **caché**.
 
-No necesitas descubrir la sintaxis por tu cuenta. Añade al bloque `server` del catálogo esta configuración:
+Añade al bloque del catálogo:
 
 ```nginx
-# Activa la compresión de respuestas.
 gzip on;
-
-# Informa a las cachés de que la respuesta puede variar
-# según si el cliente acepta o no gzip.
 gzip_vary on;
-
-# HTML ya está contemplado por Nginx al activar gzip.
-# Aquí añadimos otros tipos de contenido textual.
 gzip_types text/css application/javascript application/json;
 
-# Los recursos estáticos pueden conservarse durante más tiempo
-# en la caché del navegador.
 location ~* \.(css|js|png|jpg|jpeg|svg|webp)$ {
     expires 7d;
 }
 ```
 
-### 4.1. Qué hace cada directiva
+Interpreta cada decisión:
 
-| Directiva | Qué consigue |
+| Directiva | Objetivo |
 |---|---|
-| `gzip on` | activa la compresión proporcionada por el módulo HTTP gzip de Nginx |
-| `gzip_vary on` | añade información para distinguir respuestas comprimidas y no comprimidas en las cachés |
-| `gzip_types` | indica otros tipos de contenido textual que pueden comprimirse |
-| `location ~* ...` | aplica una regla a determinados tipos de fichero |
-| `expires 7d` | permite que esos recursos permanezcan más tiempo en la caché del navegador |
+| `gzip on` | activar compresión |
+| `gzip_vary on` | distinguir variantes según `Accept-Encoding` |
+| `gzip_types` | añadir tipos textuales comprimibles |
+| `expires 7d` | permitir una caché más larga para ciertos recursos |
 
-No incluimos JPEG o PNG en `gzip_types`: son formatos que ya almacenan la información comprimida y volver a comprimirlos suele aportar poco o nada.
+`text/html` ya está contemplado por el módulo gzip. No añadimos JPEG o PNG a `gzip_types` porque ya utilizan compresión propia.
 
-Tampoco aplicamos esta política de siete días al HTML ni a `/api/`. Los recursos estáticos suelen cambiar de forma más controlada; una respuesta dinámica puede depender del estado actual de la aplicación.
+!!! note "No copies la misma política a `/api/`"
+    Una respuesta dinámica también puede utilizar caché, pero su política debe decidirse según el significado y la volatilidad del dato.
 
-!!! note "Dinámico no significa nunca cacheable"
-    Una respuesta de una API también puede diseñarse para utilizar caché. La idea de esta práctica es más sencilla: **no debes aplicar automáticamente a una respuesta dinámica la misma política larga que a un CSS, un JavaScript o una imagen**.
-
-### 4.2. Valida y recarga
-
-Antes de comprobar nada:
+### 4.1. Valida y recarga
 
 ```bash
 docker compose exec web nginx -t
 docker compose exec web nginx -s reload
 ```
 
-### 4.3. Comprueba gzip sobre un recurso estático
+### 4.2. Comprueba el CSS
 
-Utiliza el CSS principal:
-
-```text
-/css/app.css
-```
-
-Inspecciona las cabeceras:
+Consulta:
 
 ```bash
-curl -I -H "Accept-Encoding: gzip" \
+curl -I \
+  -H "Accept-Encoding: gzip" \
   http://escaparate.127.0.0.1.nip.io/css/app.css
 ```
 
-Localiza, como mínimo:
+Busca:
 
 ```text
 Content-Encoding: gzip
 Cache-Control: ...
 ```
 
-Después mide los bytes transferidos con y sin compresión:
+Mide después el cuerpo real:
 
 ```bash
-curl -s -H "Accept-Encoding: identity" -o /dev/null \
+curl -s \
+  -H "Accept-Encoding: identity" \
+  -o /dev/null \
   -w "sin comprimir: %{size_download} bytes\n" \
   http://escaparate.127.0.0.1.nip.io/css/app.css
 
-curl -s -H "Accept-Encoding: gzip" -o /dev/null \
+curl -s \
+  -H "Accept-Encoding: gzip" \
+  -o /dev/null \
   -w "comprimido:   %{size_download} bytes\n" \
   http://escaparate.127.0.0.1.nip.io/css/app.css
 ```
 
-Anota los resultados:
+Completa:
 
 | Comprobación | Resultado |
 |---|---|
 | CSS sin comprimir | |
 | CSS con gzip | |
-| `Content-Encoding` del CSS | |
-| `Cache-Control` del CSS | |
+| `Content-Encoding` | |
+| `Cache-Control` | |
 
-### 4.4. Contrasta con una respuesta dinámica
+### 4.3. Contrasta con una respuesta dinámica
 
-Consulta ahora las cabeceras de readiness mediante una petición real `GET`:
+Consulta mediante `GET`:
 
 ```bash
 curl -s -D - -o /dev/null \
   http://escaparate.127.0.0.1.nip.io/api/salud/listo
 ```
 
-Compara esa respuesta con la del CSS.
+Compara sus cabeceras con las del CSS.
 
-!!! question "Reflexiona"
-    1. ¿Por qué `app.css` puede beneficiarse tanto de gzip como de una caché relativamente larga?
-    2. ¿Por qué no deberíamos aplicar automáticamente esa misma política de caché a todas las respuestas de `/api/`?
-    3. ¿Por qué comprimir otra vez un JPEG o PNG suele aportar poco?
-
-Para terminar, ejecuta también:
+Finalmente:
 
 ```bash
 curl -i http://cualquier-cosa.127.0.0.1.nip.io/
 ```
 
-**Captura 3:** una única captura de terminal donde se vea el `404` para el nombre desconocido y las mediciones del CSS con y sin gzip.
+**Evidencia 3:** una captura de terminal donde se vean el `404` del nombre desconocido y las mediciones del CSS con y sin gzip.
+
+!!! question "Reflexiona"
+    1. ¿Por qué un CSS es buen candidato para compresión y caché?
+    2. ¿Por qué no aplicarías automáticamente esa misma caché a todas las respuestas de `/api/`?
+    3. ¿Por qué gzip aporta poco sobre JPEG o PNG?
 
 ---
 
-## Paso 5: Cierra la sesión
+## Paso 5: Documenta e integra
 
-Antes de terminar, valida el estado final:
+Valida el estado final:
 
 ```bash
 docker compose exec web nginx -t
@@ -474,13 +457,13 @@ docker compose ps
 git status
 ```
 
-El despliegue debe cumplir:
+Debe cumplirse:
 
 ```text
 web
 → publica 80
-→ sirve el catálogo
-→ sirve la documentación
+→ sirve catálogo
+→ sirve documentación
 → reenvía /api/ hacia app
 
 app
@@ -490,16 +473,14 @@ bd
 → sin puerto publicado
 ```
 
-### Actualiza solo la información nueva del `README.md`
+### 5.1. Actualiza el README
 
-El procedimiento general de Compose ya quedó documentado en la actividad anterior. No lo repitas.
-
-Añade una sección breve con:
+No repitas toda la puesta en marcha de Compose. Añade únicamente la información nueva:
 
 - URL del catálogo;
-- URL de la documentación;
-- URL de los informes;
-- endpoint `/api/salud/listo` a través de Nginx;
+- URL de documentación;
+- URL de informes;
+- `/api/salud/listo` a través de Nginx;
 - comandos para validar y recargar Nginx.
 
 Por ejemplo:
@@ -515,110 +496,80 @@ Informes:
 http://docs.127.0.0.1.nip.io/informes/
 ```
 
-Revisa `entregas/tema3/actividad-3.1/actividad-3.1.md` y comprueba que contiene:
+### 5.2. Revisa la entrega
 
-- respuestas a las reflexiones;
+`actividad-3.1.md` debe contener:
+
+- reflexión sobre la nueva puerta de entrada;
 - interpretación básica de `dig`;
-- mediciones de gzip;
-- las tres capturas solicitadas.
+- reflexión sobre `Host`;
+- comportamiento del `default_server`;
+- mediciones y reflexión sobre gzip/caché;
+- tres evidencias.
 
-Después sigue el flujo habitual:
-
-1. registra los cambios utilizando la convención de commits del módulo;
-2. publica `sesion-06`;
-3. abre una Pull Request hacia `main`;
-4. revisa la PR;
-5. fusiona mediante **Create a merge commit**;
-6. actualiza tu `main` local.
-
-No necesitas añadir una captura específica de la Pull Request: su existencia y fusión podrán comprobarse directamente en el repositorio.
-
----
-
-## Verificación
-
-La práctica se comprobará desde un clon limpio. Ese clon debe contener ya el frontend, la documentación y la configuración necesarias para levantar ambos sitios.
-
-```bash
-git clone https://github.com/<usuario>/daw-despliegue.git verifica
-cd verifica/practicas/compose
-
-cp .env.example .env
-# se completarán los valores locales necesarios
-
-docker compose up -d
-docker compose ps
-docker compose exec web nginx -t
-```
-
-Se comprobará:
-
-```bash
-curl -fsS http://escaparate.127.0.0.1.nip.io/ > /dev/null
-curl -fsS http://escaparate.127.0.0.1.nip.io/api/salud/listo
-curl -fsS http://docs.127.0.0.1.nip.io/ > /dev/null
-curl -fsS http://docs.127.0.0.1.nip.io/informes/ | head
-```
-
-Un nombre no configurado debe devolver `404`:
-
-```bash
-curl -s -o /dev/null -w "%{http_code}\n" \
-  -H "Host: desconocido.127.0.0.1.nip.io" http://127.0.0.1/
-```
-
-También se comprobará que:
+Registra los cambios, publica `sesion-06` y abre:
 
 ```text
-web → publica 80
-app → sin publicación
-bd  → sin publicación
+sesion-06 → main
 ```
 
-y que el CSS principal:
+Fusiona mediante **Create a merge commit** cuando las comprobaciones habituales sean correctas.
 
-```text
-/css/app.css
+Actualiza:
+
+```bash
+git switch main
+git pull --ff-only
 ```
-
-- puede enviarse con `Content-Encoding: gzip`;
-- transfiere menos bytes al aceptar gzip;
-- recibe una política de caché más larga que la aplicada por defecto a la respuesta dinámica de `/api/salud/listo`.
-
-Finalmente se verificará que:
-
-- `practicas/nginx/conf.d/sitios.conf` está versionado;
-- `practicas/nginx/sitio-escaparate/escaparate/` está versionado;
-- `practicas/nginx/sitio-docs/` está versionado;
-- `README.md` contiene las nuevas URLs y los comandos básicos de Nginx;
-- la actividad y sus tres capturas están en `entregas/tema3/actividad-3.1/`;
-- la rama `sesion-06` llegó a `main` mediante Pull Request.
 
 ---
 
 ## Qué se entrega
 
-- [ ] `entregas/tema3/actividad-3.1/actividad-3.1.md` con resultados y reflexiones.
-- [ ] `entregas/tema3/actividad-3.1/img/` con **tres capturas** enlazadas mediante rutas relativas.
-- [ ] `practicas/compose/compose.yaml` actualizado con `web`, `app` y `bd`.
-- [ ] `practicas/nginx/conf.d/sitios.conf` con los dos hosts y el servidor por defecto.
-- [ ] Frontend estático versionado en `practicas/nginx/sitio-escaparate/escaparate/`.
-- [ ] Documentación versionada en `practicas/nginx/sitio-docs/`.
-- [ ] Catálogo y documentación accesibles mediante nombres distintos en el puerto 80.
-- [ ] `app` y `bd` sin puertos publicados al anfitrión.
-- [ ] Comprobación de gzip y caché sobre `/css/app.css`.
-- [ ] Comparación conceptual entre un recurso estático y una respuesta dinámica de `/api/`.
-- [ ] `README.md` actualizado únicamente con la información nueva de Nginx.
-- [ ] Pull Request `sesion-06 → main` fusionada mediante merge commit.
+Antes de terminar, comprueba:
+
+- [ ] `practicas/compose/compose.yaml` con `web`, `app` y `bd`;
+- [ ] `practicas/nginx/conf.d/sitios.conf`;
+- [ ] frontend estático versionado;
+- [ ] documentación versionada;
+- [ ] dos hosts virtuales funcionando en el puerto 80;
+- [ ] `default_server` para nombres desconocidos;
+- [ ] `app` y `bd` sin puertos publicados;
+- [ ] gzip y caché comprobados sobre `/css/app.css`;
+- [ ] README con las nuevas URLs y comandos de Nginx;
+- [ ] `actividad-3.1.md` con reflexiones, mediciones y tres evidencias;
+- [ ] Pull Request `sesion-06 → main` fusionada.
+
+!!! info "Dónde queda la entrega"
+    Configuración, frontend, documentación y evidencias quedan versionados en el repositorio. No se genera un documento adicional fuera de él.
+
+??? info "Cómo se comprobará"
+    Desde un clon limpio se podrá levantar el conjunto y comprobar:
+
+    ```bash
+    docker compose up -d
+    docker compose exec web nginx -t
+
+    curl -fsS http://escaparate.127.0.0.1.nip.io/ > /dev/null
+    curl -fsS http://escaparate.127.0.0.1.nip.io/api/salud/listo
+    curl -fsS http://docs.127.0.0.1.nip.io/ > /dev/null
+    curl -fsS http://docs.127.0.0.1.nip.io/informes/ > /dev/null
+    ```
+
+    También deberá comprobarse que:
+
+    - solo `web` publica puerto;
+    - un host desconocido devuelve `404`;
+    - el CSS puede recibirse con gzip;
+    - el CSS tiene una política de caché más larga que la respuesta de readiness;
+    - todos los ficheros técnicos y evidencias están versionados.
 
 ---
 
 ## ✅ Cierre
 
-El despliegue ya no expone directamente Spring Boot/Tomcat. Nginx se ha convertido en la puerta de entrada, sirve los recursos estáticos con reglas propias y decide qué sitio debe responder según el nombre solicitado.
+Nginx se ha convertido en la **puerta de entrada pública** del despliegue. Puede servir directamente contenido estático, seleccionar sitios por nombre y aplicar políticas propias de entrega.
 
-La aplicación no ha dejado de tener servidor: **Tomcat sigue embebido dentro del proceso Spring Boot**. Lo que ha cambiado es qué pieza recibe primero las conexiones públicas.
+Spring Boot no ha desaparecido: su Tomcat embebido continúa ejecutando la aplicación detrás de Nginx.
 
-También has comprobado que DNS y HTTP resuelven problemas diferentes: DNS lleva el nombre hasta una dirección, mientras que la cabecera `Host` permite al servidor decidir qué sitio debe responder una vez establecida la conexión.
-
-En la siguiente sesión mantendrás exactamente esa puerta, pero abrirás el bloque `/api/` que hoy has utilizado como caja negra. Allí aprenderás qué significa actuar como proxy inverso, qué información hay que reenviar y cómo repartir el tráfico entre varias copias de Escaparate.
+En la siguiente sesión abrirás la caja negra de `/api/` y estudiarás cómo funciona realmente el **proxy inverso**.

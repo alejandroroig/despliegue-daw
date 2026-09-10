@@ -5,46 +5,43 @@
 
 ---
 
-Hasta ahora has podido levantar varios contenedores mediante órdenes `docker run`, redes y variables de entorno. Pero ese conocimiento, qué imágenes forman el sistema, cómo se conectan, qué configuración reciben y qué datos deben sobrevivir, **también forma parte del despliegue**. Si solo vive en tu memoria o en el historial del terminal, no es reproducible.
+Hasta ahora has ejecutado Escaparate mediante varios comandos: crear una red, arrancar PostgreSQL, pasar variables y poner en marcha la aplicación.
 
-Docker Compose permite trasladar esa descripción a un fichero versionado. Para estudiar el patrón utilizaremos una arquitectura muy habitual de dos servicios:
+El problema ya no es saber hacerlo una vez. El problema es que **toda esa información también forma parte del despliegue**. Si solo existe en tu memoria o en el historial del terminal, otra persona tendrá que reconstruir el procedimiento.
 
-```mermaid
-flowchart LR
-    N["Navegador"] --> A["Spring Boot<br/>frontend + API<br/>Tomcat embebido"]
-    A --> D[("PostgreSQL")]
-```
+Docker Compose permite trasladar esa descripción a un fichero versionado.
 
-El despliegue tendrá dos servicios: la aplicación y la base de datos. En este punto el navegador entra directamente a la aplicación, cuyo Tomcat embebido atiende HTTP en el puerto 8080.
+!!! abstract "Mapa de la sesión"
+    **Declarar → conectar → persistir → configurar → esperar → operar**
 
-El objetivo de esta sesión es describir y operar correctamente esa relación, no añadir más piezas. En el siguiente bloque aparecerá Nginx como servidor web y punto de entrada separado; entonces la aplicación seguirá ejecutándose igual, pero dejará de ser necesariamente la pieza expuesta directamente al cliente.
+    Trabajaremos con dos servicios, `app` y `bd`. El objetivo no es añadir más componentes, sino describir correctamente **cómo deben ejecutarse y relacionarse**.
 
 ---
 
-## 🧾 1. De varios `docker run` a un despliegue declarado
+## 🧾 1. De comandos a un estado declarado
 
-Con contenedores sueltos, un procedimiento puede acabar convertido en varias órdenes como estas:
+Con contenedores sueltos, el despliegue puede terminar convertido en una secuencia como esta:
 
 ```bash
-docker network create mi-red
+docker network create escaparate-red
 
 docker run -d --name bd \
-  --network mi-red \
+  --network escaparate-red \
   -e POSTGRES_USER=usuario \
   -e POSTGRES_PASSWORD=clave \
-  -e POSTGRES_DB=aplicacion \
+  -e POSTGRES_DB=escaparate \
   postgres:18-alpine
 
 docker run -d --name app \
-  --network mi-red \
+  --network escaparate-red \
   -p 8080:8080 \
   -e DB_HOST=bd \
   mi-aplicacion:1.0.0
 ```
 
-Funciona, pero la infraestructura está escondida dentro de una secuencia de comandos.
+Funciona, pero la arquitectura está escondida dentro de las órdenes.
 
-**Docker Compose** permite describir ese estado en un fichero `compose.yaml`:
+Compose permite declarar el mismo conjunto en `compose.yaml`:
 
 ```yaml
 services:
@@ -53,7 +50,7 @@ services:
     environment:
       POSTGRES_USER: usuario
       POSTGRES_PASSWORD: clave
-      POSTGRES_DB: aplicacion
+      POSTGRES_DB: escaparate
 
   app:
     image: mi-aplicacion:1.0.0
@@ -69,159 +66,131 @@ Después:
 docker compose up -d
 ```
 
-Compose lee la descripción y crea lo necesario.
-
 La diferencia importante es conceptual:
 
 ```text
 docker run
-→ describes una acción
+→ describes una acción concreta
 
 compose.yaml
 → describes el estado que quieres obtener
 ```
 
-Por eso decimos que Compose utiliza un enfoque **declarativo**.
+Compose interpreta esa declaración y crea o actualiza los recursos necesarios.
 
-!!! warning "Dos formas antiguas que todavía aparecen en tutoriales"
-    La clave superior `version: "3.8"` ya no es necesaria en Compose actual. También debes utilizar `docker compose`, como subcomando de Docker, y no el antiguo ejecutable `docker-compose`.
+!!! warning "Sintaxis actual"
+    En Compose moderno no necesitas añadir una clave superior `version:`. Además, utilizaremos `docker compose` como subcomando de Docker, no el antiguo ejecutable `docker-compose`.
 
 ---
 
-## 🧩 2. La estructura de `compose.yaml`
+## 🧩 2. Servicios, red y puertos
 
-La pieza central es:
+Un proyecto Compose se organiza alrededor de:
 
 ```yaml
 services:
 ```
 
-Cada entrada representa un **servicio** que Compose debe ejecutar.
+Cada entrada representa un **servicio**:
 
 ```yaml
 services:
-  web:
-    image: nginx:1.30.4-alpine
+  app:
+    image: mi-aplicacion:1.0.0
 
   bd:
     image: postgres:18-alpine
 ```
 
-Los nombres `web` y `bd` no son decorativos. Identifican los servicios dentro del proyecto y, como verás enseguida, también sirven para que se encuentren por red.
+Los nombres `app` y `bd` identifican los servicios y también sirven para que se localicen dentro de la red del proyecto.
 
-Las opciones que utilizarás con más frecuencia son:
+Las claves que utilizarás en esta sesión son:
 
 | Clave | Qué describe |
 |---|---|
-| `image` | imagen que debe ejecutar el servicio |
+| `image` | imagen que ejecuta el servicio |
 | `ports` | puertos publicados hacia el anfitrión |
-| `environment` | variables que recibe el contenedor |
+| `environment` | variables entregadas al contenedor |
 | `volumes` | almacenamiento o ficheros montados |
-| `depends_on` | dependencias de arranque |
-| `healthcheck` | condición utilizada para comprobar la salud del servicio |
+| `depends_on` | relación de arranque entre servicios |
+| `healthcheck` | condición para evaluar el estado del servicio |
 
-Un fichero Compose no es un script. El orden visual de los servicios en el YAML no determina por sí solo el orden correcto de disponibilidad.
+La arquitectura base de esta sesión puede resumirse así:
 
-!!! tip "El nombre del proyecto"
-    Compose agrupa los contenedores, redes y volúmenes bajo un nombre de proyecto. Por defecto suele derivarlo del directorio del proyecto. También puedes fijarlo explícitamente:
+![Anatomía de un despliegue con Docker Compose](img/anatomia-despliegue-compose.png)
 
-    ```yaml
-    name: mi-proyecto
-    ```
+### 2.1. Qué muestra realmente la imagen
 
-    Esto ayuda a obtener nombres estables aunque el repositorio se clone en otra carpeta.
+La figura resume cuatro ideas que vas a usar continuamente en la práctica:
 
----
+1. **`app` y `bd` son servicios distintos** dentro del mismo proyecto Compose.
+2. **Solo `app` publica un puerto** hacia el anfitrión, en este caso `8080:8080`.
+3. **`app` localiza a `bd` por nombre de servicio**, usando `bd:5432`.
+4. **Los datos viven en un volumen** con un ciclo de vida distinto al contenedor.
 
-## 🕸️ 3. La red de Compose y los nombres de servicio
+Dicho de otra forma: el navegador entra por `app`, `app` se conecta internamente con `bd`, y `bd` guarda la información en `datos-bd`.
 
-Compose crea normalmente una **red propia para el proyecto** y conecta a ella los servicios.
+### 2.2. Comunicación interna por nombre
 
-Dentro de esa red, cada servicio puede localizar a otro mediante su **nombre de servicio**.
+Compose crea normalmente una red propia y conecta a ella los servicios.
+
+Por eso `app` puede utilizar:
 
 ```yaml
-services:
-  bd:
-    image: postgres:18-alpine
-
-  app:
-    image: mi-aplicacion:1.0.0
-    environment:
-      DB_HOST: bd
-      DB_PORT: 5432
+environment:
+  DB_HOST: bd
+  DB_PORT: 5432
 ```
 
-La aplicación no necesita conocer la IP de PostgreSQL:
+sin conocer una dirección IP concreta.
 
-```mermaid
-flowchart LR
-    A["app"] -->|"bd:5432"| D["bd"]
-    A -.-> DNS["DNS interno<br/>de Docker"]
-    DNS -.-> D
+Las IP pueden cambiar al recrear contenedores. El **nombre de servicio** es la referencia estable dentro de la red de Compose.
+
+!!! tip "Piensa en `bd` como un nombre interno"
+    Dentro del proyecto Compose, `bd` funciona como el nombre al que otros servicios pueden dirigirse. Para `app`, conectarse a PostgreSQL significa conectarse a `bd:5432`.
+
+### 2.3. Red interna no significa puerto publicado
+
+Entre servicios de la misma red se utiliza el puerto interno del contenedor:
+
+```text
+app → bd:5432
 ```
 
-Las direcciones IP pueden cambiar cuando los contenedores se recrean. El nombre de servicio es la referencia estable.
+Eso no obliga a publicar PostgreSQL hacia el anfitrión.
 
-Fíjate además en `5432`. Entre contenedores de la misma red se utiliza el **puerto en el que escucha realmente el servicio dentro del contenedor**.
-
-No hace falta publicarlo en el anfitrión para que otro contenedor pueda utilizarlo.
-
-Una comprobación especialmente útil es esta: si una aplicación se comunica correctamente con su base de datos mediante `bd:5432` mientras la base de datos no publica ningún puerto hacia el anfitrión, ya has demostrado que la comunicación ocurre por la red interna del proyecto.
-
-!!! example "Dentro y fuera son espacios distintos"
-    El nombre `bd` puede resolverse desde otro contenedor conectado a la red de Compose, pero tu navegador o tu terminal en el anfitrión no tienen por qué saber qué significa `bd`.
-
----
-
-## 🚪 4. Publicar solo lo que necesita recibir tráfico externo
-
-Una publicación:
+Para que el navegador llegue a Escaparate sí necesitamos una entrada como:
 
 ```yaml
 ports:
   - "8080:8080"
 ```
 
-significa:
+La diferencia esencial es esta:
 
-```text
-puerto del anfitrión : puerto del contenedor
-```
+- **red interna**: comunicación entre servicios del propio proyecto;
+- **puerto publicado**: acceso desde fuera del proyecto, por ejemplo desde el navegador o desde el host.
 
-y crea una entrada desde fuera de la red Docker hacia ese servicio.
+En este despliegue:
 
-Para una aplicación web integrada con base de datos, un esquema razonable es:
+- `app` **sí** publica puerto porque debe recibir tráfico desde fuera;
+- `bd` **no necesita** publicar puerto porque solo la usa `app`.
 
-```text
-Navegador
-    │
-    │ localhost:8080
-    ▼
- app:8080
-    │
-    │ bd:5432
-    ▼
- PostgreSQL
-```
+!!! tip "Publica solo lo necesario"
+    Cuantos más puertos publiques, más superficie expones hacia el exterior. Si un servicio solo necesita ser consumido por otros contenedores, es preferible dejarlo accesible únicamente en la red interna.
 
-Solo `app` necesita publicar un puerto.
-
-La base de datos puede seguir siendo accesible para `app` dentro de la red aunque no tenga ningún bloque `ports:`.
-
-Esto reduce la **superficie expuesta** del despliegue. Un servicio interno no debe publicarse solo por comodidad.
-
-!!! note "`EXPOSE` y `ports` siguen siendo cosas diferentes"
-    `EXPOSE` dentro de un Dockerfile documenta un puerto esperado. `ports` en Compose publica realmente un puerto del contenedor hacia el anfitrión.
+!!! note "`EXPOSE` y `ports` no son equivalentes"
+    `EXPOSE` en un Dockerfile documenta un puerto esperado. `ports` en Compose crea realmente una publicación hacia el anfitrión.
 
 ---
 
-## 💾 5. Volúmenes y montajes
+## 💾 3. Persistencia y montajes
 
-La capa de escritura de un contenedor desaparece cuando el contenedor se elimina. Compose permite declarar almacenamiento que queda fuera de esa capa.
+La capa de escritura de un contenedor desaparece cuando ese contenedor se elimina. Compose permite declarar almacenamiento con un ciclo de vida diferente.
 
-### 5.1. Volúmenes con nombre
+### 3.1. Volúmenes con nombre
 
-Para datos persistentes utilizaremos normalmente un **volumen con nombre**:
+Para PostgreSQL utilizaremos un volumen:
 
 ```yaml
 services:
@@ -237,35 +206,36 @@ volumes:
 Hay dos partes:
 
 ```text
-dentro del servicio
-→ dónde se monta
+servicio bd
+→ monta datos-bd en una ruta del contenedor
 
-sección global volumes
-→ qué volumen administra Docker
+sección volumes
+→ declara el volumen que administra Docker
 ```
 
-En PostgreSQL 18 utilizaremos:
+!!! info "PostgreSQL 18"
+    En la imagen oficial de PostgreSQL 18 el volumen se declara en:
 
-```text
-/var/lib/postgresql
-```
+    ```text
+    /var/lib/postgresql
+    ```
 
-La imagen oficial de PostgreSQL 18 reorganizó el directorio de datos respecto a versiones anteriores. Para las prácticas del módulo no debes reutilizar automáticamente ejemplos antiguos que monten `/var/lib/postgresql/data`.
+    En versiones 17 y anteriores era habitual montar `/var/lib/postgresql/data`. No reutilices esa ruta automáticamente para PostgreSQL 18.
 
-El volumen tiene un ciclo de vida distinto al contenedor:
+El volumen no tiene el mismo ciclo de vida que el contenedor:
 
-| Operación | Contenedores | Red | Volumen con nombre |
+| Operación | Contenedores | Red | Volumen |
 |---|---|---|---|
-| `docker compose stop` | se detienen | permanece | permanece |
-| `docker compose down` | se eliminan | se elimina | permanece |
+| `docker compose stop` | se conservan | se conserva | se conserva |
+| `docker compose down` | se eliminan | se elimina | se conserva |
 | `docker compose down -v` | se eliminan | se elimina | **se elimina** |
 
-!!! danger "`down -v` destruye los datos del volumen"
-    Es adecuado para una práctica en la que quieres comenzar desde cero. No debe convertirse en un comando automático que escribes sin pensar.
+!!! danger "`down -v` elimina los datos del volumen"
+    Es útil cuando quieres empezar una práctica desde cero. No debe convertirse en un comando que ejecutes automáticamente sin comprobar qué estás destruyendo.
 
-### 5.2. Montajes de ficheros o directorios del anfitrión
+### 3.2. Bind mounts
 
-También puedes montar un fichero existente de tu equipo:
+También puedes hacer visible dentro de un contenedor un fichero o directorio del anfitrión:
 
 ```yaml
 services:
@@ -274,32 +244,26 @@ services:
       - ./config/inicial.sql:/docker-entrypoint-initdb.d/00-inicial.sql:ro
 ```
 
-Aquí no se crea un volumen gestionado por Docker. Se hace visible un fichero del anfitrión dentro del contenedor.
+Aquí:
 
-El sufijo:
+- `./config/inicial.sql` pertenece al anfitrión;
+- `/docker-entrypoint-initdb.d/00-inicial.sql` es la ruta dentro del contenedor;
+- `:ro` indica solo lectura.
 
-```text
-:ro
-```
+!!! warning "Un montaje puede ocultar contenido de la imagen"
+    Si montas un directorio completo sobre una ruta que ya contiene ficheros, esos ficheros quedan ocultos mientras exista el montaje.
 
-indica **solo lectura**.
-
-Este mecanismo es útil para introducir configuración o recursos de una práctica sin construir otra imagen.
-
-!!! warning "Montar encima puede ocultar lo que ya contenía la imagen"
-    Si montas un directorio completo sobre una ruta que ya contiene ficheros dentro de la imagen, esos ficheros quedan ocultos mientras exista el montaje.
-
-    Si solo necesitas añadir un fichero, monta **ese fichero concreto** en lugar de sustituir todo el directorio.
+    Si solo necesitas añadir un fichero, monta **ese fichero concreto**.
 
 ---
 
-## 🔧 6. Configuración, interpolación y `.env`
+## 🔧 4. Configuración externa y `.env`
 
-El `compose.yaml` se versiona. Las credenciales reales de tu equipo, no.
+`compose.yaml` debe poder versionarse. Los valores locales o sensibles de cada equipo, no.
 
-### 6.1. Interpolar valores sin escribirlos en el YAML
+### 4.1. Interpolación
 
-Compose puede sustituir variables:
+Compose puede sustituir valores antes de crear los contenedores:
 
 ```yaml
 services:
@@ -310,28 +274,15 @@ services:
       POSTGRES_DB: ${BD_NOMBRE}
 ```
 
-En nuestro flujo de trabajo utilizaremos un fichero `.env` junto al `compose.yaml`:
-
-```text
-BD_USUARIO=appuser
-BD_CLAVE=una-clave-local
-BD_NOMBRE=appdb
-```
-
-Ese fichero:
+Junto a `compose.yaml` podemos tener:
 
 ```text
 .env
-→ contiene valores locales
+→ valores locales
 → no se versiona
-```
 
-Y se acompaña de:
-
-```text
 .env.example
-→ contiene las mismas claves
-→ usa valores ficticios o sustituibles
+→ documenta las claves necesarias
 → sí se versiona
 ```
 
@@ -340,56 +291,66 @@ Por ejemplo:
 ```text
 BD_USUARIO=usuario
 BD_CLAVE=cambia-esta-clave
-BD_NOMBRE=aplicacion
+BD_NOMBRE=escaparate
 ```
 
 !!! warning "`.env` no es un gestor profesional de secretos"
-    Aquí resuelve dos problemas didácticos importantes: sacar valores locales del YAML y evitar que entren en Git. En infraestructuras reales se utilizan mecanismos específicos de gestión de secretos.
+    Aquí lo utilizamos para separar valores locales del YAML y evitar que entren en Git. En infraestructuras reales existen mecanismos específicos para gestionar secretos.
 
-### 6.2. Interpolación de Compose y variables del contenedor
-
-Estas dos cosas se parecen, pero ocurren en momentos diferentes:
-
-```yaml
-POSTGRES_USER: ${BD_USUARIO}
-```
-
-Primero:
-
-```text
-Compose
-→ lee ${BD_USUARIO}
-→ sustituye el valor
-```
-
-Después:
-
-```text
-Docker
-→ crea el contenedor
-→ POSTGRES_USER aparece como variable de entorno dentro
-```
-
-Puedes inspeccionar el resultado que Compose ha interpretado con:
+Puedes inspeccionar la configuración final que Compose ha interpretado con:
 
 ```bash
 docker compose config
 ```
 
-Es uno de los comandos más útiles cuando una variable, un puerto o un montaje no tiene el valor esperado.
+!!! danger "`docker compose config` puede mostrar valores interpolados"
+    Revisa la salida antes de guardarla o capturarla. Puede contener contraseñas.
 
-!!! danger "`docker compose config` puede mostrar secretos"
-    El resultado puede contener valores ya interpolados. No publiques ni captures sin revisar una salida que incluya contraseñas reales.
+??? info "Para saber más: exigir una variable"
+    Compose permite fallar con un mensaje claro cuando falta una variable:
+
+    ```yaml
+    POSTGRES_PASSWORD: ${BD_CLAVE:?define BD_CLAVE en .env}
+    ```
+
+    Es útil para evitar que una variable ausente termine sustituida por una cadena vacía.
+
+### 4.2. ¿Quién sustituye cada variable?
+
+Estas dos expresiones no significan exactamente lo mismo:
+
+```text
+${VARIABLE}
+$$VARIABLE
+```
+
+Con:
+
+```yaml
+POSTGRES_USER: ${BD_USUARIO}
+```
+
+Compose sustituye `${BD_USUARIO}` **antes** de crear el contenedor.
+
+En cambio, `$$` permite conservar un signo `$` literal para que una variable pueda evaluarse después dentro del contenedor.
+
+Esta diferencia aparecerá en el `healthcheck`.
 
 ---
 
-## ❤️ 7. Arrancar un contenedor no significa que el servicio esté preparado
+## ❤️ 5. Arrancado no significa preparado
 
-Uno de los problemas más habituales aparece cuando un servicio depende de otro.
+Cuando un servicio depende de otro hay dos momentos diferentes:
 
-### 7.1. `depends_on` básico solo ordena el arranque
+```text
+contenedor arrancado
+≠
+servicio preparado para trabajar
+```
 
-Puedes escribir:
+### 5.1. `depends_on` básico
+
+La forma corta:
 
 ```yaml
 services:
@@ -398,54 +359,25 @@ services:
       - bd
 ```
 
-Compose hará que `bd` se inicie antes que `app`.
+establece una dependencia de arranque: `bd` debe iniciarse antes que `app`.
 
-Pero hay una diferencia:
+Pero PostgreSQL puede seguir inicializando el directorio de datos cuando el contenedor ya está arrancado.
 
-```text
-contenedor bd iniciado
-≠
-PostgreSQL preparado para aceptar conexiones
-```
-
-Un proceso puede necesitar varios segundos para inicializarse después de que Docker haya creado y arrancado su contenedor.
-
-Por eso un sistema puede fallar de forma aparentemente aleatoria:
-
-```text
-bd arranca
-↓
-app arranca inmediatamente
-↓
-PostgreSQL todavía inicializa datos
-↓
-app intenta conectar
-↓
-fallo
-```
-
-Esperar siempre con:
+Por eso una espera fija como:
 
 ```bash
 sleep 20
 ```
 
-no resuelve el problema correctamente. En una máquina rápida sobra tiempo; en otra más lenta puede no ser suficiente.
+es frágil: puede sobrar en una máquina y quedarse corta en otra.
 
-La solución correcta es **esperar una condición real**.
+### 5.2. `healthcheck` y `service_healthy`
 
-### 7.2. `healthcheck` y `service_healthy`
-
-Un servicio puede declarar cómo comprobar su estado:
+Podemos declarar una condición real:
 
 ```yaml
 services:
   bd:
-    image: postgres:18-alpine
-    environment:
-      POSTGRES_USER: usuario
-      POSTGRES_DB: aplicacion
-
     healthcheck:
       test:
         [
@@ -457,26 +389,17 @@ services:
       retries: 15
 ```
 
-Aquí `pg_isready` comprueba que PostgreSQL está **aceptando conexiones TCP** en el propio contenedor.
+`pg_isready` comprueba si PostgreSQL acepta conexiones.
 
-La opción:
+El uso de:
 
 ```text
 -h 127.0.0.1
 ```
 
-hace explícito que estamos comprobando una conexión de red, no únicamente un socket local.
+es deliberado: durante la inicialización, la imagen oficial de PostgreSQL utiliza temporalmente un servidor que solo escucha mediante socket local. La comprobación TCP no se dará por correcta hasta que termine esa inicialización y arranque el servidor normal.
 
-Los demás valores indican:
-
-| Opción | Significado |
-|---|---|
-| `test` | comando que determina el estado |
-| `interval` | tiempo entre comprobaciones |
-| `timeout` | cuánto puede tardar cada intento |
-| `retries` | fallos consecutivos antes de considerar el servicio no saludable |
-
-Después una dependencia puede esperar a esa condición:
+Después `app` puede esperar a esa condición:
 
 ```yaml
 services:
@@ -490,13 +413,13 @@ El flujo pasa a ser:
 
 ```text
 arranca bd
-↓
-healthcheck falla mientras PostgreSQL inicializa
-↓
+    ↓
+PostgreSQL inicializa
+    ↓
 healthcheck correcto
-↓
+    ↓
 bd = healthy
-↓
+    ↓
 arranca app
 ```
 
@@ -507,37 +430,18 @@ arranca app
     $${POSTGRES_USER}
     ```
 
-    `$$` evita que Compose intente sustituir esa variable al leer el YAML.
+    `$$` evita que Compose intente interpolar la variable. La shell del propio contenedor recibirá `$POSTGRES_USER` y consultará allí su valor.
 
-    El contenedor recibe literalmente:
+### 5.3. Liveness y readiness
 
-    ```text
-    ${POSTGRES_USER}
-    ```
-
-    y es la shell ejecutada por `CMD-SHELL` la que consulta después la variable de entorno del propio contenedor.
-
-    Esta diferencia es importante cuando quieres que una variable sea evaluada **dentro del contenedor** y no por Compose.
-
-### 7.3. Liveness y readiness no preguntan lo mismo
-
-Una comprobación de salud tampoco significa siempre lo mismo.
-
-Una aplicación puede exponer, por ejemplo:
-
-```text
-/api/salud/vivo
-/api/salud/listo
-```
-
-La idea general es:
+Una comprobación también debe responder a una pregunta concreta.
 
 | Comprobación | Pregunta |
 |---|---|
-| **Liveness** | ¿el proceso está vivo? |
-| **Readiness** | ¿está preparado para atender correctamente? |
+| **Liveness** | ¿el proceso sigue vivo? |
+| **Readiness** | ¿puede atender correctamente? |
 
-Una aplicación puede estar viva pero no preparada:
+Por ejemplo:
 
 ```text
 proceso Java activo
@@ -548,110 +452,105 @@ liveness OK
 readiness NO
 ```
 
-En el proyecto del módulo, `/api/salud/listo` aplicará precisamente esta idea comprobando también la disponibilidad de PostgreSQL.
-
-Esto explica por qué hay dos momentos diferentes:
+En Escaparate:
 
 ```text
-bd healthy
-→ ya puede empezar app
+/api/salud/vivo
+→ proceso activo
 
-app responde readiness
-→ el sistema ya puede considerarse preparado
+/api/salud/listo
+→ aplicación preparada y PostgreSQL disponible
 ```
 
-`service_healthy` resuelve la dependencia de arranque entre servicios. El endpoint de readiness permite comprobar después cuándo la aplicación completa está realmente lista.
+`service_healthy` permite coordinar el **arranque entre servicios**. El endpoint de readiness permite comprobar después cuándo la **aplicación completa** está preparada.
 
 ---
 
-## 🧰 8. Operar y diagnosticar un proyecto Compose
+## 🧰 6. Operar y diagnosticar el conjunto
 
-Los comandos principales de esta sesión son:
+No necesitas memorizar todas las opciones. Asocia cada comando con una pregunta.
 
-| Comando | Para qué sirve |
+| Pregunta | Comando |
 |---|---|
-| `docker compose up -d` | crea o actualiza el conjunto y lo deja en segundo plano |
-| `docker compose ps` | muestra estado, puertos y salud de los servicios |
-| `docker compose logs` | muestra los logs del conjunto |
-| `docker compose logs <servicio>` | muestra los logs de un servicio |
-| `docker compose logs -f <servicio>` | sigue los logs en tiempo real |
-| `docker compose stop` | detiene servicios sin eliminarlos |
-| `docker compose start` | vuelve a arrancar los servicios detenidos |
-| `docker compose down` | elimina contenedores y red del proyecto |
-| `docker compose down -v` | además elimina los volúmenes |
-| `docker compose exec <servicio> sh` | ejecuta una shell dentro de un servicio |
-| `docker compose config` | muestra la configuración final interpretada |
+| ¿Cómo creo o actualizo el conjunto? | `docker compose up -d` |
+| ¿Qué estado tiene cada servicio? | `docker compose ps` |
+| ¿Qué está ocurriendo? | `docker compose logs` |
+| ¿Qué dice un servicio concreto? | `docker compose logs <servicio>` |
+| ¿Quiero seguir sus logs? | `docker compose logs -f <servicio>` |
+| ¿Quiero detener sin eliminar? | `docker compose stop` |
+| ¿Quiero volver a arrancar? | `docker compose start` |
+| ¿Quiero desmontar el conjunto? | `docker compose down` |
+| ¿Quiero borrar también volúmenes? | `docker compose down -v` |
+| ¿Qué configuración interpretó Compose? | `docker compose config` |
+| ¿Necesito ejecutar algo dentro? | `docker compose exec <servicio> ...` |
 
-Ante un fallo, aplica la misma rutina que con Docker:
+Ante un fallo:
 
 ```text
 1. docker compose ps
+        ↓
 2. docker compose logs <servicio>
-3. inspeccionar configuración y red
-4. entrar en el contenedor solo si hace falta
+        ↓
+3. docker compose config
+        ↓
+4. inspeccionar red o entrar en el contenedor si hace falta
 ```
 
-No empieces modificando el YAML al azar. Primero averigua qué estado tiene realmente el sistema.
+!!! tip "Diagnostica antes de editar"
+    No modifiques el YAML al azar. Primero averigua qué estado tiene realmente el conjunto y qué configuración ha interpretado Compose.
 
 ---
 
-## ⚖️ 9. Qué resuelve Compose y dónde termina
+## ⚖️ 7. Qué resuelve Compose y dónde termina
 
 Compose es especialmente útil para:
 
-- desarrollo local;
-- prácticas y laboratorios;
+- desarrollo y laboratorios;
 - integración de varios servicios;
 - pruebas;
 - despliegues sencillos sobre un único host Docker.
 
-Su límite principal es precisamente ese: **describe un proyecto sobre un motor Docker, no un clúster de máquinas**.
+Su frontera es importante: **Compose describe un proyecto sobre un motor Docker; no es un orquestador multinodo**.
 
-Docker puede aplicar políticas de reinicio en un mismo host, pero Compose no es un orquestador multinodo capaz de mover automáticamente una carga a otro servidor si una máquina desaparece.
+No resuelve por sí solo problemas como:
 
-Tampoco proporciona por sí solo estrategias completas de:
+- repartir cargas automáticamente entre varios servidores;
+- autoescalar según demanda;
+- replanificar una carga si desaparece un nodo;
+- coordinar actualizaciones progresivas entre muchas réplicas y nodos.
 
-- distribución automática entre varios nodos;
-- autoescalado;
-- rolling updates coordinados entre réplicas;
-- replanificación de cargas tras perder un nodo.
+Eso aparecerá más adelante en el módulo.
 
-Más adelante estudiarás herramientas que resuelven esos problemas.
-
-!!! note "Construir una vez y desplegar lo construido"
-    En un flujo de despliegue reproducible, la práctica habitual es construir y validar la imagen antes de llegar al servidor de destino.
-
-    El servidor debería recibir una referencia concreta del artefacto ya construido:
+!!! note "Construir una vez, desplegar lo construido"
+    En un flujo reproducible, el servidor debería recibir una referencia concreta de una imagen ya construida y validada:
 
     ```text
     código
-    → build
+    → construcción
     → pruebas
     → imagen publicada
     → despliegue
     ```
 
-    Evitar recompilar en cada servidor reduce diferencias entre entornos y permite saber exactamente qué se ha desplegado.
+    Evitar recompilar en cada servidor reduce diferencias entre entornos.
 
 ---
 
 ## 🎯 Qué debes saber hacer al salir de esta sesión
 
-- Describir varios servicios mediante `compose.yaml`.
-- Reconocer `image`, `ports`, `environment`, `volumes`, `depends_on` y `healthcheck`.
-- Entender que los servicios se localizan por nombre dentro de la red de Compose.
-- Distinguir comunicación interna de publicación hacia el anfitrión.
-- Utilizar un volumen con nombre para datos que deben sobrevivir al contenedor.
-- Distinguir `stop`, `down` y `down -v`.
-- Montar un fichero desde el anfitrión sin ocultar accidentalmente un directorio completo de la imagen.
-- Sacar valores locales a `.env` y versionar un `.env.example`.
-- Utilizar `docker compose config` para comprobar qué configuración ha interpretado Compose.
-- Explicar por qué `depends_on` a secas no garantiza que una dependencia esté preparada.
-- Crear un `healthcheck` y esperar a `service_healthy`.
-- Distinguir conceptualmente liveness de readiness.
-- Diagnosticar un conjunto mediante estado y logs.
+Al terminar deberías poder:
 
-Lo que basta con reconocer: el nombre de proyecto explícito y los límites de Compose frente a un orquestador multinodo.
+- describir varios servicios mediante `compose.yaml`;
+- utilizar nombres de servicio para la comunicación interna;
+- distinguir **red interna** de **puerto publicado**;
+- declarar un volumen y explicar la diferencia entre `stop`, `down` y `down -v`;
+- distinguir un volumen de un bind mount;
+- externalizar valores mediante `.env` y versionar `.env.example`;
+- utilizar `docker compose config` para diagnosticar;
+- explicar por qué un contenedor iniciado puede no estar preparado;
+- declarar un `healthcheck` y esperar a `service_healthy`;
+- distinguir liveness de readiness;
+- operar y diagnosticar un proyecto Compose mediante estado y logs.
 
 ---
 
@@ -659,23 +558,21 @@ Lo que basta con reconocer: el nombre de proyecto explícito y los límites de C
 
 ??? tip "Abrir resumen"
 
-    - Compose sustituye una colección de comandos imperativos por una **descripción declarativa** del conjunto.
-    - Cada entrada de `services` representa un servicio y su nombre sirve también como nombre DNS dentro de la red del proyecto.
-    - Los contenedores de la misma red se comunican mediante sus puertos internos. Publicar un puerto solo es necesario cuando debe entrar tráfico desde el anfitrión.
-    - En una arquitectura `app + bd`, normalmente solo la aplicación necesita publicar el puerto de entrada; la base de datos puede permanecer en la red interna.
-    - Para PostgreSQL 18, en estas prácticas el volumen persistente se monta en `/var/lib/postgresql`.
-    - `stop` detiene; `down` elimina contenedores y red; `down -v` elimina además los volúmenes.
-    - Un montaje de fichero permite introducir contenido desde fuera. Montar un directorio completo encima de otro puede ocultar los ficheros que ya tenía la imagen.
-    - `.env` contiene valores locales y no se versiona. `.env.example` documenta las claves necesarias y sí entra en Git.
-    - `${VARIABLE}` puede ser interpolada por Compose. `$${VARIABLE}` permite que llegue al contenedor para que se evalúe allí.
-    - `depends_on` básico espera al arranque del contenedor, no a la disponibilidad real del servicio.
-    - `healthcheck` permite definir una condición real y `service_healthy` esperar a ella.
-    - Liveness pregunta si el proceso vive. Readiness pregunta si está preparado para trabajar.
-    - `docker compose ps`, `logs` y `config` son las primeras herramientas para diagnosticar un despliegue.
-    - Compose es excelente para un conjunto sobre un host Docker, pero no sustituye a un orquestador multinodo.
+    - Compose convierte una secuencia de órdenes en una **descripción declarativa** del conjunto.
+    - Los nombres de servicio funcionan como referencias de red dentro del proyecto.
+    - Un servicio puede comunicarse internamente sin publicar su puerto hacia el anfitrión.
+    - El volumen tiene un ciclo de vida distinto al contenedor.
+    - `stop` conserva contenedores; `down` los elimina; `down -v` elimina además los volúmenes.
+    - `.env` contiene valores locales; `.env.example` documenta la configuración necesaria.
+    - `${VARIABLE}` se interpola por Compose; `$$VARIABLE` permite posponer esa evaluación.
+    - `depends_on` básico no garantiza que un servicio esté preparado.
+    - `healthcheck` + `service_healthy` permiten esperar una condición real.
+    - Liveness pregunta si algo vive; readiness, si está preparado.
+    - `ps`, `logs` y `config` son las primeras herramientas de diagnóstico.
+    - Compose organiza un despliegue sobre un host Docker; no sustituye a un orquestador multinodo.
 
 ---
 
-En la actividad aplicarás esta descripción declarativa al proyecto del módulo y comprobarás red interna, persistencia, configuración externa y la diferencia entre **contenedor arrancado** y **servicio preparado**.
+En la actividad convertirás Escaparate en un conjunto reproducible de dos servicios. Al terminar, aplicación, base de datos, persistencia, configuración y dependencia de arranque quedarán descritas en un fichero versionado.
 
-Este `compose.yaml` será también la base sobre la que más adelante añadirás una nueva pieza delante de `app`: el servidor web. La aplicación no dejará de ejecutar su propio código ni su servidor embebido; simplemente pasará a recibir el tráfico a través de Nginx.
+En el siguiente tema añadiremos una nueva pieza delante de `app`: **Nginx**, que pasará a actuar como punto de entrada del despliegue.
