@@ -17,10 +17,13 @@ concurrency:
 jobs:
   construir:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v7
+
+      - name: Configurar Python
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -31,16 +34,58 @@ jobs:
       - name: Construir el sitio
         run: mkdocs build --strict
 
-      - uses: actions/upload-pages-artifact@v3
+      - name: Subir artefacto para GitHub Pages
+        uses: actions/upload-pages-artifact@v5
         with:
+          path: site
+
+      - name: Guardar sitio para el espejo
+        uses: actions/upload-artifact@v7
+        with:
+          name: sitio-mkdocs
           path: site
 
   publicar:
     needs: construir
     runs-on: ubuntu-latest
+
     environment:
       name: github-pages
-      url: ${{ steps.despliegue.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
-      - id: despliegue
-        uses: actions/deploy-pages@v4
+      - name: Publicar GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+
+  publicar-espejo:
+    needs: construir
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Recuperar sitio construido
+        uses: actions/download-artifact@v8
+        with:
+          name: sitio-mkdocs
+          path: site
+
+      - name: Publicar en el repositorio espejo
+        env:
+          ANGEL_MIRROR_TOKEN: ${{ secrets.ANGEL_MIRROR_TOKEN }}
+        run: |
+          cd site
+
+          touch .nojekyll
+
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout -b gh-pages
+          git add .
+          git commit -m "Publicación automática desde ${{ github.repository }}"
+
+          git remote add origin \
+            https://x-access-token:${ANGEL_MIRROR_TOKEN}@github.com/Prof-Angel/despliegue-2daw.git
+
+          git push --force origin gh-pages
