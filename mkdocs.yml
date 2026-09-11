@@ -35,7 +35,7 @@ nav:
           - Actividad 1.1 - Qué se puede saber de un despliegue desde fuera: tema1/actividad_1_1.md
       - Control de versiones y documentación:
           - Control de versiones y documentación: tema1/control-versiones-documentacion.md
-          - Hoja de referencia de comandos básicos de GIT: /tema1/ResumenGit.md
+          - Hoja de referencia de comandos básicos de GIT: tema1/ResumenGit.md
           - Actividad 1.2 - Tu repositorio como herramienta de despliegue: tema1/actividad_1_2.md
 
 #   - Tema 2 - Virtualización y contenedores:
