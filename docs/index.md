@@ -26,10 +26,10 @@ Escribir una aplicación es la mitad del trabajo. La otra mitad es conseguir que
 | Tema | Qué cubre | RA |
 |------|-----------|-----|
 | 🏁 [Tema 1 — Punto de partida](tema1/index.md) | Arquitecturas, proceso de despliegue, control de versiones y documentación | RA1 · RA6 |
-| 📦 [Tema 2 — Virtualización y contenedores](tema2/index.md) | Contenedores, imágenes multietapa y Docker Compose | RA1 |
-| 🌐 [Tema 3 — Publicación y ejecución de aplicaciones web](tema3/index.md) | Nginx, proxy, HTTPS, observabilidad, Tomcat, estado compartido y rendimiento | RA2 · RA3 |
-| 🔁 [Tema 4 — Integración y despliegue continuos](tema4/index.md) | Integración continua, despliegue automatizado y vuelta atrás | RA6 |
-| ☸️ [Tema 5 — Orquestación de contenedores](tema5/index.md) | Kubernetes, actualizaciones progresivas, clúster gestionado y GitOps | RA1 · RA2 · RA3 |
+| 📦 <!-- [Tema 2 — Virtualización y contenedores](tema2/index.md) -->Tema 2 — Virtualización y contenedores | Contenedores, imágenes multietapa y Docker Compose | RA1 |
+| 🌐 <!-- [Tema 3 — Publicación y ejecución de aplicaciones web](tema3/index.md) -->Tema 3 - Publicación y ejecución de aplicaciones web | Nginx, proxy, HTTPS, observabilidad, Tomcat, estado compartido y rendimiento | RA2 · RA3 |
+| 🔁 <!-- [Tema 4 — Integración y despliegue continuos](tema4/index.md) -->Tema 4 — Integración y despliegue continuos | Integración continua, despliegue automatizado y vuelta atrás | RA6 |
+| ☸️ <!-- [Tema 5 — Orquestación de contenedores](tema5/index.md) -->Tema 5 — Orquestación de contenedores | Kubernetes, actualizaciones progresivas, clúster gestionado y GitOps | RA1 · RA2 · RA3 |
 
 ---
 

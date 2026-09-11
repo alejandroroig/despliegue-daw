@@ -37,54 +37,54 @@ nav:
           - Control de versiones y documentación: tema1/control-versiones-documentacion.md
           - Actividad 1.2 - Tu repositorio como herramienta de despliegue: tema1/actividad_1_2.md
 
-  - Tema 2 - Virtualización y contenedores:
-      - Tema 2 - Introducción: tema2/index.md
-      - Fundamentos de contenedores:
-          - Fundamentos de contenedores: tema2/fundamentos-contenedores.md
-          - Actividad 2.1 - Ejecutar, inspeccionar y publicar: tema2/actividad_2_1.md
-      - Imágenes de contenedores:
-          - Imágenes de contenedores: tema2/imagenes-contenedores.md
-          - Actividad 2.2 - Empaquetar Escaparate: tema2/actividad_2_2.md
-      - Docker Compose:
-          - Docker Compose: tema2/docker-compose.md
-          - Actividad 2.3 - El conjunto entero con un comando: tema2/actividad_2_3.md
+#   - Tema 2 - Virtualización y contenedores:
+#       - Tema 2 - Introducción: tema2/index.md
+#       - Fundamentos de contenedores:
+#           - Fundamentos de contenedores: tema2/fundamentos-contenedores.md
+#           - Actividad 2.1 - Ejecutar, inspeccionar y publicar: tema2/actividad_2_1.md
+#       - Imágenes de contenedores:
+#           - Imágenes de contenedores: tema2/imagenes-contenedores.md
+#           - Actividad 2.2 - Empaquetar Escaparate: tema2/actividad_2_2.md
+#       - Docker Compose:
+#           - Docker Compose: tema2/docker-compose.md
+#           - Actividad 2.3 - El conjunto entero con un comando: tema2/actividad_2_3.md
 
-  - Tema 3 - Publicación y ejecución de aplicaciones web:
-      - Tema 3 - Introducción: tema3/index.md
-      - Servidores web y DNS:
-          - Servidores web y DNS: tema3/servidores-web-dns.md
-          - Actividad 3.1 - Dos sitios, un servidor y dos nombres: tema3/actividad_3_1.md
-      - Proxy inverso y balanceo:
-          - Proxy inverso y balanceo: tema3/proxy-inverso-balanceo.md
-          - Actividad 3.2 - Una puerta, tres copias: tema3/actividad_3_2.md
-      - Seguridad web y HTTPS:
-          - Seguridad web y HTTPS: tema3/seguridad-web-https.md
-          - Actividad 3.3 - Cierra la puerta y echa la llave: tema3/actividad_3_3.md
-      - Observabilidad:
-          - Observabilidad - logs, métricas y alertas: tema3/observabilidad.md
-          - Actividad 3.4 - Que te lo cuente el sistema: tema3/actividad_3_4.md
-      - Servidor de aplicaciones, estado y rendimiento:
-          - Servidor de aplicaciones - ejecución, estado y rendimiento: tema3/servidor-aplicaciones.md
-          - Actividad 3.5 - El backend por dentro: tema3/actividad_3_5.md
+#   - Tema 3 - Publicación y ejecución de aplicaciones web:
+#       - Tema 3 - Introducción: tema3/index.md
+#       - Servidores web y DNS:
+#           - Servidores web y DNS: tema3/servidores-web-dns.md
+#           - Actividad 3.1 - Dos sitios, un servidor y dos nombres: tema3/actividad_3_1.md
+#       - Proxy inverso y balanceo:
+#           - Proxy inverso y balanceo: tema3/proxy-inverso-balanceo.md
+#           - Actividad 3.2 - Una puerta, tres copias: tema3/actividad_3_2.md
+#       - Seguridad web y HTTPS:
+#           - Seguridad web y HTTPS: tema3/seguridad-web-https.md
+#           - Actividad 3.3 - Cierra la puerta y echa la llave: tema3/actividad_3_3.md
+#       - Observabilidad:
+#           - Observabilidad - logs, métricas y alertas: tema3/observabilidad.md
+#           - Actividad 3.4 - Que te lo cuente el sistema: tema3/actividad_3_4.md
+#       - Servidor de aplicaciones, estado y rendimiento:
+#           - Servidor de aplicaciones - ejecución, estado y rendimiento: tema3/servidor-aplicaciones.md
+#           - Actividad 3.5 - El backend por dentro: tema3/actividad_3_5.md
 
-  - Tema 4 - Integración y despliegue continuos:
-      - Tema 4 - Introducción: tema4/index.md
-      - Integración continua:
-          - Integración continua: tema4/integracion-continua.md
-          - Actividad 4.1 - La puerta de entrada a main: tema4/actividad_4_1.md
-      - Despliegue continuo:
-          - Despliegue continuo: tema4/despliegue-continuo.md
-          - Actividad 4.2 - Del commit a producción, y vuelta: tema4/actividad_4_2.md
+#   - Tema 4 - Integración y despliegue continuos:
+#       - Tema 4 - Introducción: tema4/index.md
+#       - Integración continua:
+#           - Integración continua: tema4/integracion-continua.md
+#           - Actividad 4.1 - La puerta de entrada a main: tema4/actividad_4_1.md
+#       - Despliegue continuo:
+#           - Despliegue continuo: tema4/despliegue-continuo.md
+#           - Actividad 4.2 - Del commit a producción, y vuelta: tema4/actividad_4_2.md
 
-  - Tema 5 - Orquestación de contenedores:
-      - Tema 5 - Introducción: tema5/index.md
-      - Arquitectura de Kubernetes:
-          - Arquitectura de Kubernetes - el estado deseado: tema5/kubernetes-arquitectura.md
-      - Configuración, sondas y actualizaciones:
-          - Configuración, sondas y actualizaciones progresivas: tema5/kubernetes-configuracion.md
-      - Clúster gestionado y GitOps:
-          - Clúster gestionado y GitOps: tema5/eks-gitops.md
-          - Actividad 5.3 - El repositorio manda: tema5/actividad_5_3.md
+#   - Tema 5 - Orquestación de contenedores:
+#       - Tema 5 - Introducción: tema5/index.md
+#       - Arquitectura de Kubernetes:
+#           - Arquitectura de Kubernetes - el estado deseado: tema5/kubernetes-arquitectura.md
+#       - Configuración, sondas y actualizaciones:
+#           - Configuración, sondas y actualizaciones progresivas: tema5/kubernetes-configuracion.md
+#       - Clúster gestionado y GitOps:
+#           - Clúster gestionado y GitOps: tema5/eks-gitops.md
+#           - Actividad 5.3 - El repositorio manda: tema5/actividad_5_3.md
 
   - Currículo: curriculum.md
   - Cierre del módulo: cierre.md
