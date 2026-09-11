@@ -108,5 +108,3 @@
 - **`.gitignore`**: archivo para excluir archivos del control de versiones.
 - **⚠️ `reset --hard` y `clean -fd`**: irreversibles, úsalos con cuidado.
 - **Flujo típico**: `git add .` → `git commit -m "msg"` → `git push`.
-
-¿Quieres que profundice en alguno de estos comandos o en un flujo de trabajo específico (Git Flow, trunk-based, etc.)?
