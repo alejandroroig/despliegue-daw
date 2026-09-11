@@ -88,7 +88,7 @@ nav:
 #           - Actividad 5.3 - El repositorio manda: tema5/actividad_5_3.md
 
   - Currículo: curriculum.md
-  - Cierre del módulo: cierre.md
+#  - Cierre del módulo: cierre.md
 
 markdown_extensions:
   - md_in_html
