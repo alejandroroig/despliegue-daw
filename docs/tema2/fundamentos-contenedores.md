@@ -49,6 +49,21 @@ Antes de los contenedores ya existían otras formas de intentar reproducir entor
 | **Máquina virtual** | Empaqueta un sistema operativo completo | Tiene más sobrecarga y suele necesitar más recursos |
 | **Contenedor** | Empaqueta aplicación y dependencias sobre un entorno aislado | Comparte el núcleo del anfitrión y necesita un motor de contenedores |
 
+Los contenedores tampoco son únicamente una tecnología de producción. Su capacidad para crear entornos **aislados, reproducibles y desechables** resulta útil en distintas fases del ciclo de vida del software.
+
+| Fase | Qué pueden aportar los contenedores |
+|---|---|
+| **Diseño y experimentación** | Probar tecnologías o arquitecturas sin realizar instalaciones permanentes en el equipo |
+| **Desarrollo** | Compartir entornos coherentes, aislar proyectos y reducir diferencias entre equipos |
+| **Pruebas e integración** | Crear entornos temporales y repetibles para ejecutar pruebas y comprobaciones |
+| **Construcción** | Controlar las herramientas y dependencias utilizadas para generar el artefacto |
+| **Seguridad y calidad** | Analizar y endurecer la unidad que posteriormente se ejecutará |
+| **Distribución** | Empaquetar y versionar conjuntamente aplicación y entorno de ejecución |
+| **Despliegue y operación** | Ejecutar la misma unidad en diferentes entornos, sustituir versiones y crear nuevas réplicas |
+
+!!! tip "Una misma idea en distintas fases"
+    Un contenedor puede utilizarse durante meses para ejecutar una aplicación o existir únicamente durante unos segundos para realizar una prueba. Su valor está en poder **crear de forma predecible el entorno que necesita un proceso y sustituirlo cuando deja de ser necesario**.
+
 El valor del contenedor no es simplemente «instalar cosas sin ensuciar el ordenador». Su ventaja principal para despliegue es poder **crear una unidad reproducible que se ejecuta de forma equivalente en distintos entornos compatibles**.
 
 ---
@@ -519,6 +534,7 @@ Al terminar deberías poder:
 ??? tip "Abrir resumen"
 
     - Git versiona el proyecto; una **imagen** empaqueta el entorno necesario para ejecutarlo.
+    - Los contenedores pueden aportar reproducibilidad durante **desarrollo, pruebas, construcción, distribución y despliegue**, no solo en producción.
     - Una VM incluye un sistema operativo invitado; un contenedor Linux comparte el núcleo del entorno anfitrión.
     - **Imagen** es el punto de partida; **contenedor** es una instancia creada desde ella.
     - Cada contenedor tiene su propia capa de escritura: detenerlo la conserva; eliminarlo la destruye.
