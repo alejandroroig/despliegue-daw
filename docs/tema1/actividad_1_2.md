@@ -183,6 +183,7 @@ Caducidad: hasta el final del curso
 
 Scopes:
 repo
+worklfow
 write:packages
 ```
 
