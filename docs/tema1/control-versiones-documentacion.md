@@ -302,6 +302,7 @@ Un PAT:
 
     ```text
     repo
+    workflow
     write:packages
     ```
 
