@@ -1,7 +1,7 @@
 # 🧩 Control de versiones y documentación
 
 !!! info "Descarga de diapositivas"
-    [Descarga las diapositivas](diapositivas/control-versiones-documentacion.pptx){target="_blank" rel="noopener"}
+    [Descarga las diapositivas](diapositivas/control_versiones_documentacion.pdf){target="_blank" rel="noopener"}
 
 ---
 
