@@ -38,17 +38,17 @@ nav:
           - Hoja de referencia de comandos básicos de Git: tema1/resumen-git.md
           - Actividad 1.2 - Tu repositorio como herramienta de despliegue: tema1/actividad_1_2.md
 
-#   - Tema 2 - Virtualización y contenedores:
-#       - Tema 2 - Introducción: tema2/index.md
-#       - Fundamentos de contenedores:
-#           - Fundamentos de contenedores: tema2/fundamentos-contenedores.md
-#           - Actividad 2.1 - Ejecutar, inspeccionar y publicar: tema2/actividad_2_1.md
-#       - Imágenes de contenedores:
-#           - Imágenes de contenedores: tema2/imagenes-contenedores.md
-#           - Actividad 2.2 - Empaquetar Escaparate: tema2/actividad_2_2.md
-#       - Docker Compose:
-#           - Docker Compose: tema2/docker-compose.md
-#           - Actividad 2.3 - El conjunto entero con un comando: tema2/actividad_2_3.md
+  - Tema 2 - Virtualización y contenedores:
+      - Tema 2 - Introducción: tema2/index.md
+      - Fundamentos de contenedores:
+          - Fundamentos de contenedores: tema2/fundamentos-contenedores.md
+          - Actividad 2.1 - Ejecutar, inspeccionar y publicar: tema2/actividad_2_1.md
+      - Imágenes de contenedores: 
+          - Imágenes de contenedores: tema2/imagenes-contenedores.md
+          - Actividad 2.2 - Empaquetar Escaparate: tema2/actividad_2_2.md
+      - Docker Compose:
+          - Docker Compose: tema2/docker-compose.md
+          - Actividad 2.3 - El conjunto entero con un comando: tema2/actividad_2_3.md
 
 #   - Tema 3 - Publicación y ejecución de aplicaciones web:
 #       - Tema 3 - Introducción: tema3/index.md
