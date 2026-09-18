@@ -183,11 +183,12 @@ Caducidad: hasta el final del curso
 
 Scopes:
 repo
-worklfow
+workflow
 write:packages
 ```
 
 - `repo` permite trabajar con el repositorio privado mediante Git.
+- `workflow` permite añadir y modificar workflows de GitHub Actions en `.github/workflows/`.
 - `write:packages` se utilizará posteriormente para publicar imágenes en `ghcr.io`.
 
 Cuando GitHub muestre el token, **guárdalo en un gestor de contraseñas**. No lo escribas dentro del repositorio.
