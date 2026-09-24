@@ -1,7 +1,7 @@
 # 📦 Fundamentos de contenedores
 
 !!! info "Descarga de diapositivas"
-    <!-- [Descarga las diapositivas](diapositivas/fundamentos-contenedores.pptx){target="_blank" rel="noopener"} -->
+    [Descarga las diapositivas](diapositivas/fundamentos-contenedores.pdf){target="_blank" rel="noopener"}
 
 ---
 
@@ -14,7 +14,7 @@ En esta sesión aparece el segundo gran problema del módulo: **cómo empaquetar
 !!! abstract "Mapa de la sesión"
     **Entorno reproducible → imagen → contenedor → ejecución → persistencia → construcción → publicación**
 
-    Hoy no necesitas dominar Docker. El objetivo es comprender sus piezas básicas y utilizarlas sobre contenedores reales antes de construir la imagen completa de Escaparate.
+    Hoy no necesitas dominar Docker. El objetivo es comprender sus piezas básicas y utilizarlas sobre contenedores reales antes de aplicar estas ideas al proyecto Escaparate.
 
 ---
 
@@ -29,16 +29,16 @@ Copiar el código de una aplicación no basta para reproducir su ejecución. Tam
 - servicios auxiliares;
 - directorios, permisos y puertos.
 
-En Escaparate, por ejemplo, la imagen de la aplicación terminará conteniendo:
+En una aplicación web Java, por ejemplo, la imagen de la aplicación podría contener:
 
 ```text
-imagen de Escaparate
+imagen de la aplicación
 ├── runtime de Java
 └── aplicación Spring Boot
     └── servidor HTTP embebido
 ```
 
-Eso no significa que todo el sistema deba vivir en un único contenedor. PostgreSQL, la aplicación y, más adelante, Nginx serán **piezas desplegables distintas**.
+Eso no significa que todo el sistema deba vivir en un único contenedor. La aplicación, la base de datos y un posible proxy o servidor web pueden ser **piezas desplegables distintas**.
 
 Antes de los contenedores ya existían otras formas de intentar reproducir entornos, y siguen siendo útiles:
 
@@ -118,14 +118,14 @@ registro/propietario/imagen:etiqueta
 Por ejemplo:
 
 ```text
-ghcr.io/ana/escaparate-db:1.0.0
+ghcr.io/ana/mi-app:1.0.0
 ```
 
 | Parte | Valor |
 |---|---|
 | Registro | `ghcr.io` |
 | Propietario | `ana` |
-| Imagen | `escaparate-db` |
+| Imagen | `mi-app` |
 | Etiqueta | `1.0.0` |
 
 Una **imagen** es una plantilla preparada para ejecutarse. Suele incluir:
@@ -470,14 +470,14 @@ docker build \
 Una imagen local:
 
 ```text
-escaparate-db:1.0.0
+mi-app:1.0.0
 ```
 
 puede recibir otra referencia preparada para GHCR:
 
 ```bash
-docker tag escaparate-db:1.0.0 \
-  ghcr.io/<usuario>/escaparate-db:1.0.0
+docker tag mi-app:1.0.0 \
+  ghcr.io/<usuario>/mi-app:1.0.0
 ```
 
 Después Docker debe autenticarse contra `ghcr.io`:
@@ -491,13 +491,13 @@ Cuando solicite la contraseña, utiliza el PAT preparado para el curso. La auten
 Publica:
 
 ```bash
-docker push ghcr.io/<usuario>/escaparate-db:1.0.0
+docker push ghcr.io/<usuario>/mi-app:1.0.0
 ```
 
 Otra máquina podrá descargarla con:
 
 ```bash
-docker pull ghcr.io/<usuario>/escaparate-db:1.0.0
+docker pull ghcr.io/<usuario>/mi-app:1.0.0
 ```
 
 El recorrido es:
@@ -547,4 +547,4 @@ Al terminar deberías poder:
 
 ---
 
-En la actividad aplicarás estas ideas sobre Nginx y PostgreSQL: ejecutarás e inspeccionarás contenedores, comprobarás qué ocurre con su estado, construirás una imagen mínima y la publicarás en GHCR.
+En la actividad aplicarás estas ideas al proyecto Escaparate mediante Nginx y PostgreSQL: ejecutarás e inspeccionarás contenedores, comprobarás qué ocurre con su estado, construirás una imagen mínima y la publicarás en GHCR.
