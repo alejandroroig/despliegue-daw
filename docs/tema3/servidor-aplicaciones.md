@@ -428,47 +428,13 @@ concurrencia ≈ throughput × latencia
 
 ---
 
-## 8. 📊 Media, percentiles y p95
+## 8. 📊 Recordatorio: interpretar el p95
 
-### 8.1. Por qué la media puede engañar
+En la sesión anterior sobre observabilidad vimos que una media puede ocultar peticiones especialmente lentas y utilizamos **p95** para observar mejor esa parte de la distribución.
 
-Considera cinco peticiones:
+En esta sesión reutilizaremos esa misma medida con otro objetivo: **comparar el comportamiento de una y tres réplicas bajo la misma carga**.
 
-| Petición | Tiempo |
-|---|---:|
-| 1 | 50 ms |
-| 2 | 55 ms |
-| 3 | 60 ms |
-| 4 | 65 ms |
-| 5 | 800 ms |
-
-La mayoría son rápidas, pero existe una petición claramente lenta.
-
-Una media resume el conjunto, pero puede esconder esa cola de respuestas lentas.
-
-### 8.2. Qué nos dice el p95
-
-El percentil 95 responde a:
-
-> **¿Qué tiempo no supera el 95 % de las peticiones?**
-
-Interpretación:
-
-```text
-p95 = 420 ms
-```
-
-significa:
-
-```text
-95 % de las peticiones
-→ 420 ms o menos
-
-5 % de las peticiones
-→ más de 420 ms
-```
-
-En nuestra prueba observaremos conjuntamente:
+Observaremos conjuntamente:
 
 ```text
 peticiones/s
@@ -478,7 +444,11 @@ p95
 errores
 ```
 
-Ninguna de esas cifras, por sí sola, describe todo el comportamiento.
+- **peticiones/s** indica cuánto trabajo completa el sistema;
+- **p95** permite observar cómo evoluciona la latencia de las peticiones más lentas;
+- **errores** permite comprobar si la carga está provocando fallos.
+
+Ninguna de estas cifras, por sí sola, describe todo el comportamiento.
 
 ---
 
@@ -602,7 +572,7 @@ pero no:
 - Comparar afinidad, replicación y almacén externo.
 - Explicar qué aporta Spring Session + Redis a la administración de sesiones.
 - Diferenciar latencia, throughput y concurrencia.
-- Interpretar un p95.
+- Interpretar conjuntamente throughput, p95 y errores al comparar dos configuraciones bajo la misma carga.
 - Explicar por qué varias réplicas en el mismo host no equivalen a varias máquinas.
 - Interpretar una comparación sencilla de carga.
 
