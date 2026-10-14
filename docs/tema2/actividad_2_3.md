@@ -262,9 +262,20 @@ app → bd:5432
 
 ---
 
-## Paso 4: Saca los valores locales del YAML
+## Paso 4: Saca los valores locales del YAML (laboratorio)
 
 El `compose.yaml` se versionará. Los valores locales no deben quedar escritos directamente en él.
+
+!!! warning "Configuración externa no equivale a gestión de secretos"
+    En el recorrido principal utilizamos únicamente credenciales ficticias de laboratorio. Sacar una contraseña del YAML y guardarla en `.env` evita versionarla, pero continúa llegando al contenedor como variable de entorno.
+
+    Para contraseñas reales, la recomendación es utilizar un mecanismo de secretos. Al terminar encontrarás una **ampliación opcional con Compose Secrets para PostgreSQL y Escaparate**. No sustituye las cuatro evidencias obligatorias.
+
+!!! info "Qué hace `.env`"
+    Compose utiliza sus valores para interpolar `${VARIABLE}` en el YAML. No entrega automáticamente todas sus variables al contenedor: en este ejemplo las entregamos mediante `environment`.
+
+!!! warning "Conserva las credenciales de la base de datos existente"
+    Al externalizar los valores, utiliza los mismos que ya inicializaron PostgreSQL. Cambiar `POSTGRES_PASSWORD` no cambia la contraseña de una base de datos guardada en un volumen existente. La rotación requiere actuar sobre PostgreSQL; borrar el volumen solo es aceptable cuando se quiere descartar expresamente los datos del laboratorio.
 
 Crea:
 
@@ -662,3 +673,248 @@ contenedor
 ```
 
 En el siguiente tema añadirás Nginx delante de `app`. El sistema seguirá ejecutando la misma aplicación, pero aparecerá una nueva capa de publicación como punto de entrada.
+
+
+---
+
+## 🔐 Ampliación opcional: configuración y contraseñas por separado
+
+### Objetivo y alcance
+
+Mantén la práctica principal terminada. Ahora prepara una variante en la que **ni `bd` ni `app` reciban la contraseña mediante el bloque `environment` del Compose**.
+
+Esta ampliación utiliza la misma imagen publicada de Escaparate, siempre que conserve su configuración Spring Boot estándar de `spring.datasource`. No requiere modificar Java ni reconstruir la imagen. Si tu imagen difiere de la aplicación de clase, comprueba primero su configuración.
+
+El mecanismo tiene dos partes:
+
+- **Compose** entrega un archivo a cada servicio autorizado.
+- **Cada programa** sabe cómo leerlo: PostgreSQL mediante `POSTGRES_PASSWORD_FILE`; Spring Boot mediante `configtree`.
+
+No añadas `DB_PASSWORD_FILE`: Escaparate no tiene por qué interpretar esa variable. El sufijo `_FILE` no es una capacidad automática de Docker.
+
+!!! info "Complejidad acotada"
+    Se proporciona el YAML completo para que puedas centrarte en el recorrido del secreto. La variante tiene su propio directorio, proyecto, volumen y puerto. No combines este fichero con el Compose principal mediante varios argumentos `-f`.
+
+### A. Prepara los archivos
+
+Desde la raíz del repositorio crea esta estructura:
+
+```text
+practicas/compose/ampliacion-secrets/
+├── compose.yaml
+├── .env.example
+├── .env                    # local, no se versiona
+└── secrets/
+    ├── bd_clave.example.txt
+    └── bd_clave.txt         # local, no se versiona
+```
+
+En `.env.example` escribe, sustituyendo `<usuario>` por tu usuario real de GHCR:
+
+```dotenv
+IMAGEN_BD=ghcr.io/<usuario>/escaparate-db:1.0.0
+IMAGEN_APP=ghcr.io/<usuario>/escaparate:sesion-04
+BD_USUARIO=escaparate
+BD_NOMBRE=escaparate
+APP_PUERTO=8081
+```
+
+Copia `.env.example` a `.env`. Aquí **ninguno contiene `BD_CLAVE`**.
+
+En `secrets/bd_clave.example.txt` escribe una sola línea:
+
+```text
+clave-ficticia-solo-laboratorio-23
+```
+
+Copia el ejemplo a `secrets/bd_clave.txt`. Usa texto plano UTF-8 sin BOM, sin comillas y sin escribir `BD_CLAVE=`. Para esta prueba conserva la clave ficticia propuesta: es distinta de la contraseña por defecto de Escaparate y ayuda a detectar una configuración que no esté leyendo el secreto.
+
+En el `.gitignore` de la raíz añade, si no existen reglas equivalentes:
+
+```gitignore
+/practicas/compose/ampliacion-secrets/.env
+/practicas/compose/ampliacion-secrets/secrets/bd_clave.txt
+```
+
+Los archivos de ejemplo sí se versionan. Comprueba desde el directorio de la ampliación:
+
+```bash
+git check-ignore -v .env secrets/bd_clave.txt
+git ls-files -- .env secrets/bd_clave.txt
+```
+
+El primer comando debe mostrar las reglas; el segundo no debe listar ninguno de los dos archivos. `.gitignore` no deja de versionar un archivo que ya estuviera registrado.
+
+### B. Declara los dos consumidores del secreto
+
+Guarda este `compose.yaml` completo en `ampliacion-secrets/`:
+
+```yaml
+services:
+  bd:
+    image: ${IMAGEN_BD:?define IMAGEN_BD en .env}
+    environment:
+      POSTGRES_USER: ${BD_USUARIO:?define BD_USUARIO en .env}
+      POSTGRES_DB: ${BD_NOMBRE:?define BD_NOMBRE en .env}
+      POSTGRES_PASSWORD_FILE: /run/secrets/bd_clave
+    secrets:
+      - bd_clave
+    volumes:
+      - datos-bd:/var/lib/postgresql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 10s
+
+  app:
+    image: ${IMAGEN_APP:?define IMAGEN_APP en .env}
+    ports:
+      - "127.0.0.1:${APP_PUERTO:-8081}:8080"
+    environment:
+      DB_HOST: bd
+      DB_PORT: "5432"
+      DB_NAME: ${BD_NOMBRE:?define BD_NOMBRE en .env}
+      DB_USER: ${BD_USUARIO:?define BD_USUARIO en .env}
+      SPRING_CONFIG_IMPORT: "configtree:/run/secrets/"
+    secrets:
+      - source: bd_clave
+        target: spring.datasource.password
+    depends_on:
+      bd:
+        condition: service_healthy
+
+volumes:
+  datos-bd:
+
+secrets:
+  bd_clave:
+    file: ./secrets/bd_clave.txt
+```
+
+Lee el recorrido:
+
+```text
+Archivo local: secrets/bd_clave.txt
+    ├── bd  → /run/secrets/bd_clave
+    │         PostgreSQL lo lee mediante POSTGRES_PASSWORD_FILE
+    └── app → /run/secrets/spring.datasource.password
+              Spring Boot lo importa mediante configtree
+```
+
+`source` identifica el secreto declarado; `target` cambia el nombre del archivo que recibe `app`. Spring Boot transforma ese nombre en la propiedad `spring.datasource.password`, que configura la conexión a PostgreSQL.
+
+`SPRING_CONFIG_IMPORT` y `POSTGRES_PASSWORD_FILE` contienen instrucciones y rutas, no la contraseña. No añadas `POSTGRES_PASSWORD`, `DB_PASSWORD` ni `SPRING_DATASOURCE_PASSWORD` a `environment`. Una propiedad de contraseña suministrada por otra fuente de mayor prioridad podría anular la importada.
+
+El prefijo `configtree:` termina con `/`. No usamos `optional:` porque queremos que la ausencia del directorio de configuración provoque un error. Esto no garantiza por sí solo que exista cada archivo: también comprobarás su lectura.
+
+!!! note "Qué protege Compose Secrets local"
+    Autoriza servicios concretos y entrega la información como archivos montados. No cifra por sí solo el archivo del anfitrión ni protege frente a un administrador con acceso al motor Docker. Mantén los archivos locales fuera de Git y controla el acceso a tu equipo.
+
+    Tampoco garantiza que el programa consumidor nunca copie el valor a su entorno interno; el entrypoint oficial de PostgreSQL puede hacerlo. Lo que evitamos aquí es suministrar el valor directamente en la configuración de entorno de Compose.
+
+### C. Valida y arranca la variante
+
+Los comandos siguientes se ejecutan desde `practicas/compose/ampliacion-secrets/`, con Bash o Zsh (en Windows, utiliza WSL o un terminal equivalente).
+
+```bash
+docker compose -p escaparate-secrets config --quiet
+docker compose -p escaparate-secrets up -d
+docker compose -p escaparate-secrets ps
+```
+
+El nombre de proyecto `escaparate-secrets` separa sus recursos de la práctica principal. Utiliza **ese mismo `-p` en todos los comandos de esta ampliación**. El puerto por defecto es `8081` y solo se publica en el propio equipo.
+
+Espera hasta dos minutos y haz una comprobación final que falle si Escaparate no está preparado:
+
+```bash
+for i in {1..60}; do
+    if curl -fsS http://localhost:8081/api/salud/listo; then
+        break
+    fi
+    sleep 2
+done
+curl -fsS http://localhost:8081/api/salud/listo
+curl -fsS http://localhost:8081/
+```
+
+Si cambias `APP_PUERTO`, adapta también las URL.
+
+Comprueba que el usuario normal de `app` puede leer el archivo, sin imprimir su contenido:
+
+```bash
+docker compose -p escaparate-secrets exec -T app \
+  sh -c 'test -r /run/secrets/spring.datasource.password && test -s /run/secrets/spring.datasource.password && echo "Secreto accesible y no vacío"'
+```
+
+No ejecutes esta comprobación como `root`: queremos comprobar los permisos del usuario que ejecuta la aplicación.
+
+!!! warning "Si falla, diagnostica antes de cambiar"
+    Consulta `docker compose -p escaparate-secrets logs app` y `logs bd`.
+
+    - **Archivo inexistente:** revisa la ubicación y el nombre de `secrets/bd_clave.txt`.
+    - **Permiso denegado:** comprueba los permisos del archivo montado y el usuario de `app`. En Compose local con secretos de tipo archivo no debes confiar en `uid`, `gid` o `mode` del YAML para corregirlos: se utilizan bind mounts. El comportamiento debe comprobarse en Docker Desktop o Docker Engine según el equipo.
+    - **Error de autenticación:** comprueba que el volumen se inicializó con la misma clave y que no hay otra fuente que sobrescriba la contraseña de Spring.
+    - **Esquema ausente:** confirma que utilizas la imagen `escaparate-db` de clase, que contiene sus scripts de inicialización.
+
+    No cambies la aplicación a `root` para resolver un problema de lectura.
+
+### D. Comprueba persistencia y límites
+
+Crea un producto de prueba y ejecuta:
+
+```bash
+docker compose -p escaparate-secrets down
+docker compose -p escaparate-secrets up -d
+```
+
+Espera a readiness y comprueba que el producto permanece.
+
+Cambiar `bd_clave.txt` **no rota automáticamente** la contraseña guardada en PostgreSQL. Para repetir la prueba desde cero con otra clave ficticia, puedes eliminar únicamente los recursos de esta variante:
+
+```bash
+# ATENCIÓN: elimina los datos de esta ampliación.
+docker compose -p escaparate-secrets down -v
+docker compose -p escaparate-secrets up -d
+```
+
+Hazlo solo si aceptas perder sus productos de prueba. No es un procedimiento de rotación para una base de datos real.
+
+### E. Documentación y validación de la ampliación
+
+Conserva las cuatro evidencias del recorrido principal. Si haces la ampliación, añade a la misma entrega un apartado breve con:
+
+- recorrido del secreto hasta ambos servicios;
+- resultado de la comprobación de lectura y de readiness, sin mostrar la contraseña;
+- explicación de por qué `.env` no es un almacén de secretos;
+- limitaciones de los archivos locales y de la rotación de contraseñas.
+
+Documenta también en el README cómo preparar los dos archivos locales desde sus ejemplos y cómo arrancar esta variante con `-p escaparate-secrets`.
+
+Versiona el nuevo `compose.yaml`, `.env.example`, `secrets/bd_clave.example.txt`, las reglas de exclusión y la documentación. No versiones los archivos locales. Puedes incorporarlo a la misma PR si todavía está abierta; si ya integraste la práctica principal, utiliza una nueva rama y PR.
+
+Si entregas esta ampliación, añade estos pasos al job `validar-compose`, después de la validación principal:
+
+```yaml
+      - name: Preparar ejemplos de la ampliación
+        working-directory: practicas/compose/ampliacion-secrets
+        run: |
+          cp .env.example .env
+          cp secrets/bd_clave.example.txt secrets/bd_clave.txt
+
+      - name: Validar Compose con secretos
+        working-directory: practicas/compose/ampliacion-secrets
+        run: docker compose -p escaparate-secrets config --quiet
+```
+
+Este job usa exclusivamente datos ficticios. Comprueba la interpretación del YAML; **no demuestra** que los contenedores arranquen, que el usuario de `app` pueda leer el archivo ni que la aplicación autentique contra PostgreSQL. Esas comprobaciones corresponden a la prueba de ejecución anterior.
+
+### Referencias
+
+- [Docker: secretos en Compose](https://docs.docker.com/compose/how-tos/use-secrets/).
+- [Docker: secretos por servicio y limitaciones de permisos](https://docs.docker.com/reference/compose-file/services/#secrets).
+- [Spring Boot: configuración mediante árboles de archivos](https://docs.spring.io/spring-boot/reference/features/external-config.html#features.external-config.files.configtrees).
+- [Imagen oficial de PostgreSQL](https://hub.docker.com/_/postgres).
