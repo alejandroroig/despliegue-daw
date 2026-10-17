@@ -1,7 +1,7 @@
 # 🧩 1. Arquitectura de Kubernetes: el estado deseado
 
 !!!info "Descarga de diapositivas"
-    [Descarga las diapositivas](diapositivas/kubernetes-arquitectura.pptx){target="_blank" rel="noopener"}
+    <!--[Descarga las diapositivas](diapositivas/kubernetes-arquitectura.pdf){target="_blank" rel="noopener"} -->
 
 ---
 

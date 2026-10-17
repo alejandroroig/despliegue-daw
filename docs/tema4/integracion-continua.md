@@ -1,7 +1,7 @@
 # 🧩 1. Integración continua
 
 !!!info "Descarga de diapositivas"
-    [Descarga las diapositivas](diapositivas/integracion-continua.pptx){target="_blank" rel="noopener"}
+    <!-- [Descarga las diapositivas](diapositivas/integracion-continua.pdf){target="_blank" rel="noopener"} -->
 
 ---
 

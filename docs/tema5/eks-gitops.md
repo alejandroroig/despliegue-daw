@@ -1,7 +1,7 @@
 # 🔁 3. Clúster gestionado y GitOps
 
 !!!info "Descarga de diapositivas"
-    [Descarga las diapositivas](diapositivas/eks-gitops.pptx){target="_blank" rel="noopener"}
+    <!-- [Descarga las diapositivas](diapositivas/eks-gitops.pdf){target="_blank" rel="noopener"} -->
 
 ---
 

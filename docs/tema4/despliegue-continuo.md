@@ -1,7 +1,7 @@
 # 🧩 2. Despliegue continuo
 
 !!!info "Descarga de diapositivas"
-    [Descarga las diapositivas](diapositivas/despliegue-continuo.pptx){target="_blank" rel="noopener"}
+    <!-- [Descarga las diapositivas](diapositivas/despliegue-continuo.pdf){target="_blank" rel="noopener"} -->
 
 ---
 

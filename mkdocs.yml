@@ -61,12 +61,12 @@ nav:
       - Seguridad web y HTTPS:
           - Seguridad web y HTTPS: tema3/seguridad-web-https.md
           - Actividad 3.3 - Cierra la puerta y echa la llave: tema3/actividad_3_3.md
-      - Observabilidad:
-          - Observabilidad - logs, métricas y alertas: tema3/observabilidad.md
-          - Actividad 3.4 - Que te lo cuente el sistema: tema3/actividad_3_4.md
-      - Servidor de aplicaciones, estado y rendimiento:
-          - Servidor de aplicaciones - ejecución, estado y rendimiento: tema3/servidor-aplicaciones.md
-          - Actividad 3.5 - El backend por dentro: tema3/actividad_3_5.md
+    #   - Observabilidad:
+    #       - Observabilidad - logs, métricas y alertas: tema3/observabilidad.md
+    #       - Actividad 3.4 - Que te lo cuente el sistema: tema3/actividad_3_4.md
+    #   - Servidor de aplicaciones, estado y rendimiento:
+    #       - Servidor de aplicaciones - ejecución, estado y rendimiento: tema3/servidor-aplicaciones.md
+    #       - Actividad 3.5 - El backend por dentro: tema3/actividad_3_5.md
 
 #   - Tema 4 - Integración y despliegue continuos:
 #       - Tema 4 - Introducción: tema4/index.md

@@ -1,7 +1,7 @@
 # 🔧 2. Configuración, sondas y actualizaciones progresivas
 
 !!!info "Descarga de diapositivas"
-    [Descarga las diapositivas](diapositivas/kubernetes-configuracion.pptx){target="_blank" rel="noopener"}
+    <!--[Descarga las diapositivas](diapositivas/kubernetes-configuracion.pdf){target="_blank" rel="noopener"} -->
 
 ---
 
