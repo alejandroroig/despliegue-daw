@@ -90,7 +90,8 @@ app-3
 Las tres copias deben:
 
 - utilizar `ghcr.io/<usuario>/escaparate:sesion-04`;
-- conectarse a `bd`;
+- conectarse a `bd`, conservando `DB_NAME: ${BD_NOMBRE}` y `DB_USER: ${BD_USUARIO}`;
+- mantener `SPRING_CONFIG_IMPORT: configtree:/run/secrets/` y el secreto `bd_clave` con destino `spring.datasource.password` en cada réplica;
 - no publicar ningún puerto;
 - esperar al `healthcheck` de `bd`;
 - utilizar almacenamiento `filesystem`;
@@ -106,6 +107,8 @@ app-3
 ```
 
 también como valores de `APP_INSTANCE_NAME`.
+
+La referencia de imagen puede conservarse como `${IMAGEN_APP}`. No vuelvas a introducir la contraseña en `environment`: las tres réplicas reciben el mismo secreto como archivo. Conserva también la definición global de Secrets y el volumen de PostgreSQL.
 
 Todavía **no compartas ningún volumen de imágenes** entre ellas.
 
@@ -197,17 +200,30 @@ docker compose exec web nginx -t
 docker compose ps
 ```
 
-Comprueba readiness:
+Comprueba readiness de las tres réplicas:
 
 ```bash
-curl -fsS http://escaparate.127.0.0.1.nip.io/api/salud/listo
+for servicio in app-1 app-2 app-3; do
+  preparado=no
+  for intento in $(seq 1 60); do
+    if docker compose exec -T web wget -q -T 3 -O /dev/null \
+      "http://${servicio}:8080/api/salud/listo" 2>/dev/null; then
+      preparado=si
+      break
+    fi
+    sleep 2
+  done
+  echo "$servicio preparado: $preparado"
+done
 ```
+
+Espera a obtener `preparado: si` en las tres. Si alguna indica `no`, consulta `docker compose logs --tail=60 NOMBRE_DEL_SERVICIO` antes de continuar. Esta comprobación visita cada réplica: una respuesta correcta a través del balanceador solo comprobaría la réplica elegida en esa petición.
 
 Y observa el reparto:
 
 ```bash
 for i in $(seq 1 9); do
-  curl -s http://escaparate.127.0.0.1.nip.io/api/instancia
+  curl --max-time 15 -s http://escaparate.127.0.0.1.nip.io/api/instancia
   echo
 done
 ```
@@ -242,7 +258,7 @@ Comprueba que el servicio sigue respondiendo:
 
 ```bash
 for i in $(seq 1 9); do
-  curl -s -o /dev/null \
+  curl --max-time 15 -s -o /dev/null \
     -w "%{http_code} " \
     http://escaparate.127.0.0.1.nip.io/api/instancia
 done
@@ -253,7 +269,7 @@ Después observa qué identificadores siguen apareciendo:
 
 ```bash
 for i in $(seq 1 9); do
-  curl -s http://escaparate.127.0.0.1.nip.io/api/instancia
+  curl --max-time 15 -s http://escaparate.127.0.0.1.nip.io/api/instancia
   echo
 done
 ```
@@ -270,7 +286,7 @@ Arranca de nuevo:
 docker compose start app-2
 ```
 
-Espera unos segundos y repite el bucle de identificadores.
+Repite la comprobación de readiness del paso 2.3 y después el bucle de identificadores.
 
 **Comprueba:**
 
@@ -300,7 +316,7 @@ Averigua su identificador y prueba repetidamente:
 
 ```bash
 for i in $(seq 1 12); do
-  curl -s -o /dev/null \
+  curl --max-time 15 -s -o /dev/null \
     -w "%{http_code} " \
     http://escaparate.127.0.0.1.nip.io/api/productos/<id>/imagen
 done
@@ -350,6 +366,8 @@ docker compose up -d
 docker compose exec web nginx -t
 ```
 
+Repite la comprobación de readiness del paso 2.3 después de aplicar el volumen.
+
 No reinicies manualmente `web`. Las réplicas pueden haberse recreado y recibir nuevas IP internas; Nginx debe seguir localizándolas por sus nombres.
 
 Sube **una imagen nueva** después de añadir el volumen.
@@ -360,7 +378,7 @@ Repite:
 
 ```bash
 for i in $(seq 1 12); do
-  curl -s -o /dev/null \
+  curl --max-time 15 -s -o /dev/null \
     -w "%{http_code} " \
     http://escaparate.127.0.0.1.nip.io/api/productos/<id-nuevo>/imagen
 done
@@ -434,7 +452,8 @@ Desde un clon limpio del repositorio:
 ```bash
 cd practicas/compose
 cp .env.example .env
-# completa los valores necesarios
+cp secrets/bd_clave.example.txt secrets/bd_clave.txt
+# completa las referencias de imagen y los valores locales
 
 docker compose up -d
 docker compose ps
@@ -448,7 +467,7 @@ curl -fsS http://escaparate.127.0.0.1.nip.io/ > /dev/null
 curl -fsS http://escaparate.127.0.0.1.nip.io/api/salud/listo
 
 for i in $(seq 1 9); do
-  curl -s http://escaparate.127.0.0.1.nip.io/api/instancia
+  curl --max-time 15 -s http://escaparate.127.0.0.1.nip.io/api/instancia
   echo
 done
 ```

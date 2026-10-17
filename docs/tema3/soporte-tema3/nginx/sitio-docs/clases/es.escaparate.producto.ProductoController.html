@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ProductoController</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header><h1>ProductoController</h1></header>
+<main>
+<nav><a href="../index.html">Inicio</a> · <a href="../paquetes/index.html">Paquetes</a> · <a href="../informes/">Informes</a></nav>
+
+<div class="card">
+<span class="badge">class</span>
+<h2><code>es.escaparate.producto.ProductoController</code></h2>
+<p>API REST del catálogo de productos. /</p>
+<p class="small">Fuente: <code>src/main/java/es/escaparate/producto/ProductoController.java</code></p>
+</div>
+
+<h2>Operaciones públicas/protegidas detectadas</h2>
+<table><thead><tr><th>Firma</th><th>Descripción</th></tr></thead><tbody><tr><td><code>public ProductoController(ProductoService productoService)</code></td><td>Crea el controlador del catálogo. /</td></tr><tr><td><code>public List&lt;ProductoResponse&gt; listar()</code></td><td>Lista todos los productos ordenados por fecha de alta descendente. /</td></tr><tr><td><code>public ResponseEntity&lt;ProductoResponse&gt; buscarPorId(@PathVariable Long id)</code></td><td>Busca un producto por identificador. /</td></tr><tr><td><code>public ResponseEntity&lt;Void&gt; eliminar(@PathVariable Long id)</code></td><td>Elimina un producto y su imagen asociada si existe. /</td></tr><tr><td><code>public ResponseEntity&lt;?&gt; cargarImagen(@PathVariable Long id)</code></td><td>Devuelve la imagen asociada a un producto. /</td></tr></tbody></table>
+
+
+</main>
+<footer>Escaparate · documentación estática preparada para la práctica de despliegue</footer>
+</body>
+</html>

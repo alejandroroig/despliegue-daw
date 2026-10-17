@@ -1,0 +1,10 @@
+services:
+  app-1:
+    image: escaparate:sesion-10-local
+    pull_policy: never
+  app-2:
+    image: escaparate:sesion-10-local
+    pull_policy: never
+  app-3:
+    image: escaparate:sesion-10-local
+    pull_policy: never

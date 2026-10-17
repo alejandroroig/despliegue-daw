@@ -1,7 +1,7 @@
 # 👁️ Observabilidad: logs, métricas y alertas
 
 !!! info "Descarga de diapositivas"
-    <!-- [Descarga las diapositivas](diapositivas/servidores-web-dns.pptx){target="_blank" rel="noopener"} -->
+    [Descarga las diapositivas](diapositivas/observabilidad.pdf){target="_blank" rel="noopener"}
 
 ---
 
@@ -23,351 +23,282 @@ La **observabilidad** es la capacidad de comprender el estado interno de un sist
 
 ## 📡 1. Las señales de un sistema
 
-Tradicionalmente se habla de tres grandes tipos:
+Logs, métricas y trazas permiten investigar un mismo problema desde perspectivas complementarias.
 
-| Señal | Qué aporta | Pregunta típica |
-|---|---|---|
-| **Logs** | sucesos concretos con contexto | ¿qué ocurrió? |
-| **Métricas** | valores numéricos a lo largo del tiempo | ¿cómo evoluciona? |
-| **Trazas** | recorrido de una petición | ¿dónde se consume el tiempo? |
+![Una petición lenta vista como evento de log, tendencia de latencia y traza con una consulta a base de datos.](img/logs-metricas-trazas.png)
 
-### 1.1. Logs
+### 1.1. Logs: sucesos con contexto
 
-Ejemplo:
+Un log describe un evento concreto. En la imagen, una petición termina con estado `200`, pero tarda `1,84 s`: una respuesta correcta también puede ser demasiado lenta.
 
-```text
-GET /api/productos
-estado=500
-duracion=1.84s
-```
+Para investigarla necesitamos contexto, como fecha y hora, servicio, ruta y duración. Un identificador de petición puede ayudar a relacionar registros de distintos componentes si se propaga y registra de forma coherente.
 
-Un log permite investigar un caso y conservar contexto.
+### 1.2. Métricas: valores que evolucionan
 
-### 1.2. Métricas
+Las métricas permiten observar tendencias: peticiones por segundo, porcentaje de errores, latencia o consumo de recursos. Hay que indicar el periodo, la unidad y el conjunto de datos al que se refieren.
 
-Ejemplos:
+La curva de la imagen es ilustrativa y resume muchas peticiones. Un único evento lento no demuestra que el servicio se haya vuelto lento de forma general.
 
-- peticiones por segundo;
-- porcentaje de errores;
-- latencia;
-- CPU;
-- memoria.
+### 1.3. Trazas: recorrido temporal de una petición
 
-Son útiles para tendencias, paneles y alertas.
+Una traza relaciona operaciones de una petición entre componentes. Cada tramo, o **span**, representa una operación y su duración. En la imagen, la consulta a la base de datos ocupa gran parte del tiempo de la aplicación.
 
-### 1.3. Trazas
+Los tramos pueden estar anidados o solaparse: no se suman sin más. Las trazas distribuidas necesitan instrumentación y propagación de contexto; no aparecen automáticamente por centralizar logs.
 
-Una traza sigue una petición entre varios componentes:
+En esta sesión basta con **reconocer** su utilidad. La práctica se centrará en logs y agregaciones calculadas a partir de ellos.
 
-```mermaid
-flowchart LR
-    C["Cliente"] --> P["Proxy"]
-    P --> S["Servicio"]
-    S --> D[("Base de datos")]
-```
-
-En esta sesión basta con **reconocer** su utilidad. La práctica se centrará principalmente en logs y en agregaciones calculadas a partir de ellos.
-
-!!! warning "Log agregado no es lo mismo que sistema de métricas"
-    Podemos contar errores o calcular latencias a partir de logs. Eso no significa que hayamos desplegado un sistema completo que mida periódicamente CPU, memoria, disco o colas.
+!!! info "Alcance de la práctica"
+    Contar errores y calcular latencias desde logs produce indicadores útiles. No implica que también estemos midiendo CPU, memoria, disco o colas: esas señales requieren fuentes específicas.
 
 ---
 
 ## 🧾 2. Qué registra un servidor web
 
-Un servidor como Nginx suele producir dos tipos de registro especialmente útiles.
+Nginx ofrece dos registros con funciones distintas: **access log** y **error log**. Una incidencia puede dejar información en ambos.
 
-### 2.1. Access log
+![Nginx devuelve 502 al no poder conectar con un backend: el access log conserva el resultado y el error log explica el fallo de conexión.](img/access-error-log.png)
 
-Normalmente registra una entrada por petición con campos como:
+### 2.1. Access log: el resultado de la petición
 
-- cliente;
-- método;
-- ruta;
-- estado;
-- tamaño;
-- duración.
+Normalmente se escribe una entrada al finalizar la petición, si el registro está habilitado y la petición no queda excluida por filtros. Los campos dependen del formato configurado; la duración y el destino no aparecen necesariamente en el formato predeterminado.
 
-Por ejemplo:
+Es útil registrar método, ruta, estado, duración y fecha. En un proxy también podemos incluir el destino del intento de conexión.
 
-```text
-GET /api/productos
-200
-42 ms
-```
+### 2.2. Error log: problemas detectados por Nginx
 
-Permite responder preguntas como:
+Puede recoger fallos de conexión con un upstream, errores de permisos o problemas al acceder a ficheros. El nivel de registro y la configuración determinan qué mensajes aparecen.
 
-- **¿Qué ruta se utilizó?**
-- **¿Qué código recibió el cliente?**
-- **¿Cuánto tardó?**
+En la imagen, Nginx no consigue conectar con el backend y devuelve `502` al cliente. El mensaje del error log es una explicación simplificada, no una reproducción literal de su formato.
 
-### 2.2. Error log
+**No hay una correspondencia obligatoria entre cada respuesta HTTP de error y una entrada en el error log.** Si una aplicación devuelve `500`, el detalle puede estar en el log de la aplicación.
 
-Registra problemas del propio servidor, por ejemplo:
+### 2.3. Qué significa la duración
 
-- upstream no disponible;
-- problemas de permisos;
-- configuración incorrecta;
-- fichero no encontrado.
+Si usamos `$request_time`, Nginx registra segundos con resolución de milisegundos. Mide desde la lectura de los primeros bytes del cliente hasta la escritura del log tras enviar los últimos bytes de respuesta.
 
-Una misma incidencia puede verse desde dos perspectivas:
+Por tanto, `0.042 s` equivale a `42 ms`, pero no representa exclusivamente tiempo de ejecución del backend ni toda la experiencia del navegador. La recepción de la petición y el envío al cliente también pueden influir.
 
-| Registro | Qué muestra |
-|---|---|
-| `access log` | `/api/productos → 502` |
-| `error log` | fallo al conectar con el upstream |
+Referencia: [registro de peticiones en Nginx](https://nginx.org/en/docs/http/ngx_http_log_module.html).
 
 ---
 
 ## 🧱 3. Del texto libre al log estructurado
 
-Un texto pensado para personas puede ser incómodo de analizar automáticamente.
+Un registro estructurado asigna un nombre a cada dato. Así podemos filtrar por estado, agrupar por ruta y calcular indicadores sobre campos bien definidos.
 
-Comparar:
-
-```text
-192.0.2.24 GET /api/productos 200 0.042
-```
-
-con:
+Ejemplo ilustrativo de una petición correcta:
 
 ```json
 {
-  "ip": "192.0.2.24",
+  "fecha": "2026-10-15T10:00:00+00:00",
   "metodo": "GET",
   "ruta": "/api/productos",
   "estado": 200,
-  "duracion": 0.042
+  "duracion_s": 0.042,
+  "destino": "172.20.0.5:8080"
 }
 ```
 
-En el segundo caso cada dato tiene un nombre.
+El sufijo `_s` hace explícita la unidad. La herramienta de consulta debe interpretar `estado` y `duracion_s` como números para agregarlos correctamente.
 
-Eso permite:
+### 3.1. Registrar los destinos del proxy
 
-- filtrar;
-- agrupar;
-- contar;
-- calcular medias;
-- calcular percentiles.
+`$upstream_addr` permite conocer las direcciones de los backends contactados. Ayuda a observar cómo se reparte el tráfico, pero hay dos matices:
 
-### 3.1. Registrar el backend utilizado
+- Si hubo reintentos, puede contener **varias direcciones**, no solo un backend final.
+- Una dirección registrada no demuestra que ese backend devolviera una respuesta correcta: también puede corresponder a un intento fallido.
 
-Cuando un proxy reparte tráfico, también puede ser útil conservar el campo **destino**, es decir, la dirección del backend que respondió.
+Para investigar esos casos puede añadirse `$upstream_status` y relacionarlo con los destinos. Una petición servida sin upstream no tendrá un destino de aplicación. Además, las IP de contenedores pueden cambiar: conviene conservar contexto de servicio e instancia.
 
-Así podemos comprobar desde los logs si varias réplicas están recibiendo peticiones.
+Referencia: [variables de upstream de Nginx](https://nginx.org/en/docs/http/ngx_http_upstream_module.html#variables).
 
-### 3.2. Escapar correctamente
+### 3.2. JSON y escape de caracteres
 
-Si se genera JSON, una petición con caracteres especiales no debe romper el formato.
+`escape=json`, dentro de `log_format`, escapa caracteres especiales en los valores. Sigue siendo necesario escribir correctamente las comillas, las comas y los tipos del JSON.
 
-Nginx permite:
+Por ejemplo, dentro del contexto `http` de Nginx:
 
 ```nginx
-escape=json
+log_format observabilidad escape=json
+    '{"fecha":"$time_iso8601",'
+    '"metodo":"$request_method",'
+    '"ruta":"$uri",'
+    '"estado":$status,'
+    '"duracion_s":$request_time,'
+    '"destino":"$upstream_addr"}';
+
+access_log /dev/stdout observabilidad;
 ```
 
-al definir un `log_format`.
+Este fragmento orientado a contenedores envía el access log a la salida estándar. Cada evento ocupa una línea, aunque aquí el formato se haya dividido para leerlo mejor. El error log mantiene su configuración independiente.
 
-### 3.3. No todo debe entrar en los logs
+Se ha elegido `$uri` para no incluir la cadena de consulta. Puede reflejar una URI normalizada o modificada durante el procesamiento. Los campos que puedan contener valores ausentes o varios resultados necesitan un tratamiento adecuado; no deben declararse números sin comprobar sus posibles valores.
 
-Evita registrar información sensible innecesaria:
+Referencia: [formato y escape JSON en Nginx](https://nginx.org/en/docs/http/ngx_http_log_module.html#log_format).
 
-- contraseñas;
-- tokens;
-- cookies de sesión;
-- datos bancarios;
-- datos personales no necesarios.
+### 3.3. Información que conviene excluir
 
-Un log suele copiarse, centralizarse y conservarse. Por eso debe tratarse como información potencialmente sensible.
+Contraseñas, tokens, cookies de sesión y datos personales innecesarios no deben incorporarse al registro. También una URL puede contener secretos en su ruta o en sus parámetros.
+
+Evitar la cadena de consulta reduce una fuente de exposición, pero no elimina todas: hay que revisar qué datos emite cada componente. Los logs suelen copiarse y conservarse, por lo que requieren permisos y acceso controlado.
 
 ---
 
 ## 🗃️ 4. Centralizar registros
 
-Con una sola pieza puede bastar:
+Para investigar un despliegue pequeño podemos empezar con:
 
 ```bash
-docker compose logs
+docker compose logs --tail=100 -f
 ```
 
-Pero en un sistema con proxy, varias réplicas y base de datos la investigación se complica.
+Compose puede reunir la salida de varios servicios del proyecto. Un sistema de centralización añade búsqueda, conservación y agregaciones más cómodas, especialmente al crecer el número de componentes o de hosts.
 
-El patrón general es:
+![Flujo de registros desde proxy, aplicaciones y base de datos hacia recolector, almacén y consulta centralizada.](img/centralizacion-logs.png)
 
-```mermaid
-flowchart LR
-    P["Proxy"] --> R["Recolector"]
-    A1["app-1"] --> R
-    A2["app-2"] --> R
-    A3["app-3"] --> R
-    D["Base de datos"] --> R
-    R --> E["Almacén / índice"]
-    E --> V["Consulta + visualización"]
-```
+Las flechas representan **registros**, no peticiones web. El recolector obtiene los eventos y puede añadir contexto; el almacén los conserva y organiza; la interfaz permite consultarlos y representarlos.
 
-| Pieza | Responsabilidad |
-|---|---|
-| **Recolector** | recibe, transforma o etiqueta |
-| **Almacén** | conserva e indexa |
-| **Visualización** | permite buscar, agregar y representar |
+### 4.1. Origen y contexto
 
-Las herramientas concretas pueden cambiar. El patrón es más importante que una marca concreta.
+En contenedores es habitual escribir en `stdout` y `stderr`. La recogida depende de la configuración de la plataforma y del sistema de logging. Un fichero dentro del contenedor no aparece automáticamente en esa salida.
 
-En entornos de contenedores es habitual que los procesos escriban en **`stdout` y `stderr`**, y que la plataforma recoja esas salidas.
+Para combinar registros conviene conservar la fecha con zona horaria y distinguir servicio e instancia. Los relojes de los hosts deben estar sincronizados para interpretar correctamente el orden de los eventos.
 
-**Retención.**
+### 4.2. Retención y acceso
 
-Los logs crecen.
+Hay que decidir qué guardar, durante cuánto tiempo y quién puede consultarlo. La rotación de archivos locales y la retención del almacén central son decisiones relacionadas, pero distintas.
 
-Todo sistema debe decidir:
-
-- qué guardar;
-- durante cuánto tiempo;
-- qué eliminar.
-
-Guardar todo indefinidamente no es una estrategia.
+Una política de retención limita la acumulación histórica. Aun así, es necesario vigilar el volumen de entrada y el espacio disponible: centralizar no evita que el almacenamiento se llene.
 
 ---
 
 ## 🎯 5. Qué merece nuestra atención
 
-Una referencia muy conocida son las **cuatro señales de oro**:
+Las **cuatro señales de oro** ofrecen una guía para observar un servicio. RED organiza tres de ellas desde el punto de vista de las peticiones.
 
-| Señal | Qué mide |
+![Tráfico, errores, latencia y saturación, con Rate, Errors y Duration asociados a las señales obtenibles de los access logs.](img/senales-oro-red.png)
+
+### 5.1. RED a partir de access logs
+
+Siempre que se recojan los campos necesarios y el conjunto de peticiones sea representativo:
+
+| Indicador | Ejemplo de cálculo o interpretación |
 |---|---|
-| **Latencia** | cuánto tarda una operación |
-| **Tráfico** | cuánta demanda recibe el sistema |
-| **Errores** | cuántas operaciones fallan |
-| **Saturación** | cuánto margen queda antes del límite |
+| **Rate** | Peticiones registradas divididas por los segundos del intervalo. |
+| **Errors** | Número de respuestas consideradas fallidas y su porcentaje sobre el total. |
+| **Duration** | Distribución de duraciones, media y percentiles. |
 
-En una práctica basada en access logs podemos observar especialmente **latencia, tráfico y errores**.
+Hay que definir qué significa «fallo». Los `5xx` son un indicador útil de errores de servidor; los `4xx` pueden tener significados distintos según la ruta. Una respuesta `200` tampoco garantiza que la operación de negocio sea correcta.
 
-La saturación de CPU, memoria, disco o conexiones requiere normalmente señales específicas de infraestructura.
+Si se excluyen peticiones del log, se pierden registros o solo se observa una parte del tráfico, las agregaciones describen esa muestra, no necesariamente todo el servicio.
 
-### 5.1. RED para un servicio web
+### 5.2. Saturación y recursos
 
-Para servicios y APIs resulta útil pensar en **RED: Rate, Errors y Duration**.
+La saturación indica presión sobre un recurso o falta de capacidad, por ejemplo una cola de trabajo creciente o peticiones esperando una conexión disponible.
 
-| Elemento | Pregunta |
-|---|---|
-| **Rate** | ¿cuántas peticiones llegan? |
-| **Errors** | ¿cuántas fallan? |
-| **Duration** | ¿cuánto tardan? |
-
-RED encaja muy bien con lo que puede observarse desde un access log.
+Utilización y saturación están relacionadas, pero no son idénticas. La CPU ocupada muestra utilización; el trabajo esperando CPU aporta información sobre saturación. Los access logs pueden mostrar síntomas, como latencia, pero normalmente hacen falta mediciones específicas para estudiar los recursos.
 
 !!! info "USE"
-    Para recursos de infraestructura existe otra regla útil: **Utilization, Saturation, Errors**. Basta con reconocerla en esta sesión; no vamos a instrumentar recursos de infraestructura siguiendo USE.
+    **Utilization, Saturation, Errors** es una guía para observar recursos de infraestructura. Basta con reconocerla en esta sesión; no vamos a instrumentar esos recursos siguiendo USE.
+
+Referencia: [las cuatro señales de oro en Google SRE](https://sre.google/sre-book/monitoring-distributed-systems/).
 
 ---
 
-## 📊 6. La media puede ocultar problemas
+## 📊 6. La media y los percentiles
 
-### 6.1. La media
+Una media resume el conjunto, pero no describe cómo se reparten sus valores. Para interpretar la cola de latencias utilizamos también percentiles.
 
-Supón:
+![Un conjunto de 100 peticiones con media de 105 ms y p95 de 400 ms mediante el método de rango más próximo.](img/media-p95.png)
 
-| Petición | Latencia |
-|---|---:|
-| 1 | 50 ms |
-| 2 | 50 ms |
-| 3 | 55 ms |
-| 4 | 60 ms |
-| 5 | 800 ms |
+### 6.1. Un único conjunto de datos
 
-La mayoría de peticiones son rápidas, pero existe una claramente lenta.
+En el ejemplo hay 90 peticiones de 50 ms, 5 de 400 ms y 5 de 800 ms. La suma de sus duraciones es 10 500 ms:
 
-Una media resume todos los valores y puede ocultar la cola.
+```text
+Media = (90 × 50 + 5 × 400 + 5 × 800) / 100 = 105 ms
+```
 
-Por eso se utilizan **percentiles**.
+La media no coincide con la duración de ninguna petición del ejemplo. Tampoco los 10 500 ms indican cuánto duró la prueba: las peticiones podrían haberse ejecutado concurrentemente.
 
-### 6.2. p95
+### 6.2. Interpretar p95
 
-Una interpretación suficiente es:
+De forma intuitiva, **p95 es un umbral de latencia que aproximadamente el 95 % de las peticiones no supera**. No es la latencia máxima ni la media de las peticiones más lentas.
 
-> **p95** es el tiempo que el 95 % de las peticiones no supera.
+Para este ejemplo usamos el método de **rango más próximo**: ordenamos los 100 valores y seleccionamos la posición 95. El resultado es `400 ms`. Exactamente 95 peticiones no superan ese tiempo y las 5 restantes tardan `800 ms`.
 
-Por ejemplo:
+Otros métodos interpolan y pueden dar otro valor en muestras pequeñas o con saltos. La herramienta y su método deben conocerse al comparar resultados. Lo fundamental en esta sesión es interpretar el percentil, no calcularlo manualmente.
 
-| Medida | Valor |
-|---|---:|
-| media | 90 ms |
-| p95 | 420 ms |
+### 6.3. Comparar conjuntos equivalentes
 
-El comportamiento promedio parece bueno, pero una parte del tráfico experimenta latencias mucho mayores.
+Hay que fijar la ruta o servicio, el intervalo temporal y las unidades. Conviene observar también el número de peticiones: un p95 con muy pocos datos puede variar mucho.
 
-No necesitas calcular manualmente el percentil. Debes saber **interpretarlo**.
+No se obtiene el p95 global haciendo la media de los p95 de cada réplica. Deben combinarse las observaciones o estructuras de distribución adecuadas. También puede ser útil separar respuestas correctas y fallidas: un fallo rápido puede reducir la media aunque el servicio esté empeorando.
 
 ---
 
 ## 📈 7. Un dashboard debe responder preguntas
 
-Un panel no es mejor por tener más gráficos.
+Cada visualización debe ayudar a tomar una decisión. Un panel inicial podría organizarse así:
 
-!!! warning "Mal criterio"
-    Diseñar un dashboard para **mostrar todo lo posible**.
+| Pregunta | Visualización útil | Contexto necesario |
+|---|---|---|
+| ¿Cambió la demanda? | Peticiones por segundo a lo largo del tiempo. | Servicio e intervalo. |
+| ¿Dónde se concentran los errores? | Recuento y porcentaje por ruta. | Total de peticiones y definición de fallo. |
+| ¿Qué rutas responden lentamente? | Media y p95 por ruta. | Unidades y tamaño de muestra. |
+| ¿Qué destinos reciben tráfico? | Peticiones o intentos por destino. | Reintentos y cambios de IP. |
 
-Un criterio mejor es partir de una pregunta:
+Al comparar paneles hay que mantener el mismo periodo y revisar sus filtros. Agrupar rutas con identificadores variables, como `/productos/123`, puede necesitar normalización para evitar miles de grupos distintos.
 
-> **¿Qué necesito saber para decidir si el servicio funciona bien?**
-
-Por ejemplo:
-
-- ¿qué rutas acumulan errores?;
-- ¿qué rutas tienen peor latencia?;
-- ¿están respondiendo varias réplicas?
-
-Cada visualización debería existir porque ayuda a responder una pregunta.
+Un gráfico señala dónde investigar; por sí solo no demuestra la causa. Desde el panel debemos poder volver a los registros relevantes.
 
 ---
 
 ## 🚨 8. Alertas: cuándo merece la pena avisar
 
-Un panel necesita que alguien lo mire.
+Un panel espera a que alguien lo consulte. Una alerta evalúa una condición y avisa a una persona que puede actuar.
 
-Una alerta evalúa una condición y avisa cuando esa condición merece una actuación.
+![Alerta con condición de más de 10 respuestas 5xx en una ventana móvil de dos minutos, persistencia opcional y actuación asignada.](img/panel-alerta-accionable.png)
 
-Una alerta útil necesita cuatro decisiones:
+### 8.1. Decisiones de una alerta
 
-| Elemento | Pregunta |
+| Elemento | Decisión del ejemplo |
 |---|---|
-| **Umbral** | ¿a partir de qué valor preocupa? |
-| **Ventana** | ¿durante cuánto tiempo? |
-| **Destinatario** | ¿quién debe recibirla? |
-| **Acción** | ¿qué debería comprobar o hacer? |
+| **Condición y umbral** | Más de 10 respuestas `5xx` del servicio observado. |
+| **Ventana de datos** | Los últimos 2 minutos, actualizados en cada evaluación. |
+| **Persistencia opcional** | La condición debe seguir cumpliéndose durante 2 minutos antes del aviso. |
+| **Destinatario** | Responsable del servicio. |
+| **Acción** | Revisar rutas afectadas, aplicación y dependencias. |
 
-Ejemplo:
+El sistema evalúa la regla con una periodicidad configurada. El ejemplo es didáctico: el umbral debe adaptarse al tráfico, a la gravedad y al servicio.
 
-| Elemento | Decisión |
-|---|---|
-| Condición | más de 10 respuestas `5xx` |
-| Ventana | durante 2 minutos |
-| Destinatario | responsable del servicio |
-| Acción | comprobar aplicación y dependencias |
+### 8.2. Ventana y persistencia son distintas
 
-**Fatiga de alertas.** Una alerta que se dispara continuamente y no exige actuación termina siendo ignorada.
+La **ventana** decide qué registros se cuentan. La **persistencia** decide cuánto debe mantenerse verdadera la condición antes de notificar.
 
-> **Más alertas ≠ mejor observabilidad.**
+Por ejemplo, a las 10:04 se cuentan los errores de los últimos dos minutos. Si se supera el umbral, comienza la espera. Para avisar a partir de las 10:06, la condición debe seguir cumpliéndose en las evaluaciones intermedias, cada una con su propia ventana móvil.
 
-Suele ser más útil alertar sobre un **síntoma que afecta al servicio** que sobre una posible causa aislada.
+No son siempre los mismos errores ni hay que esperar necesariamente cuatro minutos desde que empieza una incidencia. Si la condición deja de cumplirse durante la espera, esta alerta no llega a notificarse. Una persistencia mayor filtra oscilaciones breves, pero también retrasa el aviso.
+
+Esta distinción aparece, por ejemplo, en los [estados pendientes y la opción `for` de Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/); el concepto puede aplicarse con otras herramientas.
+
+### 8.3. Volumen, gravedad y fatiga
+
+Diez fallos entre veinte peticiones representan una situación distinta de diez entre cien mil. El porcentaje ayuda a contextualizar el recuento, pero con muy poco tráfico también puede resultar engañoso. Por eso se revisan ambos valores y el impacto de la operación.
+
+Los avisos repetidos sin acción producen **fatiga de alertas**. Conviene asignar una respuesta concreta, agrupar avisos relacionados y definir cuándo se considera recuperado el servicio. Una ausencia de datos tampoco demuestra que todo funcione bien: puede haber fallado la propia recogida.
+
+Es útil empezar por síntomas que afectan al servicio, como errores o latencia, y usar las señales de recursos para investigar sus causas.
 
 ---
 
 ## 💾 9. Observar también tiene coste
 
-La observabilidad también consume recursos y trabajo:
+La recogida, transformación, almacenamiento y consulta consumen CPU, memoria, disco y trabajo de mantenimiento.
 
-- CPU;
-- memoria;
-- disco y almacenamiento;
-- índices;
-- mantenimiento.
+El volumen de registros, el detalle de cada evento, la retención y el número de campos indexados influyen en ese coste. Debemos conservar información suficiente para detectar, explicar y resolver problemas, revisando periódicamente su utilidad.
 
-Por eso hay que elegir qué recoger y cuánto conservar.
-
-No se trata de almacenar todo, sino de conservar información que ayude a **detectar, explicar o resolver** problemas.
+Reducir datos exige conocer las consecuencias: un muestreo o un filtro puede limitar la investigación de casos concretos y cambiar la interpretación de los indicadores.
 
 ---
 
@@ -386,6 +317,7 @@ Al terminar, deberías poder:
 - Interpretar una media y un p95.
 - Explicar qué pregunta debe responder una visualización.
 - Diseñar una alerta con umbral, ventana, destinatario y acción.
+- Distinguir la ventana de datos del tiempo de persistencia de una condición.
 - Explicar qué es la fatiga de alertas.
 - Reconocer que la observabilidad también consume recursos.
 
@@ -413,7 +345,7 @@ Lo que basta con **reconocer**:
     - RED ayuda a observar servicios: tasa, errores y duración.
     - La media puede ocultar peticiones lentas; p95 ayuda a observar la cola.
     - Un dashboard debe responder preguntas, no acumular gráficos.
-    - Una alerta útil necesita umbral, ventana, destinatario y acción.
+    - Una alerta útil necesita umbral, ventana, destinatario y acción. La persistencia es una decisión adicional.
     - Alertar demasiado produce fatiga y reduce el valor de los avisos.
     - Recoger y conservar observabilidad también tiene coste.
 

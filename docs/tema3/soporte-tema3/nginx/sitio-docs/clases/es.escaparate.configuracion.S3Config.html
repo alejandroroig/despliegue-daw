@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S3Config</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header><h1>S3Config</h1></header>
+<main>
+<nav><a href="../index.html">Inicio</a> · <a href="../paquetes/index.html">Paquetes</a> · <a href="../informes/">Informes</a></nav>
+
+<div class="card">
+<span class="badge">class</span>
+<h2><code>es.escaparate.configuracion.S3Config</code></h2>
+<p>Crea el cliente de Amazon S3 únicamente cuando el almacenamiento activo es S3. No se configuran credenciales ni región obligatoria en código. Por defecto, el AWS SDK for Java utiliza sus cadenas estándar de proveedores para resolver ambas cosas. En desarrollo local esto permite usar el perfil activo de `~/.aws/credentials` y `~/.aws/config`; en AWS permite evolucionar a credenciales de contenedor o roles de instancia sin modificar la aplicación. /</p>
+<p class="small">Fuente: <code>src/main/java/es/escaparate/configuracion/S3Config.java</code></p>
+</div>
+
+<h2>Operaciones públicas/protegidas detectadas</h2>
+<table><thead><tr><th>Firma</th><th>Descripción</th></tr></thead><tbody><tr><td><code>public S3Config()</code></td><td>Constructor sin estado de la configuración S3. /</td></tr><tr><td><code>public S3Client s3Client(@Value(&quot;$</code></td><td>Construye un cliente S3 reutilizable para toda la aplicación. Si `app.storage.s3.region` no se define, el SDK resuelve la región mediante su cadena predeterminada. La propiedad queda disponible como sobrescritura explícita para prácticas o despliegues que la necesiten. /</td></tr></tbody></table>
+
+
+</main>
+<footer>Escaparate · documentación estática preparada para la práctica de despliegue</footer>
+</body>
+</html>

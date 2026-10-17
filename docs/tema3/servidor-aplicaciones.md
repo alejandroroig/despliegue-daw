@@ -1,177 +1,115 @@
 # 🧩 Servidor de aplicaciones: ejecución, estado y rendimiento
 
-Hasta ahora hemos observado sobre todo **qué ocurre delante de la aplicación**: Nginx recibe tráfico, publica sitios, termina HTTPS, balancea y registra peticiones. En esta sesión cambiaremos el punto de vista y abriremos el backend.
-
-```mermaid
-flowchart LR
-    C["Cliente"] --> N["Nginx<br/>servidor web / proxy"]
-    N --> A1["app-1<br/>Spring Boot + Tomcat"]
-    N --> A2["app-2<br/>Spring Boot + Tomcat"]
-    N --> A3["app-3<br/>Spring Boot + Tomcat"]
-    A1 --> D[("PostgreSQL")]
-    A2 --> D
-    A3 --> D
-```
-
-La sesión responde a dos preguntas:
-
-- **¿Dónde vive el estado de un usuario cuando existen varias réplicas?**
-- **¿Tener tres copias significa disponer de tres veces más capacidad?**
-
-Para responderlas veremos primero qué papel desempeña Tomcat y por qué el mismo artefacto puede ejecutarse de dos formas distintas.
+!!! info "Descarga de diapositivas"
+    [Descarga las diapositivas](diapositivas/servidor-aplicaciones.pdf){target="_blank" rel="noopener"}
 
 ---
 
-## 1. 🌐 Servidor web y servidor de aplicaciones
+Hasta ahora hemos observado principalmente la entrada al sistema: publicación web, HTTPS, balanceo y registros de peticiones. En esta sesión abrimos el backend para comprender **cómo se ejecuta la aplicación, dónde conserva su estado y qué limita su rendimiento**.
 
-Las dos piezas cooperan, pero cumplen responsabilidades diferentes.
+Nos guiarán tres preguntas:
 
-| Pieza | Responsabilidad principal | En nuestro proyecto |
+- ¿Qué aporta el servidor donde se ejecuta la aplicación?
+- ¿Dónde vive la sesión de un usuario cuando hay varias réplicas?
+- ¿Tener tres copias significa disponer de tres veces más capacidad?
+
+Usaremos ejemplos genéricos. Nginx, Tomcat, Spring Boot y Redis permiten concretar los conceptos, pero las ideas sobre estado y recursos compartidos también se aplican a otras tecnologías.
+
+---
+
+## 1. 🌐 Del servidor web a la aplicación
+
+Un servidor web y un servidor de aplicaciones pueden cooperar en la atención de una petición.
+
+| Pieza | Responsabilidad en el ejemplo | Tecnología de ejemplo |
 |---|---|---|
-| **Servidor web** | recibir HTTP, servir estáticos, aplicar políticas de entrada y reenviar tráfico | Nginx |
-| **Servidor de aplicaciones** | proporcionar el entorno donde se ejecuta la lógica dinámica | Spring Boot + Tomcat |
+| Servidor web / proxy inverso | Recibir tráfico, servir estáticos, terminar HTTPS y reenviar peticiones | Nginx |
+| Entorno de ejecución web | Recibir las peticiones reenviadas y administrar la ejecución web | Tomcat |
+| Aplicación | Ejecutar controladores, reglas de negocio y acceso a datos | Aplicación Java con Spring Boot |
 
-Una petición dinámica recorre, de forma simplificada:
+Estas funciones no son exclusivas: Tomcat también puede recibir HTTP directamente y servir recursos estáticos. La separación anterior describe una arquitectura habitual con un proxy delante.
 
-```text
-cliente
-  ↓
-Nginx
-  ↓
-Tomcat
-  ↓
-controladores / servicios
-  ↓
-PostgreSQL
-```
+![Recorrido de una petición desde el cliente y Nginx hasta Tomcat, la aplicación y la base de datos; diferencia entre contenedor de servlets y contenedor Docker.](img/dentro-del-backend.png)
 
-Tomcat es, con más precisión, un **contenedor de servlets**. Entre otras tareas:
+*En este ejemplo, Nginx termina HTTPS y utiliza HTTP hacia el backend. Ese tramo también podría protegerse con HTTPS.*
 
-- recibe peticiones HTTP destinadas a la aplicación;
-- crea y administra el contexto web;
-- gestiona el ciclo de vida de la aplicación;
-- mantiene recursos para atender peticiones concurrentes;
-- puede gestionar sesiones HTTP.
+Tomcat es, con más precisión, un **contenedor de servlets**: implementa el entorno necesario para ejecutar componentes web Java. La aplicación y Tomcat pueden estar dentro de la misma JVM; el dibujo no representa un proceso distinto para cada uno.
 
-Otros productos, como WildFly o Payara, añaden más servicios de la plataforma Jakarta EE. Para esta sesión basta con reconocer esa diferencia.
+Otros servidores, como WildFly o Payara, incorporan más servicios de la plataforma Jakarta EE. Basta con reconocer que Tomcat no equivale a un servidor Jakarta EE completo.
 
 ---
 
 ## 2. ⚙️ Qué aporta un contenedor de servlets
 
-La palabra **contenedor** aquí no significa contenedor Docker.
+El contenedor administra el contexto web y el ciclo de vida de sus componentes: inicialización, atención de peticiones y retirada de la aplicación. También proporciona mecanismos para gestionar sesiones y recursos de ejecución.
 
-Un contenedor de servlets rodea a la aplicación y administra su ejecución:
+La palabra **contenedor** tiene aquí un significado diferente al de Docker:
 
-```mermaid
-flowchart LR
-    A["Desplegar aplicación"] --> B["Crear contexto"]
-    B --> C["Inicializar"]
-    C --> D["Atender peticiones"]
-    D --> E["Detener / retirar"]
-```
+- Un **contenedor de servlets** proporciona un entorno de ejecución web Java.
+- Un **contenedor Docker** aísla procesos y sus recursos. Puede ejecutar una JVM que contenga Tomcat y la aplicación.
 
-Cuando llegan varias peticiones, el servidor no crea una máquina ni una JVM nueva para cada una. Utiliza recursos ya preparados, entre ellos un conjunto de hilos.
+### Peticiones concurrentes y recursos disponibles
 
-```text
-petición 1 ──► hilo disponible
-petición 2 ──► hilo disponible
-petición 3 ──► hilo disponible
-...
-```
+El servidor no crea una máquina ni una JVM por petición. En un modelo habitual utiliza un conjunto de hilos para atender trabajo concurrente. Los detalles cambian con la configuración y con los mecanismos de ejecución asíncrona.
 
-Si todos los recursos están ocupados, las nuevas peticiones pueden tener que esperar.
+Una petición puede estar ejecutándose o esperando: por un hilo, una conexión a la base de datos, una respuesta de otro servicio o cualquier otro recurso. Si se alcanzan los límites, pueden aparecer colas, rechazos o tiempos de espera agotados.
 
-!!! important "Primera idea de rendimiento"
-    Más peticiones concurrentes **no crean más CPU**. Solo aumentan el trabajo que compite por los mismos recursos.
+!!! important "Más concurrencia no crea más CPU"
+    Aceptar más trabajo simultáneo puede aprovechar tiempos de espera, pero también aumentar la competencia por recursos. El número de peticiones en curso no equivale necesariamente al número de hilos ocupados.
 
 ---
 
-## 3. 📦 Un WAR, dos modelos de ejecución
+## 3. 📦 Un WAR preparado para dos modelos de ejecución
 
-En el Tema 2 distinguimos dos niveles:
+Conviene distinguir tres niveles:
 
-```text
-WAR
-→ artefacto de aplicación Java
+| Elemento | Qué representa |
+|---|---|
+| **WAR** | Artefacto que empaqueta una aplicación web Java y sus recursos |
+| **Imagen de contenedor** | Paquete con el entorno y los ficheros necesarios para ejecutar procesos |
+| **Contenedor en ejecución** | Instancia de una imagen con sus procesos y recursos |
 
-imagen
-→ unidad de despliegue con runtime + artefacto
+Una aplicación Spring Boot basada en servlets puede prepararse como **WAR ejecutable y desplegable**. Esto permite utilizar el mismo artefacto en dos modelos.
+
+![Comparación entre Tomcat embebido, iniciado por la aplicación, y Tomcat externo, que carga los WAR; ambos modelos pueden ejecutarse en Docker.](img/tomcat-embebido-externo.png)
+
+### 3.1. Tomcat embebido
+
+La aplicación inicia su servidor web dentro del mismo proceso Java. Para un WAR ejecutable preparado con ese fin:
+
+```bash
+java -jar aplicacion.war
 ```
 
-Una aplicación Spring Boot basada en servlets puede prepararse como WAR y utilizarse de dos formas.
+Una imagen podría incluir el runtime Java y ese artefacto. Normalmente cada aplicación autónoma tiene su propio proceso. También existen aplicaciones Spring Boot empaquetadas como JAR ejecutable: el uso de un servidor embebido no exige utilizar WAR.
 
-### 3.1. Modelo embebido
+### 3.2. Tomcat externo
 
-```mermaid
-flowchart LR
-    C["java -jar aplicacion.war"] --> S["Spring Boot"]
-    S --> T["Tomcat embebido"]
-    T --> A["Aplicación"]
-```
+Se administra una instalación de Tomcat y se despliega en ella el WAR. Un mismo Tomcat puede alojar varias aplicaciones, cada una con su contexto, compartiendo el proceso y parte de los recursos del servidor.
 
-La aplicación arranca su propio Tomcat.
+«Externo» significa externo al artefacto de la aplicación; **no significa que tenga que estar en otra máquina ni fuera de Docker**.
 
-Esto facilita que cada servicio viaje como una unidad autónoma:
+### 3.3. Qué debe estar preparado
 
-```text
-imagen
-├── JRE
-└── aplicacion.war
-    └── Tomcat embebido
-```
+No cualquier WAR funciona con `java -jar`. Para admitir ambos modelos hacen falta el empaquetado ejecutable, la inicialización para el despliegue externo y una gestión adecuada de las dependencias del servidor. Además, la aplicación, Java y el Tomcat externo deben ser compatibles.
 
-Es el modelo que conserva Escaparate.
-
-### 3.2. Modelo externo
-
-```mermaid
-flowchart TB
-    T["Tomcat externo"]
-    T --> A["aplicacion-a.war"]
-    T --> B["aplicacion-b.war"]
-    T --> C["aplicacion-c.war"]
-```
-
-Tomcat existe antes que las aplicaciones y se administra como una pieza independiente.
-
-Aquí se separan:
-
-```text
-administrar servidor
-+
-desplegar aplicaciones
-```
-
-### 3.3. Comparación
+No es necesario implementar esos ajustes en esta explicación; sí comprender que **la doble ejecución es una propiedad del artefacto preparado, no de la extensión `.war` por sí sola**. [Referencia: despliegue tradicional de Spring Boot](https://docs.spring.io/spring-boot/how-to/deployment/traditional-deployment.html).
 
 | Aspecto | Tomcat embebido | Tomcat externo |
 |---|---|---|
-| Unidad habitual | aplicación autónoma | servidor + aplicaciones |
-| Versión de Tomcat | ligada a la aplicación | administrada por separado |
-| Actualización | sustituir proceso o imagen | desplegar/reemplazar WAR |
-| Varias aplicaciones | normalmente procesos separados | pueden compartir servidor |
-| Encaje con contenedores | muy natural | posible, pero menos necesario para una sola app |
+| Arranque | La aplicación inicia el servidor | Tomcat carga la aplicación |
+| Versión del servidor | Se gestiona con las dependencias de la aplicación | Se administra por separado, respetando compatibilidad |
+| Actualizar la aplicación | Sustituir artefacto, proceso o imagen | Reemplazar el WAR o la imagen que lo contiene |
+| Varias aplicaciones | Habitualmente procesos separados | Pueden compartir servidor |
+| Uso con Docker | Posible | Posible |
 
-No existe una regla universal de que un modelo sea siempre correcto y el otro incorrecto.
-
-Para nuestro proyecto:
-
-```text
-modelo externo
-→ laboratorio para comprender el mecanismo
-
-modelo embebido
-→ arquitectura de referencia
-```
+La elección depende del despliegue y de cómo se quiera administrar cada unidad.
 
 ---
 
 ## 4. 🗂️ Qué conviene identificar en Tomcat
 
-No necesitas memorizar todos sus ficheros ni aprender a administrar una instalación completa.
-
-Sí debes reconocer las piezas principales:
+En una instalación sencilla, con instalación y configuración de instancia reunidas, encontramos una estructura similar a esta:
 
 ```text
 tomcat/
@@ -182,408 +120,227 @@ tomcat/
 ├── lib/
 └── webapps/
     ├── ROOT/
-    └── otra-aplicacion/
+    └── ventas/
 ```
 
-| Elemento | Función |
+| Elemento | Función habitual |
 |---|---|
-| `conf/server.xml` | conectores, puertos y estructura principal |
-| `conf/context.xml` | configuración común de contextos |
-| `conf/tomcat-users.xml` | usuarios y roles en configuraciones sencillas |
-| `lib/` | bibliotecas compartidas por el servidor |
-| `webapps/` | aplicaciones desplegadas |
+| `conf/server.xml` | Conectores, puertos y estructura principal del servidor |
+| `conf/context.xml` | Configuración predeterminada de los contextos |
+| `conf/tomcat-users.xml` | Usuarios y roles cuando se utiliza el mecanismo de autenticación correspondiente |
+| `lib/` | Bibliotecas compartidas según la configuración de carga de clases |
+| `webapps/` | Ubicación habitual de aplicaciones desplegadas, como WAR o directorios |
 
-Las bibliotecas compartidas pueden reducir duplicación, pero también acoplar aplicaciones:
+El árbol es orientativo: pueden separarse los directorios de instalación e instancia y configurarse otras ubicaciones. `tomcat-users.xml` no es necesariamente el registro de usuarios de la aplicación.
 
-```text
-app A necesita biblioteca v1
-app B necesita biblioteca v2
-        ↓
-biblioteca común
-        ↓
-posible conflicto
-```
-
-En aplicaciones autónomas suele ser preferible que cada unidad declare y lleve sus propias dependencias.
+Las dependencias compartidas reducen duplicación, pero pueden acoplar aplicaciones: si una necesita una versión de una biblioteca y otra requiere una diferente, habrá que resolver esa compatibilidad. Empaquetar las dependencias propias con cada aplicación facilita gestionarlas de forma independiente.
 
 ---
 
 ## 5. 🛣️ WAR, contexto y URL publicada
 
-En un Tomcat externo, el nombre del WAR puede determinar la **ruta de contexto**.
+La **ruta de contexto** es el prefijo que identifica una aplicación dentro del servidor. En el despliegue habitual de Tomcat externo, el nombre del WAR permite derivarla:
 
-```text
-ventas.war
-→ /ventas
+| Artefacto | Contexto | Ejemplo de ruta en Tomcat |
+|---|---|---|
+| `ventas.war` | `/ventas` | `/ventas/api/productos` |
+| `ROOT.war` | Raíz, sin prefijo | `/api/productos` |
 
-ROOT.war
-→ /
-```
+Esta es la convención habitual; existen configuraciones explícitas de despliegue que pueden cambiar la relación entre nombre y contexto. [Referencia: contextos de Tomcat](https://tomcat.apache.org/tomcat-10.1-doc/config/context.html).
 
-Por eso un proxy y un servidor de aplicaciones pueden estar funcionando correctamente y, aun así, devolver `404`.
+![Comparación de ventas.war y ROOT.war y ejemplo de un 404 cuando el proxy envía una ruta que no coincide con el contexto desplegado.](img/war-contexto-url.png)
 
-```mermaid
-flowchart LR
-    N["Nginx reenvía<br/>/api/productos"] --> T["Tomcat"]
-    T --> C["Aplicación desplegada en<br/>/ventas"]
-    C --> X["Ruta real:<br/>/ventas/api/productos"]
-```
+Si el proxy reenvía `/api/productos` sin modificarla, pero el endpoint está publicado en `/ventas/api/productos`, la petición no llega a ese endpoint. En el ejemplo, al no haber una aplicación en el contexto raíz, se obtiene un `404`.
 
-El problema es:
+Para diagnosticarlo hay que comprobar **la ruta recibida por el proxy, la que envía al backend, el contexto y la ruta definida por la aplicación**. Un 404 no implica necesariamente que Tomcat esté detenido.
 
-```text
-ruta esperada por el proxy
-≠
-ruta publicada por Tomcat
-```
-
-Cambiar el despliegue de:
-
-```text
-escaparate.war
-→ /escaparate
-```
-
-a:
-
-```text
-ROOT.war
-→ /
-```
-
-permite publicar la misma aplicación en el contexto raíz **sin cambiar su código**.
+Desplegar como `ROOT.war` puede situar una aplicación compatible en el contexto raíz sin modificar su lógica. Aun así, deben revisarse las rutas del proxy y las URL, redirecciones o recursos que puedan asumir un prefijo concreto. Renombrar el WAR no corrige automáticamente todos esos ajustes.
 
 ---
 
-## 6. 🧠 Administración de sesiones
+## 6. 🧠 Sesiones: dónde vive el estado
 
-La **administración de sesiones** forma parte del trabajo de un servidor de aplicaciones. Una sesión permite conservar información entre varias peticiones de un mismo cliente aunque HTTP, por sí solo, no recuerde peticiones anteriores.
+HTTP no conserva por sí mismo una conversación entre peticiones. Una **sesión** permite asociar a un cliente datos que se recuperan en peticiones posteriores: por ejemplo, un identificador de usuario o un paso de un proceso.
 
-En una única instancia el mecanismo es sencillo. El problema aparece cuando la aplicación se replica.
+### 6.1. Identificador en el cliente, datos en el servidor
 
-### 6.1. HttpSession y estado local
+En una sesión de servidor típica, el navegador conserva una cookie con un identificador. En el ejemplo de Tomcat usamos `JSESSIONID`:
 
-Una sesión típica funciona así:
-
-```mermaid
-sequenceDiagram
-    participant C as Cliente
-    participant A as app-1
-    C->>A: POST /api/sesion/abrir
-    A-->>C: Set-Cookie: JSESSIONID=abc
-    C->>A: GET /api/sesion/estado + cookie abc
-    A-->>C: sesión encontrada
+```http
+Set-Cookie: JSESSIONID=abc
 ```
 
-La cookie contiene un **identificador**, no todo el contenido de la sesión.
+En una petición posterior para la que corresponda enviar esa cookie:
 
-En el modelo habitual de Tomcat, si no se configura otro almacén:
-
-```text
-JSESSIONID=abc
-        ↓
-app-1
-        ↓
-memoria de la JVM
-        ↓
-sesión abc
+```http
+Cookie: JSESSIONID=abc
 ```
 
-Por tanto, el estado pertenece al proceso que lo creó.
+Son cabeceras simplificadas para explicar el mecanismo; el identificador real es opaco y la cookie tiene atributos que condicionan su envío y protección. **En este modelo, la cookie no contiene todos los datos de la sesión.**
 
-### 6.2. Qué cambia al replicar la aplicación
+### 6.2. Qué ocurre con varias réplicas
 
-Supón ahora tres copias detrás de Nginx:
+Si el estado está en la memoria local de `app-1`, otra réplica no lo conoce automáticamente, aunque reciba el mismo identificador.
 
-```mermaid
-flowchart LR
-    C["Cliente<br/>cookie abc"] --> N["Nginx"]
-    N --> A1["app-1<br/>conoce abc ✅"]
-    N --> A2["app-2<br/>no conoce abc ❌"]
-    N --> A3["app-3<br/>no conoce abc ❌"]
-```
+![Una sesión se crea en app-1 y el cliente guarda su identificador; una petición posterior llega a app-2, que no comparte la memoria y no encuentra el estado.](img/sesion-local-replicas.png)
 
-La misma cookie puede producir respuestas distintas según qué backend atienda la petición.
+Según la aplicación, esto puede provocar una nueva sesión, la pérdida aparente de datos o la necesidad de identificarse de nuevo. No implica siempre el mismo código de respuesta HTTP.
 
-Esto no es un fallo de la cookie ni del balanceador. Es una consecuencia de haber situado el estado en memoria local.
+El problema es similar al de un fichero guardado únicamente dentro de una réplica: **poder llegar a cualquier copia no significa que todas tengan acceso al mismo estado**.
 
-La situación es muy parecida a la que ya vimos con los ficheros:
+Tomcat admite mecanismos de persistencia y administración de sesiones. Conservarlas en disco durante determinados reinicios no equivale a compartirlas entre réplicas ni garantiza recuperarlas ante cualquier fallo. [Referencia: administración de sesiones en Tomcat](https://tomcat.apache.org/tomcat-10.1-doc/config/manager.html).
 
-| Estado local | Consecuencia |
-|---|---|
-| imagen guardada solo en `app-1` | otra réplica puede devolver `404` |
-| sesión guardada solo en `app-1` | otra réplica no reconoce al usuario |
+### 6.3. Tres estrategias
 
-La regla vuelve a ser la misma:
+![Afinidad hacia una réplica, replicación del estado entre servidores y almacén externo compartido, con sus limitaciones y el ejemplo de Spring Session con Redis.](img/estrategias-sesiones.png)
 
-> Si cualquier réplica debe poder recuperar un dato, ese dato no debería vivir únicamente dentro de una de ellas.
+- **Afinidad o sticky session:** dirige al cliente a la misma réplica. Por sí sola no copia la sesión y puede repartir la carga de forma desigual.
+- **Replicación:** intercambia estado entre servidores. Requiere configuración y coordinación; sus garantías dependen del mecanismo utilizado.
+- **Almacén externo:** permite que varias réplicas consulten un estado común. Añade una dependencia cuya disponibilidad, capacidad y conservación de datos deben administrarse.
 
-### 6.3. Estrategias de administración de sesiones
+### 6.4. Ejemplo: Spring Session y Redis
 
-Existen varias estrategias.
+Spring Session puede integrar `HttpSession` con un repositorio externo como Redis. La aplicación sigue utilizando la abstracción de sesión mientras la integración se encarga del almacenamiento. **Arrancar Redis no basta**: la aplicación necesita las dependencias y la configuración correspondientes. [Referencia: integración de HttpSession](https://docs.spring.io/spring-session/reference/http-session.html).
 
-| Estrategia | Idea | Principal limitación |
-|---|---|---|
-| **Afinidad o sticky session** | el usuario vuelve a la misma réplica | si esa réplica desaparece, su sesión puede perderse |
-| **Replicación de sesiones** | los servidores intercambian el estado | aumenta complejidad y tráfico entre réplicas |
-| **Almacén externo** | todas las réplicas consultan un estado común | añade una dependencia compartida |
+Todas las réplicas deben utilizar una configuración compatible y acceder al mismo repositorio de sesiones. El nombre de la cookie puede cambiar según la integración; no debe suponerse que siempre seguirá siendo `JSESSIONID`.
 
-No existe una única solución válida para todos los sistemas. La elección depende de requisitos, tecnología y arquitectura.
+Cambiar de réplica permite recuperar el estado **si la sesión sigue siendo válida y el almacén está disponible**. La expiración, el cierre de sesión o un fallo del repositorio siguen teniendo efectos. Externalizar las sesiones tampoco externaliza automáticamente los ficheros, las cachés locales o el resto del estado de la aplicación.
 
-### 6.4. Spring Session y Redis
-
-En nuestro laboratorio utilizaremos un **almacén externo**.
-
-```mermaid
-flowchart LR
-    C["Cliente"] --> N["Nginx"]
-    N --> A1["app-1"]
-    N --> A2["app-2"]
-    N --> A3["app-3"]
-    A1 --> R[("Redis<br/>sesiones")]
-    A2 --> R
-    A3 --> R
-```
-
-**Spring Session** permite que la aplicación continúe utilizando `HttpSession` mientras cambia el lugar donde se conserva el estado.
-
-Conceptualmente:
-
-```text
-código
-request.getSession()
-        ↓
-Spring Session
-        ↓
-Redis
-```
-
-El controlador no necesita saber qué réplica creó originalmente la sesión.
-
-La transformación importante es:
-
-| Antes | Después |
-|---|---|
-| la sesión vive en una JVM | la sesión vive en Redis |
-| una réplica conoce el estado | todas pueden recuperarlo |
-| cambiar de réplica puede perder la sesión | cambiar de réplica mantiene la sesión |
-
-!!! info "Qué debes aprender y qué no"
-    El objetivo no es aprender la API de Redis ni programar Spring Session desde cero. Debes comprender **qué estado administra el servidor de aplicaciones, por qué el estado local dificulta la replicación y qué consigue externalizarlo**.
+!!! info "Objetivo de aprendizaje"
+    Lo importante es reconocer qué estado se conserva, quién puede recuperarlo y qué dependencia aparece al compartirlo. No hace falta aprender la API de Redis ni configurar una solución de alta disponibilidad en esta sesión.
 
 ---
 
 ## 7. 📈 Rendimiento: tres magnitudes distintas
 
-No debemos utilizar “rendimiento” como una sola cifra.
+![Latencia media de 180 ms, throughput de 150 peticiones por segundo y concurrencia media de 27 peticiones; relación entre las tres magnitudes en condiciones estables.](img/latencia-throughput-concurrencia.png)
 
-### 7.1. Latencia
+| Magnitud | Pregunta | Unidad |
+|---|---|---|
+| **Latencia** | ¿Cuánto tarda una petición en completarse? | Milisegundos o segundos |
+| **Throughput** | ¿Cuánto trabajo se completa por unidad de tiempo? | Por ejemplo, peticiones/s |
+| **Concurrencia** | ¿Cuántas peticiones permanecen en curso al mismo tiempo? | Número de peticiones |
 
-Es el tiempo que tarda una petición en completarse.
+La concurrencia incluye ejecución y espera dentro del ámbito que medimos. No equivale al número de usuarios registrados, usuarios virtuales o hilos del servidor.
 
-```text
-petición
-→ 180 ms
-```
+### Una relación útil: la ley de Little
 
-Pregunta a la que responde:
-
-> **¿Cuánto espera un usuario por una respuesta?**
-
-### 7.2. Throughput
-
-Es la cantidad de trabajo completado por unidad de tiempo.
+Para un flujo estable, usando medias y límites de medida coherentes:
 
 ```text
-150 peticiones/s
+concurrencia media ≈ throughput medio × latencia media
+
+150 peticiones/s × 0,18 s = 27 peticiones
 ```
 
-Pregunta a la que responde:
+Los 180 ms se convierten en 0,18 s para que las unidades encajen. El resultado significa **27 peticiones en curso de media**, no que haya exactamente 27 en cada instante.
 
-> **¿Cuánto trabajo termina el sistema cada segundo?**
+No se sustituye la latencia media por el p95 en esta relación. Tampoco se mezclan, por ejemplo, el throughput de todo un servicio con la latencia de una única ruta. Si la cola crece continuamente, el sistema no está en el régimen estable supuesto en este ejemplo.
 
-### 7.3. Concurrencia
-
-Es la cantidad de peticiones que permanecen dentro del sistema al mismo tiempo.
-
-```text
-40 peticiones simultáneas
-```
-
-Pregunta a la que responde:
-
-> **¿Cuánto trabajo está activo a la vez?**
-
-Una intuición útil en condiciones estables es:
-
-```text
-concurrencia ≈ throughput × latencia
-```
-
-| Magnitud | Ejemplo | Describe |
-|---|---:|---|
-| Latencia | 180 ms | tiempo de respuesta |
-| Throughput | 150 req/s | trabajo completado |
-| Concurrencia | 40 | trabajo simultáneo |
+La latencia depende de dónde comienza y termina la medida: cliente, proxy y aplicación pueden observar intervalos diferentes. Debemos identificar ese ámbito antes de comparar cifras.
 
 ---
 
-## 8. 📊 Recordatorio: interpretar el p95
+## 8. 📊 Throughput, p95 y errores se interpretan juntos
 
-En la sesión anterior sobre observabilidad vimos que una media puede ocultar peticiones especialmente lentas y utilizamos **p95** para observar mejor esa parte de la distribución.
+El **p95** resume un umbral de latencia que aproximadamente el 95 % de las observaciones no supera, según el método de cálculo. No es el máximo ni la media de las peticiones más lentas.
 
-En esta sesión reutilizaremos esa misma medida con otro objetivo: **comparar el comportamiento de una y tres réplicas bajo la misma carga**.
+Para comparar configuraciones necesitamos observar conjuntamente:
 
-Observaremos conjuntamente:
+| Métrica | Qué aporta | Qué revisar |
+|---|---|---|
+| Peticiones/s | Ritmo de trabajo completado | Si incluye respuestas fallidas |
+| Latencia p95 | Comportamiento de la parte alta de la distribución | Mismo ámbito, rutas y criterio de selección |
+| Errores | Fallos según el criterio de la prueba | Recuento, porcentaje y validación de la respuesta |
 
-```text
-peticiones/s
-+
-p95
-+
-errores
-```
+Una configuración que responde rápido con errores no ha demostrado una mejora útil. Un aumento del throughput tampoco basta si la latencia deja de ser aceptable.
 
-- **peticiones/s** indica cuánto trabajo completa el sistema;
-- **p95** permite observar cómo evoluciona la latencia de las peticiones más lentas;
-- **errores** permite comprobar si la carga está provocando fallos.
-
-Ninguna de estas cifras, por sí sola, describe todo el comportamiento.
+Mantendremos criterios equivalentes en ambas pruebas y un número suficiente de muestras. Como vimos en observabilidad, **no se obtiene el p95 global promediando los p95 de las réplicas**.
 
 ---
 
 ## 9. 🖥️ Tres réplicas no son tres máquinas
 
-En nuestro laboratorio:
+Consideremos un host que ejecuta tres procesos de aplicación, una base de datos y un almacén de sesiones. Es una configuración ilustrativa: esas dependencias también podrían estar en otros hosts.
 
-```mermaid
-flowchart TB
-    H["Una EC2"]
-    H --> A1["app-1"]
-    H --> A2["app-2"]
-    H --> A3["app-3"]
-    H --> P["PostgreSQL"]
-    H --> R["Redis"]
-```
+![Tres réplicas dentro de un mismo host comparten CPU, memoria, red, disco y dependencias; criterios para comparar una y tres réplicas.](img/replicas-recursos-compartidos.png)
 
-Las tres aplicaciones siguen compartiendo:
+Las réplicas pueden aprovechar mejor ciertos recursos o permitir sustituir un proceso mientras otros atienden tráfico. Pero todas siguen compitiendo por los recursos disponibles.
 
-- CPU;
-- memoria;
-- red;
-- disco;
-- PostgreSQL;
-- Redis.
-
-Por eso:
-
-```text
-3 procesos
-≠
-3 veces más recursos físicos
-```
-
-Las réplicas sí pueden aportar otras propiedades:
-
-| Aportan | No garantizan |
+| Pueden facilitar | No garantizan |
 |---|---|
-| continuidad si falla una copia | sobrevivir a la caída del host |
-| reparto entre procesos | triplicar capacidad |
-| reemplazo progresivo | triplicar CPU o memoria |
+| Repartir trabajo entre procesos | Triplicar el throughput |
+| Mantener servicio si falla un proceso y se gestiona el fallo | Sobrevivir a la caída del host |
+| Reemplazar copias progresivamente | Mantener sesiones sin una estrategia de estado |
+| Aprovechar capacidad que una copia no utilizaba | Añadir CPU o memoria física |
 
-Esta distinción será importante al interpretar la prueba de carga.
+La mejora depende del **cuello de botella**. Si el límite está en una consulta o en el disco compartido, añadir procesos puede aumentar la espera. Además, cada réplica consume memoria y puede abrir su propio conjunto de conexiones a la base de datos.
 
 ---
 
-## 10. 🧪 Una comparación pequeña y reproducible
+## 10. 🧪 Comparar una y tres réplicas con criterio
 
-No intentaremos averiguar la capacidad absoluta de producción.
+Una prueba pequeña sirve para observar un comportamiento concreto, no para certificar la capacidad de producción.
 
-Compararemos:
+### 10.1. Preparar condiciones comparables
 
-```text
-1 réplica
-vs.
-3 réplicas
-```
+Cambiaremos el número de réplicas y mantendremos comparables:
 
-### 10.1. Qué debe permanecer constante
+- Host, recursos asignados y configuración de las dependencias.
+- Versión de la aplicación, datos y estado inicial relevante.
+- Ruta, método, contenido de la petición y comprobaciones de respuesta.
+- Herramienta, equipo generador, escenario de carga y duración medida.
+- Política de calentamiento y condiciones de red, en la medida de lo posible.
 
-Para que la comparación tenga sentido mantendremos igual:
+Al calentar permitimos que arranquen conexiones, cachés y otros mecanismos. Debemos aplicar el mismo criterio a ambas configuraciones y separar ese periodo de la medida que queremos comparar. Repetiremos las pruebas y conservaremos sus resultados, sin elegir únicamente la ejecución más favorable.
 
-- endpoint;
-- EC2;
-- duración;
-- número de usuarios virtuales;
-- herramienta generadora;
-- versión de la aplicación.
+### 10.2. Usuarios virtuales y tasa de llegada
 
-Y cambiaremos una sola variable:
+En un **modelo cerrado**, cada usuario virtual ejecuta una iteración y espera a terminar antes de comenzar la siguiente. Si las respuestas se ralentizan, puede generar menos peticiones por segundo. Por eso **el mismo número de usuarios virtuales no implica la misma tasa de peticiones**.
 
-```text
-número de réplicas
-```
+En un **modelo abierto**, se programa una tasa de inicio de trabajo independiente de la duración de las respuestas. El generador necesita capacidad para sostenerla; deben comprobarse también las iteraciones que no consigue iniciar. Una iteración puede contener varias peticiones.
 
-Mediremos:
+Para una comparación introductoria basta con mantener el mismo escenario, entender su modelo y registrar la carga realmente conseguida. [Referencia: modelos abiertos y cerrados en k6](https://grafana.com/docs/k6/latest/using-k6/scenarios/concepts/open-vs-closed/).
 
-| Métrica | Qué observamos |
-|---|---|
-| peticiones/s | trabajo completado |
-| p95 | cola de latencia |
-| errores | peticiones que no terminan correctamente |
+### 10.3. Medir y explicar
 
-### 10.2. Qué no demuestra el laboratorio
+Podemos organizar los resultados con esta tabla, sin presuponer cuál será mejor:
 
-k6 se ejecutará desde otro equipo y accederá a la EC2 por Internet.
+| Configuración | Ejecución | Peticiones/s | p95 (ms) | Errores (%) | Observaciones |
+|---|---|---|---|---|---|
+| 1 réplica | 1 | — | — | — | — |
+| 3 réplicas | 1 | — | — | — | — |
 
-Esto evita que el generador consuma la CPU de la máquina medida, pero introduce otra variable:
+Las observaciones deben incluir lo que ayude a explicar la diferencia: CPU, memoria, esperas, conexiones, base de datos o incidencias de red.
 
-```text
-red entre generador y EC2
-```
+Si utilizamos k6, debemos conocer el significado de cada métrica. Por ejemplo, `http_req_duration` suma envío, espera y recepción, pero no incluye todos los tiempos previos de conexión. No representa automáticamente el mismo intervalo que una medida del proxy. [Referencia: métricas incorporadas de k6](https://grafana.com/docs/k6/latest/using-k6/metrics/reference/).
 
-Además, una y tres réplicas siguen compartiendo la misma infraestructura.
+### 10.4. Qué podemos concluir
 
-Por tanto, el experimento permite afirmar:
+Ejecutar el generador en otro equipo evita que compita directamente por la CPU del host medido. Aun así, su propia capacidad y la red entre ambos pueden limitar o alterar el resultado.
 
-```text
-"en estas condiciones,
-una y tres réplicas se comportan de esta manera"
-```
+Una conclusión válida identifica **configuración, escenario y resultados observados**. Por ejemplo: «En estas condiciones, tres réplicas completaron más peticiones por segundo, con este p95 y este porcentaje de errores».
 
-pero no:
-
-```text
-"Escaparate soporta X usuarios en producción"
-```
+Eso no demuestra cuántos usuarios reales soportará cualquier despliegue en producción. Las rutas, los datos, las dependencias, el tráfico y los recursos pueden ser diferentes.
 
 ---
 
 ## 🎯 Qué debes saber hacer al salir de esta sesión
 
-- Diferenciar servidor web y servidor de aplicaciones.
-- Describir qué aporta un contenedor de servlets.
-- Explicar Tomcat embebido frente a Tomcat externo.
-- Distinguir WAR e imagen de contenedor.
+- Diferenciar proxy, entorno de ejecución web y aplicación.
+- Explicar qué aporta un contenedor de servlets y distinguirlo de Docker.
+- Comparar Tomcat embebido y externo, y reconocer las condiciones para reutilizar un WAR.
 - Identificar los principales directorios y ficheros de Tomcat.
-- Relacionar nombre del WAR y contexto publicado.
-- Explicar cómo funciona una `HttpSession` y dónde se almacena por defecto.
-- Explicar por qué una sesión local falla al balancear entre réplicas.
-- Comparar afinidad, replicación y almacén externo.
-- Explicar qué aporta Spring Session + Redis a la administración de sesiones.
-- Diferenciar latencia, throughput y concurrencia.
-- Interpretar conjuntamente throughput, p95 y errores al comparar dos configuraciones bajo la misma carga.
-- Explicar por qué varias réplicas en el mismo host no equivalen a varias máquinas.
-- Interpretar una comparación sencilla de carga.
+- Relacionar artefacto, contexto y ruta enviada por el proxy.
+- Distinguir el identificador de sesión del estado conservado en el servidor.
+- Explicar el problema del estado local y comparar las tres estrategias de sesiones.
+- Describir qué consigue la integración de Spring Session con Redis.
+- Diferenciar latencia, throughput y concurrencia, usando correctamente sus unidades.
+- Interpretar conjuntamente throughput, p95 y errores.
+- Explicar los límites de varias réplicas sobre un mismo host.
+- Diseñar e interpretar una comparación pequeña y reproducible.
 
-Lo que basta con **reconocer**:
-
-- servidores Jakarta EE completos;
-- detalles internos de `server.xml`;
-- classloading y bibliotecas compartidas;
-- replicación nativa de sesiones;
-- p99;
-- pruebas de estrés, pico y resistencia.
+Basta con **reconocer**, sin administrarlos en profundidad, los servidores Jakarta EE completos, la carga de bibliotecas compartidas, la replicación nativa de sesiones y otros tipos de pruebas de rendimiento.
 
 ---
 
@@ -591,18 +348,18 @@ Lo que basta con **reconocer**:
 
 ??? tip "Abrir resumen"
 
-    - Nginx publica y enruta; Tomcat ejecuta la aplicación.
-    - Escaparate utiliza Tomcat embebido como arquitectura de referencia.
-    - Un mismo WAR puede ejecutarse de forma autónoma o desplegarse en Tomcat externo.
-    - El nombre del WAR puede determinar el contexto publicado.
-    - Administrar sesiones implica decidir dónde vive el estado asociado a cada cliente.
-    - Una `HttpSession` en memoria pertenece a una réplica concreta.
-    - Spring Session + Redis permite sacar ese estado fuera de las copias.
-    - Latencia, throughput y concurrencia responden preguntas diferentes.
-    - p95 muestra una parte del comportamiento que la media puede ocultar.
-    - Tres procesos en una EC2 siguen compartiendo la misma máquina.
-    - Una prueba de carga solo demuestra lo que permiten sus condiciones.
+    - Tomcat administra la ejecución web; la aplicación implementa la lógica.
+    - Un contenedor de servlets puede ejecutarse dentro de un contenedor Docker.
+    - Un WAR preparado y compatible puede admitir ejecución autónoma y despliegue externo.
+    - Contexto, rutas de aplicación y configuración del proxy deben encajar.
+    - La cookie de sesión identifica un estado; no lo comparte entre réplicas.
+    - Afinidad, replicación y almacén externo resuelven el acceso al estado de maneras distintas.
+    - Externalizar sesiones introduce una dependencia que también hay que administrar.
+    - La relación entre concurrencia, throughput y latencia utiliza medias y un ámbito coherente.
+    - Throughput, p95 y errores deben interpretarse juntos.
+    - Tres procesos en un host no añaden tres veces más recursos.
+    - Una prueba permite concluir únicamente dentro de sus condiciones.
 
 ---
 
-En la actividad comprobarás primero el mismo WAR en Tomcat embebido y externo. Después reproducirás una sesión que se pierde entre réplicas, externalizarás ese estado a Redis y compararás una y tres copias bajo la misma carga.
+Con esta sesión cerramos el tema: publicar y observar una aplicación también exige comprender cómo se ejecuta, qué estado necesita y qué recursos limitan su funcionamiento.

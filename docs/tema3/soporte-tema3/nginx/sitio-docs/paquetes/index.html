@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paquetes de Escaparate</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header><h1>Paquetes de Escaparate</h1></header>
+<main>
+<nav><a href="../index.html">Inicio</a> · <a href="../paquetes/index.html">Paquetes</a> · <a href="../informes/">Informes</a></nav>
+
+<h2>Paquetes</h2>
+<table>
+<thead><tr><th>Paquete</th><th>Descripción</th><th>Tipos</th></tr></thead>
+<tbody><tr><td><a href='es_escaparate.html'><code>es.escaparate</code></a></td><td>Aplicación didáctica Escaparate. El proyecto se utiliza para practicar empaquetado, despliegue, balanceo, observabilidad básica y escenarios de nube sin añadir complejidad funcional innecesaria.</td><td>1</td></tr><tr><td><a href='es_escaparate_almacenamiento.html'><code>es.escaparate.almacenamiento</code></a></td><td>Abstracciones e implementaciones para almacenar imágenes de productos. El catálogo depende de `AlmacenamientoImagenes` y no del soporte físico concreto. Las implementaciones disponibles son filesystem —válido también para volúmenes o EFS montado— y Amazon S3.</td><td>5</td></tr><tr><td><a href='es_escaparate_api.html'><code>es.escaparate.api</code></a></td><td>Componentes transversales de la API HTTP, como el tratamiento uniforme de errores.</td><td>1</td></tr><tr><td><a href='es_escaparate_configuracion.html'><code>es.escaparate.configuracion</code></a></td><td>Configuración transversal de la aplicación, independiente de la lógica de negocio.</td><td>2</td></tr><tr><td><a href='es_escaparate_infraestructura.html'><code>es.escaparate.infraestructura</code></a></td><td>Endpoints técnicos orientados al despliegue. Incluye identidad de instancia, liveness, readiness y generación de carga sintética para hacer visibles balanceo, probes y escalado.</td><td>4</td></tr><tr><td><a href='es_escaparate_infraestructura_dto.html'><code>es.escaparate.infraestructura.dto</code></a></td><td>Respuestas de los endpoints técnicos de despliegue.</td><td>3</td></tr><tr><td><a href='es_escaparate_producto.html'><code>es.escaparate.producto</code></a></td><td>Catálogo de productos de Escaparate. Contiene el modelo persistente, acceso a datos, lógica de aplicación y endpoints REST del catálogo.</td><td>4</td></tr><tr><td><a href='es_escaparate_producto_dto.html'><code>es.escaparate.producto.dto</code></a></td><td>Objetos de respuesta HTTP del catálogo de productos.</td><td>1</td></tr></tbody>
+</table>
+
+</main>
+<footer>Escaparate · documentación estática preparada para la práctica de despliegue</footer>
+</body>
+</html>

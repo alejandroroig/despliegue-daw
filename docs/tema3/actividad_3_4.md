@@ -1,637 +1,172 @@
-# 🧪 Actividad 3.4: Que te lo cuente el sistema
+# Actividad 3.4 — Encuentra una incidencia en los registros
 
 ## Contexto
 
-Tu servicio ya está desplegado por HTTPS en una instancia EC2. Nginx reparte `/api/` entre tres copias y actúa como única puerta pública.
+Escaparate ya se publica por HTTPS y Nginx reparte las peticiones entre varias réplicas. Cuando un usuario comunica que algo falla o tarda demasiado, abrir la página no basta para saber qué ha ocurrido.
 
-El problema ahora es otro:
+Consultarás los registros del despliegue desde Kibana para relacionar cada petición con su ruta, código de respuesta, duración y destino. Después provocarás una caída controlada de PostgreSQL y utilizarás esos registros para reconocer el fallo y comprobar la recuperación.
 
-```text
-el servicio responde
-        ↓
-pero ocurre algo extraño
-        ↓
-¿cómo averiguamos qué está pasando?
-```
+## Antes de comenzar
 
-En esta sesión vas a utilizar una pila de observabilidad ya preparada para **reunir registros, convertirlos en datos consultables y responder preguntas concretas**.
+La instalación de Elasticsearch, Fluent Bit y Kibana es soporte para el ejercicio, no un objetivo de administración. La configuración se entrega preparada. El recorrido requiere **Discover, un gráfico y una incidencia**. Todos los apartados forman parte de la actividad.
 
-```text
-servicios
-   ↓
-Fluent Bit
-   ↓
-Elasticsearch
-   ↓
-Kibana
-```
+## 1. Preparación guiada en EC2
 
-No vas a aprender a administrar Fluent Bit, Elasticsearch o Kibana desde cero. La pila es el medio; el objetivo es aprender a **registrar, consultar e interpretar**.
+Parte de la 3.3 funcionando por HTTPS y fusionada en `main`. Descarga [el soporte de las actividades 3.4 y 3.5](descargas/soporte-tema3.zip) y extráelo en la raíz del repositorio: debe aparecer `soporte-tema3/`. Contiene la pila de observabilidad y los auxiliares de laboratorio.
 
-!!! info "Tiempo orientativo"
-    La actividad está diseñada para una sesión de aproximadamente **100 minutos**.
-
-    Para ajustarnos a ese tiempo:
-
-    - la configuración base de la pila está proporcionada;
-    - Kibana será accesible mediante túnel SSH desde el principio;
-    - solo crearás **dos visualizaciones**;
-    - no configurarás notificaciones reales;
-    - la primera parte de la memoria final del tema será breve.
-
-## Qué vas a practicar
-
-- **Centralizar** registros procedentes de varios contenedores.
-- **Convertir** el access log de Nginx en campos estructurados.
-- **Filtrar y agrupar** registros por ruta, estado y backend.
-- **Comprobar** qué réplicas han atendido las peticiones.
-- **Comparar** latencia media y percentil 95.
-- **Observar** cómo cambian los registros al provocar incidencias controladas.
-- **Diseñar** una condición de alerta con umbral, ventana, destinatario y acción.
-- **Administrar** Kibana sin publicar su puerto hacia Internet.
-
-## Requisitos previos
-
-- Actividad 3.3 terminada y fusionada en `main`.
-- La misma instancia EC2, con al menos **4 GiB de RAM**.
-- Aplicación funcionando por HTTPS.
-- `app-1`, `app-2` y `app-3` detrás de Nginx.
-- PostgreSQL operativo.
-- Acceso SSH.
-- Paquete `actividad-3.4-soporte.zip`.
-
-Prepara:
+En EC2, desde la raíz del repositorio, prepara la rama y los directorios:
 
 ```bash
 git switch main
 git pull --ff-only
 git switch -c sesion-09
+mkdir -p entregas/tema3/actividad-3.4/img practicas/aplicaciones
+cp soporte-tema3/comprobar-replicas.sh practicas/aplicaciones/
 ```
 
-Crea:
-
-```text
-entregas/
-└── tema3/
-    └── actividad-3.4/
-        ├── actividad-3.4.md
-        └── img/
-```
-
----
-
-# Paso 1: Levanta la pila de observabilidad
-
-Descomprime el paquete de apoyo para obtener:
-
-```text
-practicas/
-├── compose/
-│   └── compose.observabilidad.yaml
-└── observabilidad/
-    ├── fluent-bit/
-    │   ├── fluent-bit.conf
-    │   └── parsers.conf
-    ├── genera-trafico.sh
-    ├── prepara-host.sh
-    └── kibana-init.sh
-```
-
-Haz ejecutables los scripts:
+Desde esa misma raíz:
 
 ```bash
-chmod +x practicas/observabilidad/*.sh
+cp -R soporte-tema3/observabilidad practicas/
+cp soporte-tema3/3.4/compose.override.yaml practicas/compose/
+chmod 755 practicas/observabilidad/*.sh
+chmod 644 practicas/observabilidad/fluent-bit/*.conf practicas/observabilidad/kibana-init.sh
+bash practicas/observabilidad/prepara-host.sh
+python3 practicas/observabilidad/activar-logs.py
+cd practicas/compose
+sudo docker compose config --quiet
+sudo docker compose pull fluent-bit elasticsearch kibana kibana-init
+sudo docker compose up -d fluent-bit elasticsearch kibana kibana-init
+sudo docker compose up -d web app-1 app-2 app-3
+sudo docker compose exec -T web nginx -t
 ```
 
-La preparación específica del host para Elasticsearch está automatizada:
+El archivo `compose.override.yaml` se incorpora automáticamente al usar `docker compose` sin `-f`. Consérvalo también en la 3.5. Así no se pierde el envío de logs al recrear una aplicación. El script de preparación configura `vm.max_map_count` y swap de laboratorio; no es una receta de optimización de producción.
+
+Espera al arranque y comprueba:
 
 ```bash
-./practicas/observabilidad/prepara-host.sh
+sudo docker compose ps -a
+curl -fsS http://127.0.0.1:9200/
+curl -sS -o /dev/null -w 'Kibana: %{http_code}\n' http://127.0.0.1:5601/api/status
+sudo docker compose logs --tail=20 kibana-init
 ```
 
-Desde `practicas/compose/`:
+Esperamos Elasticsearch saludable, Kibana **200** y `kibana-init` en **Exited (0)** con `Data view Escaparate preparado`. Un `000` durante el arranque no implica que debas reinstalar: espera y consulta los logs. Si el inicializador agotó su espera, cuando Kibana esté preparado ejecuta `sudo docker compose up -d --no-deps --force-recreate kibana-init`.
+
+Kibana, Elasticsearch y Fluent Bit publican sus puertos solo en `127.0.0.1`. **No abras 5601, 9200 ni 24224 en AWS.**
+
+## 2. Abre el túnel desde tu equipo
+
+En una terminal de tu ordenador —no dentro de la sesión SSH de EC2—, sustituye las rutas y la IP:
 
 ```bash
-docker compose \
-  -f compose.yaml \
-  -f compose.observabilidad.yaml \
-  config > /dev/null
-
-docker compose \
-  -f compose.yaml \
-  -f compose.observabilidad.yaml \
-  up -d
+ssh -i "/ruta/a/clave.pem" -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -L 127.0.0.1:5602:127.0.0.1:5601 ec2-user@IP_PUBLICA
 ```
 
-Comprueba:
+En PowerShell funciona el mismo comando, con una ruta como `C:\ruta\clave.pem`. Déjalo abierto y visita `http://localhost:5602`. Si el puerto local está ocupado, cambia únicamente el primer `5602` por `5603` y abre ese puerto en el navegador. No cambies los puertos de EC2.
+
+## 3. Genera datos e interpreta un documento
+
+En EC2, desde `practicas/compose`, define la URL real:
 
 ```bash
-docker compose \
-  -f compose.yaml \
-  -f compose.observabilidad.yaml \
-  ps
+read -r -p 'URL HTTPS del catálogo: ' URL
+export URL
+bash ../observabilidad/genera-trafico.sh "$URL" 60
 ```
 
-y:
+El generador mezcla peticiones correctas, rutas inexistentes y peticiones de distinta duración. Los errores intencionados son parte del experimento.
 
-```bash
-curl -fsS http://127.0.0.1:9200/ > /dev/null \
-  && echo "Elasticsearch OK"
-```
-
-La pila debe quedar conceptualmente así:
+En Kibana abre **Discover**, selecciona **Escaparate**, elige **Last 15 minutes** y pulsa **Refresh**. Busca:
 
 ```text
-web + app-1 + app-2 + app-3
-             │
-             ▼
-         Fluent Bit
-             │
-             ▼
-       Elasticsearch
-             │
-             ▼
-           Kibana
+ruta.keyword: "/api/instancia"
 ```
 
-!!! note "Puertos de administración"
-    Elasticsearch y Kibana no necesitan estar expuestos públicamente. En esta práctica se accede a ellos desde la propia instancia o mediante SSH.
+Añade como columnas `estado`, `duracion_s` y `destino`. Deben aparecer tres destinos internos. Abre un documento y lee estos campos:
 
----
-
-# Paso 2: Accede a Kibana mediante un túnel SSH
-
-Kibana debe quedar ligado únicamente a la interfaz local de EC2:
-
-```yaml
-- "127.0.0.1:5601:5601"
-```
-
-Comprueba:
-
-```bash
-sudo ss -lntp | grep -E ':(9200|5601)\b'
-```
-
-Debes observar ambos servicios en `127.0.0.1`.
-
-Desde **tu equipo** abre el túnel:
-
-```bash
-ssh -i <clave.pem> \
-  -L 5601:127.0.0.1:5601 \
-  ec2-user@<ip-publica>
-```
-
-Mantén la sesión abierta y entra desde el navegador en:
-
-```text
-http://localhost:5601
-```
-
-El recorrido es:
-
-```text
-navegador
-localhost:5601
-      │
-      │ túnel SSH
-      ▼
-EC2 127.0.0.1:5601
-      │
-      ▼
-    Kibana
-```
-
-En **Discover** debe aparecer el data view preparado por el paquete de soporte.
-
-!!! question "Reflexiona"
-    ¿Por qué podemos administrar Kibana desde nuestro equipo aunque el puerto 5601 no esté publicado hacia Internet?
-
----
-
-# Paso 3: Convierte el access log en datos estructurados
-
-Inicialmente puedes encontrar registros donde gran parte de la información aparece dentro de un único campo de texto.
-
-Queremos que una petición produzca campos como:
-
-```text
-ip
-metodo
-ruta
-estado
-duracion
-destino
-```
-
-En:
-
-```text
-practicas/nginx/conf.d/sitios.conf
-```
-
-añade antes de los bloques `server`:
-
-```nginx
-log_format observabilidad escape=json
-    '{'
-      '"hora":"$time_iso8601",'
-      '"ip":"$remote_addr",'
-      '"metodo":"$request_method",'
-      '"ruta":"$uri",'
-      '"estado":$status,'
-      '"duracion":$request_time,'
-      '"destino":"$upstream_addr"'
-    '}';
-```
-
-Lee el formato:
-
-| Campo | Qué representa |
+| Campo | Interpretación |
 |---|---|
-| `hora` | momento de la petición |
-| `ip` | cliente observado por Nginx |
-| `metodo` | método HTTP |
-| `ruta` | URI solicitada |
-| `estado` | código de respuesta |
-| `duracion` | tiempo total de petición |
-| `destino` | backend utilizado por el proxy |
+| `ruta` | ruta solicitada, sin los parámetros de consulta |
+| `estado` | código HTTP registrado por Nginx |
+| `duracion_s` | duración total de la petición vista por Nginx, en segundos |
+| `destino` | dirección del backend; puede contener varios intentos |
+| `ip` | cliente visto por Nginx |
+| `hora` | fecha y hora al escribir el registro |
 
-`escape=json` evita que ciertos caracteres rompan el JSON.
+No confundas duración total con tiempo de CPU de la aplicación. El tiempo `@timestamp` utilizado por la vista procede del flujo de logs. Si repartes la práctica entre sesiones, amplía el intervalo; antes de una incidencia nueva puedes volver a los últimos 15 minutos.
 
-En los bloques `server` que atienden el tráfico añade:
+## 4. Crea un único gráfico de errores
 
-```nginx
-access_log /dev/stdout observabilidad;
-```
+Retira los filtros de Discover. Para crear el gráfico sigue esta secuencia de la versión utilizada:
 
-Valida y recarga:
+1. **Visualize library → Create new visualization**.
+2. En **Recommended**, pulsa la tarjeta **Visualization**. Abre el editor Lens aunque la tarjeta no se llame «Lens».
+3. Selecciona **Escaparate** y escribe `estado >= 400` en la barra KQL. Pulsa Enter.
+4. Mantén **Bar** y **Stacked**.
+5. Arrastra `ruta.keyword` a **Horizontal axis**: operación **Top values**.
+6. Arrastra **Records** a **Vertical axis**: operación **Count**.
+7. Deja **Breakdown** vacío. No selecciones sugerencias inferiores: pueden cambiar el tipo de gráfico.
+8. Guarda el panel como **Errores por ruta** y añádelo a un nuevo dashboard **Observabilidad de Escaparate**. Guarda también el dashboard.
 
-```bash
-docker compose \
-  -f compose.yaml \
-  -f compose.observabilidad.yaml \
-  exec web nginx -t
+![Tarjeta que abre el editor visual](img/actividad-3.4/kibana-crear.png)
 
-docker compose \
-  -f compose.yaml \
-  -f compose.observabilidad.yaml \
-  exec web nginx -s reload
-```
+![Configuración esperada: filtro, rutas y recuento](img/actividad-3.4/kibana-errores.png)
 
-Genera algunas peticiones:
+Las cifras y rutas de las capturas son ejemplos, no resultados que debas reproducir exactamente. El servidor público puede recibir tráfico ajeno a nuestras pruebas. `Other` agrupa rutas fuera del Top. Si aparece un aviso de aproximación, puedes mantener el modo de precisión desactivado para esta práctica.
 
-```bash
-curl -fsS https://escaparate.<ip>.nip.io/ > /dev/null
+**Atascos habituales:**
 
-curl -s -o /dev/null \
-  https://escaparate.<ip>.nip.io/no-existe
+- Gráfico vacío: comprueba intervalo, vista y filtros adicionales.
+- Una única barra al 100 %: seleccionaste `Percentage` o colocaste las rutas en `Breakdown`; vuelve a `Stacked` y pásalas a `Horizontal axis`.
+- Para editar un panel del dashboard: selecciona su configuración y pulsa **Edit in Lens**. Al terminar, **Save and return** y luego **Save** del dashboard.
+- Un filtro KQL del dashboard afecta a sus paneles; un filtro guardado dentro de la visualización es propio de ese panel. Mantén el filtro de errores dentro del gráfico.
 
-curl -s \
-  https://escaparate.<ip>.nip.io/api/instancia
-```
+## 5. Provoca una incidencia y comprueba su recuperación
 
-Actualiza Discover.
-
-Ahora `estado`, `ruta`, `duracion` y `destino` deben poder consultarse como campos separados.
-
-**Captura 1:** Discover mostrando una entrada con los campos estructurados.
-
-!!! question "Reflexiona"
-    Nginx ya conocía todos esos datos antes. ¿Qué ventaja obtenemos al convertirlos en campos con nombre?
-
----
-
-# Paso 4: Genera tráfico y comprueba el reparto
-
-Desde tu equipo ejecuta:
+En EC2:
 
 ```bash
-./practicas/observabilidad/genera-trafico.sh \
-  https://escaparate.<ip>.nip.io
+bash ../observabilidad/prueba-caida-bd.sh
 ```
 
-El script genera:
+El script detiene PostgreSQL, realiza tres peticiones y vuelve a arrancarlo al terminar. Esperamos **tres 503**, que en la prueba del profesor tardaron unos 30 segundos cada una. El cliente espera hasta 60 segundos.
 
-- peticiones correctas;
-- rutas inexistentes;
-- peticiones rápidas y lentas.
+La recuperación automática cubre la salida normal y las interrupciones manejadas por el script. Si se cierra la conexión o se interrumpe la máquina, comprueba el estado y ejecuta `sudo docker compose start bd` cuando sea necesario.
 
-No necesitas estudiar su código.
+Después:
+
+```bash
+curl --max-time 60 -fsS "$URL/api/salud/listo"
+```
+
+Debe volver a responder `{"estado":"ok"}`. Si aún está arrancando, espera y repite.
 
 En Discover filtra:
 
 ```text
-ruta: "/api/instancia"
+ruta.keyword: "/api/salud/listo" AND estado >= 500
 ```
 
-y añade:
+Comprueba estado, duración y destino. Después quita `AND estado >= 500` para ver también el `200` de recuperación. En el gráfico puede quedar agrupada en `Other`; Discover permite encontrarla sin depender del Top.
 
-```text
-destino
-```
+![503 durante la caída y 200 tras la recuperación](img/actividad-3.4/kibana-503.png)
 
-como columna.
+**Si ves 499 en lugar de 503:** el cliente cerró la conexión antes de recibir la respuesta. Puede ocurrir si utilizas `curl --max-time 15` y la respuesta tarda más de 15 segundos. No demuestra que falten logs: el filtro `estado >= 500` excluye 499. Revisa primero la ruta sin filtrar estado.
 
-Debes observar **tres destinos internos distintos**.
+## Entrega breve
 
-Esto permite demostrar el reparto sin entrar en los contenedores:
+En `entregas/tema3/actividad-3.4/actividad-3.4.md`, incluye dos capturas guardadas en su carpeta `img/`: un documento con sus campos y la secuencia de error/recuperación. El gráfico debe quedar guardado. Responde en unas 100 palabras:
 
-```text
-peticiones
-    ↓
- Nginx
- ┌──┼──┐
- ▼  ▼  ▼
-A1 A2 A3
-```
+1. ¿Qué dependencia falló y qué datos permiten reconocerlo?
+2. ¿Por qué el túnel permite consultar Kibana sin publicar su puerto hacia Internet?
+3. Propón una alerta con umbral, ventana de observación, tiempo durante el que debe mantenerse la condición, destinatario y acción. No configures notificaciones reales.
 
-**Captura 2:** `/api/instancia` atendida por tres destinos diferentes.
+Ejemplo para discutir, no valor universal: avisar si readiness devuelve 5xx durante dos minutos consecutivos, comprobándolo cada 30 segundos; revisar PostgreSQL antes de reiniciar aplicaciones. Justifica tu propuesta.
 
----
+## Documenta e integra
 
-# Paso 5: Construye dos visualizaciones
+Actualiza el README con el acceso por túnel a Kibana y el arranque de la pila. En `entregas/tema3/memoria-publicacion-ejecucion.md` dibuja la arquitectura completa: Nginx, las tres réplicas, PostgreSQL, el volumen compartido y el recorrido de los logs hasta Kibana. Añade una frase sobre la función de cada componente; completarás el diagrama en la siguiente sesión.
 
-No vamos a explorar todo Kibana. Solo crearás dos visualizaciones porque responden a preguntas concretas.
-
-## 5.1. ¿Qué rutas acumulan errores?
-
-Crea:
-
-```text
-Tipo:
-Barra horizontal
-
-Filtro:
-estado >= 400
-
-Categoría:
-Top values of ruta.keyword
-
-Métrica:
-Count of records
-```
-
-Guárdala como:
-
-```text
-Errores por ruta
-```
-
-La pregunta que responde es:
-
-```text
-¿dónde se concentran los errores?
-```
-
-## 5.2. ¿La media cuenta toda la historia?
-
-Crea una tabla:
-
-```text
-Filas:
-Top values of ruta.keyword
-
-Métrica 1:
-Average of duracion
-
-Métrica 2:
-Percentile of duracion
-Percentil: 95
-```
-
-Guárdala como:
-
-```text
-Latencia por ruta
-```
-
-Interpreta:
-
-```text
-media
-→ comportamiento promedio
-
-p95
-→ el 95 % de las peticiones
-  ha tardado ese valor o menos
-```
-
-Observa especialmente la ruta utilizada por el generador para producir peticiones con distintas duraciones.
-
-!!! question "Reflexiona"
-    Si la media parece aceptable pero el p95 es mucho mayor, ¿qué experiencia puede estar teniendo una parte de los usuarios?
-
----
-
-# Paso 6: Provoca dos incidencias y observa el efecto
-
-## 6.1. Accesos no autorizados
-
-Genera varios accesos sin credenciales:
-
-```bash
-for i in {1..8}; do
-  curl -s -o /dev/null \
-    https://docs.<ip>.nip.io/informes/
-done
-```
-
-Actualiza **Errores por ruta**.
-
-Debe crecer:
-
-```text
-/informes/
-→ 401
-```
-
-## 6.2. Dependencia no disponible
-
-Detén PostgreSQL:
-
-```bash
-docker compose \
-  -f compose.yaml \
-  -f compose.observabilidad.yaml \
-  stop bd
-```
-
-Genera varias peticiones:
-
-```bash
-for i in {1..8}; do
-  curl -s -o /dev/null -w "%{http_code} " \
-    https://escaparate.<ip>.nip.io/api/salud/listo
-done
-echo
-```
-
-Recupera inmediatamente la base:
-
-```bash
-docker compose \
-  -f compose.yaml \
-  -f compose.observabilidad.yaml \
-  start bd
-```
-
-Espera hasta que:
-
-```bash
-curl -fsS https://escaparate.<ip>.nip.io/api/salud/listo
-```
-
-vuelva a responder correctamente.
-
-Actualiza **Errores por ruta**.
-
-Debe observarse también el aumento de errores de disponibilidad.
-
-**Captura 3:** `Errores por ruta` después de provocar los `401` y los errores de disponibilidad.
-
----
-
-# Paso 7: Diseña alertas que merezcan una acción
-
-No configurarás notificaciones reales.
-
-Para cada caso decide:
-
-- **umbral**;
-- **ventana temporal**;
-- **destinatario**;
-- **acción**.
-
-Completa:
-
-| Situación | Umbral | Ventana | Destinatario | Acción |
-|---|---:|---|---|---|
-| respuestas `5xx` | | | | |
-| muchos `401` desde una misma IP | | | | |
-
-No existe una única respuesta correcta. Debes justificar que la condición distingue un evento puntual de un problema que merece atención.
-
-!!! question "Reflexiona"
-    ¿Por qué alertar por cualquier error individual produciría probablemente una mala alerta?
-
----
-
-# Paso 8: Consolida la capa de publicación
-
-Crea:
-
-```text
-entregas/tema3/memoria-publicacion-ejecucion.md
-```
-
-Hoy escribirás **la primera parte** de la memoria final del tema: aproximadamente 250–350 palabras más un diagrama.
-
-No des por cerrado todavía el documento. En la siguiente sesión completarás la arquitectura desde el punto de vista del backend, el estado compartido y el rendimiento.
-
-Incluye:
-
-1. arquitectura final;
-2. papel de Nginx;
-3. HTTPS y control de acceso;
-4. tres réplicas de Spring Boot/Tomcat y almacenamiento compartido de imágenes;
-5. observabilidad: qué se recoge y qué preguntas permiten responder las dos visualizaciones.
-
-Puedes utilizar un esquema como:
-
-```text
-Internet
-   │
-   ▼
-Nginx :443
-   │
-   ├── app-1
-   ├── app-2
-   └── app-3
-        │
-        ├── PostgreSQL
-        └── volumen compartido
-
-logs
- ↓
-Fluent Bit
- ↓
-Elasticsearch
- ↓
-Kibana
-```
-
-Después:
-
-1. revisa `git status`;
-2. publica `sesion-09`;
-3. abre Pull Request hacia `main`;
-4. verifica los checks del repositorio;
-5. fusiona mediante **Create a merge commit**.
-
----
-
-# Verificación
-
-Al finalizar debe cumplirse:
-
-- la aplicación continúa respondiendo por HTTPS;
-- Kibana y Elasticsearch no están publicados hacia Internet;
-- Kibana es accesible mediante túnel SSH;
-- Nginx genera un access log estructurado;
-- los campos `ruta`, `estado`, `duracion` y `destino` pueden consultarse;
-- `/api/instancia` muestra tres destinos;
-- existe `Errores por ruta`;
-- existe `Latencia por ruta` con media y p95;
-- las incidencias provocadas aparecen en los datos;
-- se han definido dos condiciones de alerta justificadas;
-- existe `memoria-publicacion-ejecucion.md` con la parte de servidor web y observabilidad;
-- la rama `sesion-09` ha llegado a `main`.
-
----
-
-# Qué se entrega
-
-- [ ] `actividad-3.4.md` con respuestas y resultados.
-- [ ] Tres capturas.
-- [ ] Configuración de observabilidad versionada.
-- [ ] Access log JSON de Nginx.
-- [ ] Comprobación de tres destinos.
-- [ ] Visualización `Errores por ruta`.
-- [ ] Visualización `Latencia por ruta`.
-- [ ] Dos condiciones de alerta justificadas.
-- [ ] `memoria-publicacion-ejecucion.md` con su primera parte.
-- [ ] PR `sesion-09 → main` fusionada.
-
----
-
-# ✅ Cierre
-
-La observabilidad no consiste en acumular gráficos.
-
-En esta actividad has utilizado los datos del sistema para responder preguntas:
-
-```text
-¿qué está fallando?
-¿qué rutas son más lentas?
-¿qué réplica atendió una petición?
-¿cuándo merece la pena avisar?
-```
-
-Las herramientas concretas pueden cambiar. El patrón permanece:
-
-```text
-recoger
-→ estructurar
-→ consultar
-→ interpretar
-→ actuar
-```
-
-
----
-
-## Puente a la siguiente sesión
-
-Con esto queda cerrada la **capa de publicación y observabilidad**, pero no el recorrido completo. En la siguiente sesión abrirás la caja que hasta ahora hemos llamado simplemente `app`: veremos qué ejecuta realmente, qué ocurre con el estado al replicar y cómo se comporta bajo una carga pequeña.
+No repitas los comandos de esta actividad en esa memoria. Revisa `git status`, conserva la configuración y los scripts en `practicas/`, registra los cambios, publica `sesion-09` y abre la PR hacia `main`. Comprueba los checks y fusiona mediante **Create a merge commit**. No versiones contraseñas, certificados privados ni archivos de cookies.

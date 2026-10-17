@@ -1,7 +1,7 @@
 # 🔒 Seguridad web y HTTPS
 
 !!! info "Descarga de diapositivas"
-    <!-- [Descarga las diapositivas](diapositivas/servidores-web-dns.pptx){target="_blank" rel="noopener"} -->
+    [Descarga las diapositivas](diapositivas/seguridad-web-https.pdf){target="_blank" rel="noopener"}
 
 ---
 
@@ -35,22 +35,27 @@ El servidor de destino necesita:
 - la configuración necesaria;
 - acceso a las imágenes publicadas.
 
-No necesita Maven, Node o el código fuente **para ejecutar una imagen que ya fue construida**.
+No necesita instalar en el host las herramientas de compilación ni copiar el código fuente para ejecutar una imagen ya construida. La imagen debe incluir su entorno de ejecución y ser compatible con la plataforma de destino.
 
-### 1.1. Una IP pública cambia el significado de `ports`
+### 1.1. Publicar un puerto abre una entrada al host
 
-En local:
+Esta configuración publica el puerto 80 del contenedor en el puerto 80 del host:
 
 ```yaml
 ports:
   - "80:80"
 ```
 
-permite entrar desde nuestro equipo.
+Por defecto, Docker lo publica en todas las interfaces del host. También en nuestro equipo puede ser accesible desde otros dispositivos: dependerá de la red y de las reglas de acceso. En un servidor con IP pública, puede quedar expuesto a Internet.
 
-En un host con dirección pública, esa misma publicación puede convertir el servicio en accesible desde Internet.
+Si solo queremos acceder desde el propio host durante una prueba local:
 
-Por eso seguimos buscando:
+```yaml
+ports:
+  - "127.0.0.1:8080:80"
+```
+
+En el despliegue público mantenemos una única entrada web:
 
 ```mermaid
 flowchart LR
@@ -59,26 +64,21 @@ flowchart LR
     A --> D[("Base de datos")]
 ```
 
-Solo el punto de entrada necesita publicar puertos. Los servicios internos siguen comunicándose mediante la red de Docker.
+Solo Nginx publica los puertos web. Las aplicaciones y la base de datos se comunican mediante redes de Docker, sin publicar sus puertos al exterior. Las reglas de red del proveedor y del host también deben permitir las conexiones previstas.
 
-En nuestro caso, cada servicio de aplicación sigue siendo el mismo que en las sesiones anteriores: **Spring Boot con Tomcat embebido**. HTTPS termina en Nginx; dentro de la red Docker, Nginx continúa hablando HTTP con esas aplicaciones.
+Esta arquitectura sirve para aplicaciones implementadas con tecnologías diferentes: basta con que el backend atienda HTTP. Más adelante veremos cómo Nginx termina TLS y reenvía las peticiones internamente.
 
 ### 1.2. Un nombre debe resolver públicamente
 
-Para practicar con nombres públicos sin registrar un dominio propio puede utilizarse un servicio DNS comodín. Por ejemplo:
+Para acceder por nombre, el DNS debe apuntar a la IP pública del servidor. En un laboratorio puede utilizarse un servicio DNS comodín, con nombres que incorporan la IP, en lugar de registrar un dominio propio.
 
-```text
-web.203.0.113.25.nip.io
-docs.203.0.113.25.nip.io
-```
+El patrón sería `web.<IP-pública>.<servicio-DNS>`, sustituyendo los marcadores por valores reales según el servicio elegido. Si cambia la IP pública, habrá que revisar los nombres y el despliegue.
 
-pueden resolver hacia:
+En estos apuntes utilizaremos `web.ejemplo.test` y `docs.ejemplo.test` como **nombres ilustrativos**. No sirven para solicitar certificados públicos: en la práctica se sustituyen por nombres públicos cuyo control podamos demostrar. Del mismo modo, `203.0.113.25` es una IP reservada para documentación, no una dirección de un servidor de prácticas.
 
-```text
-203.0.113.25
-```
+El DNS lleva al cliente hasta la máquina. Nginx selecciona el sitio HTTP mediante `Host`; en HTTPS, el nombre enviado durante TLS mediante SNI permite seleccionar el certificado antes de recibir la petición HTTP.
 
-El DNS permite llegar hasta la máquina. Después Nginx sigue utilizando la cabecera `Host` para seleccionar el sitio correspondiente.
+Referencia: [publicación de puertos en Docker](https://docs.docker.com/engine/network/port-publishing/).
 
 ---
 
@@ -98,7 +98,7 @@ sequenceDiagram
     N-->>C: acceso o nuevo 401
 ```
 
-La cabecera `Authorization` contiene una representación Base64 de:
+Con Basic Authentication, la cabecera tiene la forma `Authorization: Basic <valor>`. Ese valor es la codificación Base64 de:
 
 ```text
 usuario:contraseña
@@ -112,7 +112,7 @@ Base64 **no cifra**. Es una codificación reversible.
 | Credenciales incorrectas | `401 Unauthorized` |
 | Credenciales correctas | la petición continúa |
 
-En Nginx:
+Las siguientes directivas se añaden al `location` que sirve el contenido o reenvía la petición. No sustituyen la configuración de ese contenido:
 
 ```nginx
 location /privado/ {
@@ -124,39 +124,32 @@ location /privado/ {
 El fichero de usuarios contiene líneas como:
 
 ```text
-usuario:resumen-de-la-contraseña
+usuario:hash-de-la-contraseña
 ```
 
-Aunque la contraseña no esté guardada en claro, ese fichero sigue siendo **material sensible** y no debe versionarse.
+El fichero se genera con una herramienta como `htpasswd`, usando un formato de hash compatible. Aunque la contraseña no esté guardada en claro, sigue siendo **material sensible**: debe tener permisos limitados y quedar fuera del repositorio y de la imagen pública.
+
+Aceptar las credenciales permite continuar la petición; no garantiza un `200 OK`, porque el contenido o la aplicación todavía pueden devolver otro resultado. Basic puede proteger una zona sencilla, pero no sustituye las reglas de autorización propias de una aplicación.
+
+Referencia: [Basic Authentication en Nginx](https://nginx.org/en/docs/http/ngx_http_auth_basic_module.html).
 
 !!! warning "Autenticar no significa cifrar"
     Basic Authentication decide si unas credenciales son aceptadas. No protege la cabecera `Authorization` mientras viaje por HTTP.
 
 ---
 
-## 📡 3. Qué problema tiene HTTP
+## 📡 3. Controlar el acceso no es proteger el transporte
 
-HTTP por sí solo no ofrece confidencialidad ni integridad al transporte.
+HTTP sin TLS no ofrece confidencialidad ni integridad al transporte. Un observador situado en el recorrido puede leer rutas, cabeceras, cookies y cuerpos; un intermediario activo podría modificar el tráfico.
 
-Un observador situado en un punto por el que pase la comunicación puede llegar a ver:
+![Comparación de Basic sobre HTTP y HTTPS: las credenciales solo están protegidas durante el transporte cuando se utiliza TLS.](img/basic-http-https.png)
 
-- rutas;
-- cabeceras;
-- cookies;
-- credenciales Basic;
-- cuerpos de petición;
-- respuestas.
+En ambos casos, Nginx comprueba las credenciales. La diferencia está en **cómo llegan hasta él**: con HTTP pueden observarse en la red; con HTTPS viajan dentro de la conexión TLS.
 
-Y un intermediario activo podría intentar modificar el tráfico.
+!!! warning "Base64 no cifra"
+    Codificar `usuario:contraseña` en Base64 no lo convierte en un secreto protegido. Basic debe utilizarse sobre HTTPS cuando se envían credenciales reales. El ejemplo `ana:clave` de la imagen es únicamente didáctico.
 
-La idea importante es:
-
-| Mecanismo | Qué protege |
-|---|---|
-| **Basic Authentication** | controla quién puede acceder |
-| **HTTPS** | protege el transporte entre los extremos TLS |
-
-Son problemas distintos.
+TLS protege el contenido entre sus extremos, pero no oculta necesariamente todos los metadatos de la conexión, como la IP de destino.
 
 ---
 
@@ -172,20 +165,13 @@ TLS proporciona tres garantías principales:
 | **Integridad** | una modificación del tráfico puede detectarse |
 | **Autenticidad del servidor** | el cliente puede validar que el certificado corresponde al nombre solicitado |
 
-De forma simplificada:
+El siguiente esquema resume una conexión TLS con autenticación del servidor mediante certificado:
 
-```mermaid
-sequenceDiagram
-    participant C as Cliente
-    participant S as Servidor
-    C->>S: inicia TLS
-    S-->>C: presenta certificado
-    Note over C: valida nombre, fechas y confianza
-    C->>S: acuerdan claves de sesión
-    Note over C,S: HTTP viaja protegido
-```
+![Establecimiento conceptual de HTTPS: inicio de TLS, validación del servidor, claves de sesión y tráfico HTTP protegido.](img/conexion-https-tls.png)
 
-El certificado no cifra cada petición HTTP con la clave pública. En TLS moderno ayuda a autenticar al servidor durante el establecimiento de la conexión; después se utilizan claves de sesión eficientes para proteger el tráfico.
+El certificado vincula la clave pública con el nombre del servidor. Durante el intercambio, el servidor demuestra que posee la clave privada correspondiente y el cliente comprueba esa identidad.
+
+Después, el tráfico se protege mediante cifrado simétrico con claves de sesión. **La clave privada no se envía al navegador y el certificado no cifra cada petición HTTP.** Los pasos de la imagen son conceptuales: en el protocolo real algunas operaciones se solapan.
 
 **HTTPS no hace segura toda la aplicación.**
 
@@ -203,126 +189,87 @@ HTTPS protege principalmente **la comunicación entre los extremos de la conexi�
 
 ## 📜 5. Certificados y confianza
 
-Un certificado X.509 contiene, entre otros datos:
+Un certificado X.509 es un documento público que vincula una clave pública con una identidad, como uno o varios nombres de servidor. Su validez para el navegador depende de las comprobaciones de confianza, nombre y vigencia.
 
-- nombres para los que es válido;
-- una clave pública;
-- fechas de validez;
-- información del emisor;
-- una firma.
+![Diferencia entre certificado público y clave privada, y cadena desde el certificado del sitio hasta una CA raíz reconocida por el cliente.](img/certificado-clave-confianza.png)
 
-Un mismo certificado puede cubrir varios nombres mediante **Subject Alternative Name (SAN)**:
+### 5.1. Nombres y clave privada
 
-| Certificado | Nombres incluidos |
-|---|---|
-| certificado del sitio | `web.ejemplo.test`, `docs.ejemplo.test` |
+**Subject Alternative Name (SAN)** identifica los nombres cubiertos por el certificado. Un certificado puede incluir, por ejemplo, `web.ejemplo.test` y `docs.ejemplo.test`; eso no lo hace válido para cualquier otro nombre.
 
-La clave privada asociada **no forma parte del certificado público** y debe permanecer secreta.
+La clave privada asociada se guarda por separado. En nuestra arquitectura la utiliza Nginx y debe protegerse mediante permisos y acceso restringido, sin incluirla en repositorios ni imágenes públicas.
 
-### 5.1. Cadena de confianza
+### 5.2. Cadena de confianza
 
-Habitualmente:
+Las flechas de la imagen indican quién ha emitido cada certificado. El cliente comprueba las firmas y construye una cadena hasta una raíz que ya reconoce como confiable. El servidor normalmente presenta el certificado del sitio y los intermedios necesarios; la raíz de confianza está en el almacén del cliente.
 
-```mermaid
-flowchart LR
-    S["Certificado del sitio"] --> I["CA intermedia"]
-    I --> R["CA raíz de confianza"]
-```
+Que un certificado esté firmado no basta por sí solo: también debe corresponder al nombre solicitado y superar las comprobaciones de validez.
 
-El cliente valida que puede construir una cadena hasta una autoridad que ya considera confiable y comprueba también el nombre y las fechas.
+### 5.3. Autofirmado y CA pública
 
-### 5.2. Autofirmado y CA pública
+Un certificado autofirmado permite establecer transporte cifrado, pero el navegador no confía automáticamente en la identidad que presenta. Su uso requiere gestionar explícitamente la confianza en el laboratorio.
 
-Un certificado autofirmado puede cifrar el transporte, pero el navegador no confía automáticamente en quién afirma ser ese servidor.
-
-Un certificado emitido por una CA pública reconocida puede validarse sin instalar confianza adicional en cada cliente.
+Un certificado de una CA pública reconocida permite validar la identidad sin instalar confianza adicional en cada cliente, siempre que la cadena, el nombre y las demás comprobaciones sean correctos.
 
 !!! info "ACME y la CA no son lo mismo"
-    **ACME** es un protocolo de automatización. Una autoridad como Let's Encrypt puede utilizar ACME para validar el control de un nombre y emitir certificados.
+    **ACME** es un protocolo para automatizar la gestión de certificados. Un cliente ACME se comunica con una autoridad certificadora, como Let's Encrypt, para demostrar el control del nombre y solicitar la emisión.
 
 ---
 
 ## 🤖 6. ACME y HTTP-01
 
-Una CA pública no necesita comprobar la identidad personal del administrador para un certificado de validación de dominio. Necesita comprobar que controla el nombre solicitado.
+Para un certificado de validación de dominio, la CA comprueba que quien lo solicita controla el nombre. No está auditando la aplicación ni verificando la identidad personal del administrador.
 
-Con **HTTP-01**:
+![Validación HTTP-01: el cliente ACME prepara la respuesta, la CA resuelve el nombre y consulta Nginx por el puerto 80 antes de emitir.](img/acme-http-01.png)
 
-```mermaid
-sequenceDiagram
-    participant A as Cliente ACME
-    participant W as Webroot / Nginx
-    participant C as CA
-    A->>W: publica token
-    C->>W: GET /.well-known/acme-challenge/...
-    W-->>C: devuelve token
-    Note over C: valida el control del nombre
-```
+En el modo **webroot**, el cliente ACME escribe un fichero en un directorio que Nginx sirve. La CA pide la URL `http://<nombre>/.well-known/acme-challenge/<token>` y comprueba su contenido. La respuesta incluye información derivada del token y de la cuenta ACME; no es una clave privada.
 
-La autoridad:
+La carpeta local puede elegirse: `/var/www/html` en la ilustración es un ejemplo. Aquí usaremos `/var/www/acme`. Lo esencial es que el cliente ACME escriba donde Nginx lee, mediante una carpeta o un volumen compartido correctamente configurado.
 
-1. resuelve el nombre públicamente;
-2. conecta al puerto 80;
-3. solicita un token concreto;
-4. comprueba que recibe el valor esperado.
+### 6.1. Qué debe funcionar antes de solicitar el certificado
 
-Por eso HTTP-01 necesita tres condiciones simultáneas:
+| Condición | Qué comprobar |
+|---|---|
+| DNS público | El nombre apunta al servidor correcto. Si hay registros IPv4 e IPv6, sus destinos deben estar bien configurados. |
+| Entrada por el puerto 80 | La CA puede conectar desde Internet; las reglas de red permiten ese acceso. |
+| Ruta del desafío | Nginx devuelve el fichero esperado sin exigir credenciales Basic. |
 
-- DNS público correcto;
-- puerto **80** accesible;
-- ruta del challenge correctamente servida.
+HTTP-01 entra por el puerto **80**. No permite emitir certificados comodín como `*.example.com`; otros desafíos, como DNS-01, cubren ese caso.
 
-### 6.1. Probar antes de emitir
+Referencia: [desafíos de Let's Encrypt](https://letsencrypt.org/docs/challenge-types/).
 
-Las CA aplican límites de emisión. Durante configuración y diagnóstico debe utilizarse un entorno de **staging**.
+### 6.2. Probar en staging antes de emitir
 
-El flujo recomendable es:
+Durante la configuración conviene utilizar el entorno de **staging** de la CA. Así se comprueba el recorrido sin consumir innecesariamente los límites de emisión de producción.
 
-```mermaid
-flowchart LR
-    P["Probar en staging"] --> Q{"¿funciona?"}
-    Q -->|no| C["Corregir"]
-    C --> P
-    Q -->|sí| E["Emitir en producción"]
-```
+Los certificados de staging son de prueba y los navegadores no confían en ellos de forma habitual. Una vez que la validación funciona, se solicita el certificado de producción.
 
-### 6.2. Los certificados caducan
+Referencia: [entorno de staging de Let's Encrypt](https://letsencrypt.org/docs/staging-environment/).
 
-Obtener un certificado una vez no resuelve el problema para siempre.
+### 6.3. Renovar y activar el nuevo certificado
 
-```mermaid
-flowchart LR
-    R["Renovar"] --> F["Ficheros nuevos"]
-    F --> N["Recargar Nginx"]
-    N --> C["Certificado nuevo en uso"]
-```
+Los certificados caducan. El ciclo continúa después de la primera emisión:
 
-En esta sesión basta con comprender el ciclo. La automatización periódica puede quedar como ampliación.
+1. Renovar antes de la caducidad, manteniendo operativo el método de validación.
+2. Guardar los nuevos ficheros en almacenamiento persistente accesible para Nginx.
+3. Comprobar la configuración y recargar Nginx para que utilice el certificado nuevo.
+4. Verificar desde el cliente que el certificado servido es el esperado.
+
+En esta sesión basta con comprender y comprobar el ciclo. La automatización periódica queda como ampliación didáctica; en un servicio mantenido en producción debe planificarse y supervisarse.
 
 ---
 
 ## 🚪 7. Terminación TLS en el proxy
 
-Cuando Nginx es la única entrada pública, puede concentrar también TLS:
+Nginx puede concentrar los certificados y establecer TLS con los clientes. En este ejemplo, abre otra conexión HTTP hacia el backend seleccionado:
 
-```mermaid
-flowchart LR
-    C["Cliente"] -->|HTTPS| N["Nginx :443<br/>terminación TLS"]
-    N -->|HTTP interno| A1["app-1"]
-    N -->|HTTP interno| A2["app-2"]
-    N -->|HTTP interno| A3["app-3"]
-```
+![Terminación TLS en Nginx: HTTPS en la red pública y HTTP hacia una de las réplicas internas.](img/terminacion-tls-proxy.png)
 
-Nginx:
+Hay **dos conexiones diferentes**. La protección TLS exterior termina en Nginx; no se extiende automáticamente a las réplicas. Una red Docker no cifra por sí misma ese tráfico. Si el tramo interno requiere protección, también debe configurarse cifrado y validación de identidad en él.
 
-1. presenta el certificado;
-2. establece y descifra la conexión TLS exterior;
-3. selecciona un backend;
-4. reenvía internamente la petición.
+Las réplicas quedan libres de gestionar el certificado público del sitio. Los mismos patrones sirven para aplicaciones de distintas tecnologías.
 
-Las réplicas no necesitan gestionar certificados individualmente.
-
-Un bloque mínimo:
+Fragmento ilustrativo del bloque HTTPS, una vez emitido el certificado:
 
 ```nginx
 server {
@@ -337,51 +284,72 @@ server {
 }
 ```
 
-Esto presupone que la red entre proxy y backend es una red interna de confianza. En otras arquitecturas también puede ser necesario cifrar ese tramo.
+`fullchain.pem` contiene el certificado del sitio y su cadena de intermedios; `privkey.pem` contiene la clave privada. Las rutas deben existir y ser legibles por Nginx antes de activar esta configuración. El bloque se completa con las rutas de contenido o de proxy de la sesión anterior.
 
-`X-Forwarded-Proto` permite informar al backend de que el cliente original llegó por HTTPS aunque la conexión interna sea HTTP.
+### 7.1. Comunicar el protocolo original al backend
+
+En el `location` que reenvía la petición se puede establecer:
+
+```nginx
+proxy_set_header X-Forwarded-Proto $scheme;
+```
+
+En una petición recibida por HTTPS, `$scheme` vale `https`, aunque Nginx utilice HTTP para conectar con la aplicación. Esta información ayuda al backend a generar enlaces y redirecciones adecuados.
+
+La aplicación debe estar configurada para confiar únicamente en los proxies previstos. Una cabecera enviada directamente por cualquier cliente no es una prueba del protocolo original. Esta directiva se integra con el resto de cabeceras del proxy, como `Host` y las de dirección del cliente.
 
 ---
 
 ## 🛡️ 8. HTTP, redirección y HSTS
 
-### 8.1. Redirigir hacia HTTPS
+Una redirección es una respuesta del servidor. HSTS es una política que el navegador conserva y aplica antes de conectarse. Ambas ayudan a utilizar HTTPS, pero intervienen en momentos distintos.
 
-Una vez disponible HTTPS, el puerto 80 puede actuar como entrada de transición:
+![Primera visita con redirección HTTP a HTTPS y visita posterior en la que el navegador aplica una política HSTS vigente antes de conectar.](img/redireccion-hsts.png)
 
-```mermaid
-flowchart LR
-    H["http://web.ejemplo.test/recurso"] -->|301| S["https://web.ejemplo.test/recurso"]
-```
+### 8.1. Redirigir conservando la ruta de ACME
 
-Si seguimos utilizando HTTP-01, podemos conservar una excepción:
+Una vez que HTTPS funciona, el bloque del puerto 80 puede servir el desafío HTTP-01 y redirigir el resto:
 
 ```nginx
-location ^~ /.well-known/acme-challenge/ {
-    root /var/www/acme;
-}
+server {
+    listen 80;
+    server_name web.ejemplo.test;
 
-location / {
-    return 301 https://$host$request_uri;
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/acme;
+        auth_basic off;
+        try_files $uri =404;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
 }
 ```
 
-### 8.2. HSTS
+Para una petición a `/.well-known/acme-challenge/abc`, Nginx buscaría `/var/www/acme/.well-known/acme-challenge/abc`. El cliente ACME debe escribir el fichero en esa misma ubicación visible para Nginx.
 
-HSTS permite indicar al navegador que ese nombre debe utilizar exclusivamente HTTPS durante un tiempo:
+La redirección conserva el nombre y la ruta solicitados. El ejemplo usa `301` para navegación; si un flujo necesita conservar estrictamente el método y el cuerpo de una petición, debe valorarse `308`.
+
+### 8.2. HSTS: recordar que un nombre usa HTTPS
+
+El servidor envía la política en una **respuesta HTTPS válida**:
 
 ```http
 Strict-Transport-Security: max-age=300
 ```
 
-Durante un laboratorio conviene utilizar un tiempo corto.
+El navegador la conserva durante 300 segundos desde su recepción. Mientras esté vigente, transforma las URL HTTP de ese nombre en HTTPS antes de contactar con el servidor. Una nueva respuesta con la cabecera actualiza el periodo.
 
-HSTS se aprende mejor como una segunda capa:
+La cabecera enviada por HTTP no se acepta como política HSTS. Sin una política previa, la primera visita HTTP puede depender de la redirección; la imagen simplifica el caso excluyendo las listas de precarga HSTS y otras actualizaciones automáticas del navegador.
 
-1. el servidor **redirige** HTTP hacia HTTPS;
-2. el navegador **recuerda** que ese nombre debe utilizar HTTPS durante el tiempo indicado.
+En el laboratorio usamos un periodo corto y no añadimos `includeSubDomains` ni `preload`. HSTS no convierte un certificado inválido en válido.
 
-### 8.3. Otras cabeceras sencillas
+Referencia: [Strict-Transport-Security en MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Strict-Transport-Security).
+
+### 8.3. Cabeceras complementarias
+
+Estas directivas se añaden al bloque `server` **HTTPS** del apartado anterior:
 
 ```nginx
 add_header Strict-Transport-Security "max-age=300" always;
@@ -391,11 +359,15 @@ add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
 | Cabecera | Objetivo |
 |---|---|
-| `Strict-Transport-Security` | recordar el uso de HTTPS |
-| `X-Content-Type-Options: nosniff` | impedir que el navegador adivine otro tipo MIME |
-| `Referrer-Policy` | limitar la información de origen enviada al navegar |
+| `Strict-Transport-Security` | Indicar al navegador que use HTTPS durante el periodo configurado. |
+| `X-Content-Type-Options: nosniff` | Pedir que se respete el tipo MIME declarado; ayuda a bloquear scripts y estilos con tipos incorrectos. |
+| `Referrer-Policy` | Regular la información enviada en `Referer`: con esta política, al cambiar de origen se envía solo el origen y al pasar de HTTPS a HTTP se omite. |
 
-Políticas más complejas, como Content Security Policy, deben diseñarse según los recursos reales de cada aplicación y quedan fuera de esta sesión.
+`always` permite añadir las cabeceras también a respuestas con códigos que normalmente quedarían fuera. Hay que comprobar la respuesta efectiva: con la herencia habitual de Nginx, añadir un `add_header` dentro de un `location` puede impedir que herede los del nivel superior.
+
+Referencia: [cabeceras de respuesta en Nginx](https://nginx.org/en/docs/http/ngx_http_headers_module.html).
+
+Políticas como Content Security Policy requieren conocer los recursos de cada aplicación y quedan fuera de esta sesión.
 
 ---
 
@@ -460,7 +432,7 @@ Lo que basta con **reconocer**:
     - Terminar TLS en Nginx evita configurar certificados individualmente en cada réplica.
     - HTTP puede redirigir a HTTPS manteniendo una excepción para el challenge ACME.
     - HSTS y otras cabeceras complementan HTTPS, pero no sustituyen la seguridad de la aplicación.
-    - Los certificados caducan y deben renovarse.
+    - Los certificados caducan: hay que renovarlos y hacer que Nginx utilice los nuevos ficheros.
 
 ---
 

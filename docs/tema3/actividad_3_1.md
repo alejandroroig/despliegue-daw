@@ -48,12 +48,16 @@ navegador → web ─┼→ documentación
 
 Necesitas:
 
-- la Actividad 2.3 terminada;
+- la Actividad 2.3 terminada, con `.env` para configuración y Compose Secrets para la contraseña;
 - `ghcr.io/<usuario>/escaparate:sesion-04`;
 - la imagen de base de datos de la Actividad 2.1;
 - `escaparate-estatico.zip`;
 - `escaparate-docs.zip`;
 - el repositorio actualizado.
+
+Conserva el volumen de PostgreSQL y su contraseña. En `.env` se utilizan `IMAGEN_BD`, `IMAGEN_APP`, `BD_USUARIO` y `BD_NOMBRE`; la contraseña está en `secrets/bd_clave.txt`. Cambiar ese archivo no cambia la contraseña de una base ya inicializada.
+
+Trabaja en Bash (Linux, macOS o WSL en Windows). Los comandos presuponen acceso a Docker; si tu instalación lo requiere, antepone `sudo` a las órdenes Docker. Si falta `dig`, usa `nslookup` para resolver los nombres y consulta con el profesor cómo obtener el TTL.
 
 Prepara la rama:
 
@@ -110,6 +114,17 @@ practicas/nginx/sitio-escaparate/escaparate/index.html
 
 No muevas ni aplanes su contenido.
 
+El frontend está formado por archivos estáticos, pero los productos se consultan en la API. Abre `config.js` y comprueba que contiene:
+
+```javascript
+window.APP_CONFIG = {
+    modo: "api",
+    apiBase: "/api"
+};
+```
+
+Así el navegador pedirá los datos a `/api/` en el mismo sitio que sirve Nginx. El JSON de ejemplo del paquete no se utiliza en este despliegue.
+
 ### 1.1. Añade el servicio `web`
 
 Modifica `practicas/compose/compose.yaml`.
@@ -125,7 +140,8 @@ El nuevo servicio debe:
 Al mismo tiempo:
 
 - elimina la publicación de `8080` de `app`;
-- mantiene `bd` sin puerto publicado.
+- mantén `bd` sin puerto publicado;
+- conserva las variables, Secrets, `healthcheck` y volúmenes de la 2.3.
 
 !!! info "Por qué usamos `/srv/www/...`"
     La imagen oficial de Nginx tiene una raíz predeterminada, pero aquí utilizaremos rutas propias. Eso obliga a declarar explícitamente qué directorio pertenece a cada sitio y facilita separar catálogo y documentación.
@@ -265,12 +281,16 @@ Debe:
 - servir su página inicial;
 - permitir `autoindex` únicamente en `/informes/`.
 
-Después:
+Después, desde `practicas/compose/`:
 
 ```bash
+docker compose config --quiet
+docker compose up -d web
 docker compose exec web nginx -t
 docker compose exec web nginx -s reload
 ```
+
+Has añadido un montaje a Compose: `up -d` aplica ese cambio al contenedor. Una recarga de Nginx por sí sola solo relee su configuración; no incorpora montajes nuevos.
 
 Comprueba:
 

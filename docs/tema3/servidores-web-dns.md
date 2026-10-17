@@ -1,7 +1,7 @@
 # 🌐 Servidores web y DNS
 
 !!! info "Descarga de diapositivas"
-    <!-- [Descarga las diapositivas](diapositivas/servidores-web-dns.pptx){target="_blank" rel="noopener"} -->
+    [Descarga las diapositivas](diapositivas/servidores-web-dns.pdf){target="_blank" rel="noopener"}
 
 ---
 
@@ -20,45 +20,11 @@ En este tema aparece una nueva capa: **Nginx se convierte en la puerta de entrad
 
 Un **servidor web** escucha peticiones HTTP y devuelve respuestas HTTP. Cuando sirve contenido estático, relaciona una URL con un fichero y lo entrega con las cabeceras apropiadas.
 
-Por ejemplo, si la raíz del sitio es:
-
-```text
-/srv/www/escaparate
-```
-
-una petición a:
-
-```text
-/css/app.css
-```
-
-puede terminar leyendo:
-
-```text
-/srv/www/escaparate/css/app.css
-```
-
-La raíz de documentos marca desde dónde se buscan los recursos públicos. Por eso no deben aparecer accidentalmente dentro de ella secretos, copias de seguridad, scripts SQL o ficheros internos.
+La **raíz de documentos** marca desde dónde se buscan los recursos públicos. En el apartado 2.1 veremos cómo se combina con la ruta solicitada y con los montajes del contenedor. Dentro de ella no deben aparecer accidentalmente secretos, copias de seguridad, scripts SQL o ficheros internos.
 
 ### 1.1. Estático y dinámico
 
-Un servidor web y una aplicación no cumplen exactamente la misma función:
-
-| Petición | Quién produce la respuesta |
-|---|---|
-| HTML, CSS, JavaScript e imágenes | Nginx lee y entrega el fichero |
-| `/api/...` | Spring Boot ejecuta lógica y genera la respuesta |
-
-En nuestro despliegue, Nginx podrá recibir ambas peticiones, pero no las resolverá de la misma forma:
-
-```text
-recurso estático
-→ Nginx lo sirve directamente
-
-/api/...
-→ Nginx lo reenvía a la aplicación
-→ Spring Boot genera la respuesta
-```
+En este despliegue, Nginx **lee y entrega los ficheros estáticos** del frontend: HTML, CSS, JavaScript e imágenes. Las peticiones a `/api/...` se reenvían a Spring Boot, que **ejecuta la lógica y genera la respuesta**. La figura del apartado 2 muestra ambos recorridos.
 
 El reenvío dinámico aparecerá hoy únicamente como conexión con el backend. En la siguiente sesión estudiarás el **proxy inverso** con detalle.
 
@@ -87,21 +53,11 @@ En este módulo utilizaremos **Nginx** porque la misma herramienta nos permitir�
 
 Nginx no sustituye a Escaparate. La aplicación sigue ejecutándose mediante **Spring Boot + Tomcat embebido**. Lo que cambia es qué pieza recibe primero las conexiones públicas.
 
-La arquitectura evoluciona desde:
+![Antes, el navegador accede a app por el puerto 8080; ahora entra por Nginx en el 80, que sirve catálogo y documentación y reenvía la API a app y bd en la red interna.](img/nginx-puerta-entrada.png)
 
-```text
-navegador → app → bd
-```
+*Figura 1. Evolución del despliegue: Nginx recibe las conexiones públicas y sirve dos sitios; Spring Boot conserva la lógica de aplicación.*
 
-hacia:
-
-```text
-                 ┌→ frontend estático
-navegador → web ─┤
-                 └→ /api/ → app → bd
-```
-
-Además, en esta sesión `web` servirá un segundo sitio dedicado a documentación.
+`app` deja de publicar su puerto 8080 al anfitrión y `bd` permanece sin publicar. **La única entrada pública será el puerto 80 de `web`**; la comunicación con la aplicación y la base de datos continúa dentro de la red del despliegue.
 
 ### 2.1. Servicio, configuración y contenido
 
@@ -129,10 +85,16 @@ La idea es separar tres cosas:
 
 La imagen oficial utiliza `/usr/share/nginx/html` como ubicación web predeterminada, pero no estamos obligados a usarla. Cada bloque `server` puede declarar su propia raíz mediante `root`.
 
-`app` continúa dentro del proyecto Compose, pero **deja de publicar su puerto 8080 al anfitrión**. También `bd` permanece sin publicar. La única entrada pública será el puerto 80 de `web`.
-
 !!! info "Dos copias del frontend durante esta transición"
     La imagen de `app` todavía contiene el frontend integrado de sesiones anteriores. No desaparece físicamente, pero el navegador deja de utilizar esa copia: desde ahora Nginx sirve la distribución estática montada en `web`.
+
+La siguiente figura conecta la URL con las rutas del repositorio y del contenedor. Con `root /srv/www/escaparate`, solicitar `/css/app.css` conduce al fichero `/srv/www/escaparate/css/app.css`.
+
+![Nginx suma root y la ruta solicitada para localizar app.css. El directorio del repositorio se monta en /srv/www/escaparate dentro de web, en modo de solo lectura.](img/nginx-url-root-montaje.png)
+
+*Figura 2. Relación entre la ruta solicitada, la raíz de documentos y el montaje del contenido.*
+
+El montaje permite ver el mismo contenido desde otra ruta; **no es una copia al contenedor**. El sufijo `:ro` impide modificar ese contenido desde el montaje. Tanto `root` como las comprobaciones de rutas deben referirse a su ubicación **dentro de `web`**.
 
 ### 2.2. Validar antes de recargar
 
@@ -167,22 +129,11 @@ comprobar
 
 ## 🏠 3. De un nombre al sitio correcto
 
-Dos sitios pueden compartir **la misma dirección IP y el mismo puerto**. Para entender cómo es posible hay que separar dos decisiones:
+Dos sitios pueden compartir **la misma dirección IP y el mismo puerto**: DNS permite obtener la dirección a la que conectar y la cabecera HTTP `Host` ayuda a Nginx a seleccionar el sitio solicitado.
 
-1. **DNS** lleva el nombre hasta una dirección IP.
-2. **HTTP**, mediante la cabecera `Host`, ayuda a Nginx a decidir qué sitio debe responder.
+![Los nombres de Escaparate y documentación resuelven a 127.0.0.1; Nginx selecciona cada sitio mediante Host y server_name en el puerto 80.](img/dns-y-host-ip-y-sitio-web.png)
 
-La idea queda resumida en la siguiente figura:
-
-![Infografía DNS y Host](img/dns-y-host-ip-y-sitio-web.png)
-
-*Figura 1. Resolución DNS y selección del sitio mediante la cabecera HTTP `Host`. Elaboración propia.*
-
-La clave es sencilla:
-
-- `escaparate.127.0.0.1.nip.io` y `docs.127.0.0.1.nip.io` pueden resolver a la **misma IP**;
-- ambos nombres pueden llegar al **mismo Nginx** por el puerto 80;
-- la cabecera `Host` permite que Nginx sepa si debe responder con el **sitio del catálogo** o con el **sitio de documentación**.
+*Figura 3. Resolución DNS y selección del sitio mediante la cabecera HTTP `Host`. Elaboración propia.*
 
 ### 3.1. DNS resuelve el nombre
 
@@ -268,17 +219,7 @@ Las directivas principales son:
 | `location` | reglas para determinadas rutas |
 | `autoindex on` | permite listar un directorio sin índice |
 
-Así, una sola instancia de Nginx puede servir:
-
-```text
-escaparate.127.0.0.1.nip.io
-→ catálogo
-
-docs.127.0.0.1.nip.io
-→ documentación
-```
-
-aunque ambos nombres lleguen a la misma dirección y al puerto 80.
+Cada sitio tendrá su bloque `server`, con el nombre y la raíz correspondientes. Así, el catálogo y la documentación comparten Nginx y el puerto 80, pero sirven contenido de directorios distintos.
 
 !!! tip "La frase que debes recordar"
     **DNS decide dónde conectar; `Host` ayuda a elegir qué sitio responde.**
@@ -301,18 +242,15 @@ De esta forma, un nombre no reconocido no termina mostrando accidentalmente otro
 
 ## 🧾 4. Diagnóstico al servir contenido estático
 
-Cuando un sitio no se muestra como esperas, evita cambiar varias cosas a la vez. Algunos síntomas ofrecen pistas bastante directas.
+Un síntoma orienta la primera comprobación, pero puede tener varias causas. Revisa una cosa cada vez y utiliza la respuesta HTTP y los logs para contrastar lo que ocurre.
 
-| Síntoma | Primeras comprobaciones |
-|---|---|
-| `404` | `root`, URL solicitada y montaje del fichero |
-| `403` al pedir un directorio | permisos, `index` o `autoindex` |
-| página sin estilos | URL del CSS y `Content-Type` |
-| Nginx no arranca o no recarga | `nginx -t` y logs |
+![Guía de diagnóstico: 404, comprobar URL, root y montaje; 403 en directorios, permisos, índice y listado; CSS, respuesta y tipo MIME; configuración, nginx -t y logs.](img/nginx-diagnostico-estaticos.png)
+
+*Figura 4. Primeras comprobaciones ante fallos habituales al servir contenido estático.*
 
 ### 4.1. Raíz, índice y permisos
 
-Cuando se solicita un directorio, Nginx busca normalmente un fichero `index.html`. Si no existe y el listado no está permitido, la petición puede terminar en `403`.
+Al solicitar un directorio, intervienen el índice configurado y la posibilidad de listar su contenido. Activa `autoindex` solo en las rutas donde quieras permitir ese listado.
 
 Nginx necesita además:
 
@@ -356,24 +294,13 @@ gzip_vary on;
 gzip_types text/css application/javascript application/json;
 ```
 
-El cliente anuncia:
+![El navegador anuncia Accept-Encoding: gzip; Nginx comprime la respuesta sin cambiar el fichero y envía Content-Encoding: gzip y Vary: Accept-Encoding; el navegador descomprime el contenido.](img/nginx-gzip-transferencia.png)
 
-```http
-Accept-Encoding: gzip
-```
+*Figura 5. Compresión de la respuesta durante la transferencia y descompresión automática en el navegador.*
 
-y, si Nginx comprime la respuesta, recibe:
+Cuando se utiliza gzip, `Content-Encoding: gzip` identifica la compresión de la respuesta. Con `gzip_vary on`, `Vary: Accept-Encoding` indica que la representación puede variar según lo que admita el cliente.
 
-```http
-Content-Encoding: gzip
-Vary: Accept-Encoding
-```
-
-`text/html` ya está contemplado por el módulo gzip aunque no aparezca en `gzip_types`.
-
-El fichero almacenado en disco **no cambia**. Nginx comprime la respuesta y el navegador la descomprime automáticamente.
-
-No suele aportar nada volver a comprimir formatos como JPEG o PNG, que ya almacenan su contenido comprimido.
+`text/html` ya está contemplado por el módulo gzip aunque no aparezca en `gzip_types`. El ahorro depende del contenido: los formatos que ya están comprimidos, como JPEG o PNG, suelen beneficiarse poco.
 
 Para comprobar cabeceras:
 
@@ -414,17 +341,17 @@ location ~* \.(css|js|png|jpg|jpeg|svg|webp)$ {
 }
 ```
 
-Una caché larga tiene un coste: si publicas contenido distinto con el **mismo nombre de fichero**, un navegador puede seguir reutilizando la copia antigua. Por eso las aplicaciones reales suelen versionar o incorporar una huella al nombre de sus recursos.
+![Primera visita: descarga y almacenamiento. Nueva visita con copia vigente: reutilización. Si cambia el contenido, una URL versionada y su referencia actualizada en el HTML permiten solicitar el nuevo recurso.](img/nginx-cache-versionado.png)
+
+*Figura 6. Reutilización de recursos en caché y publicación de una nueva versión.*
+
+Para publicar una nueva versión con caché larga, cambia el nombre del recurso —por ejemplo, de `app.css` a `app.v2.css`— y **actualiza también la referencia en el HTML**. También puede incorporarse una huella del contenido al nombre. El HTML necesita una política que permita descubrir esos cambios: caché corta o revalidación.
+
+Si mantienes la misma URL, el navegador puede seguir usando la copia anterior mientras la política permita reutilizarla. Que la copia deje de estar vigente no provoca por sí solo una descarga: la comprobación o petición se realiza cuando vuelva a necesitarse el recurso.
 
 ### 5.3. Estático y dinámico no significan «cacheable» y «no cacheable»
 
-La separación correcta es:
-
-| Respuesta | Política |
-|---|---|
-| recurso estático poco cambiante | buen candidato a caché prolongada |
-| HTML que cambia con frecuencia | política más corta |
-| respuesta dinámica | debe decidirse según el dato |
+La política depende de **cuánto cambia la respuesta y cuándo necesita el usuario ver esos cambios**. La tabla del apartado anterior es una orientación; el origen estático o dinámico no determina por sí solo si una respuesta puede almacenarse.
 
 !!! warning "Dinámico no significa nunca cacheable"
     Una API también puede utilizar caché. Lo importante es **no aplicar automáticamente a todas sus respuestas la misma política que a un CSS o una imagen versionada**.

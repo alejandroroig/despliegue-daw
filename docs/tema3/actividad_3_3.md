@@ -24,11 +24,6 @@ La instancia remota será únicamente el **host Docker**. No vas a recompilar la
 
 Después protegerás `/informes/` con autenticación básica y comprobarás por qué esa autenticación necesita HTTPS. Finalmente obtendrás un certificado público mediante ACME y harás que Nginx termine TLS.
 
-!!! info "Tiempo orientativo"
-    La actividad está diseñada para una sesión de aproximadamente **100 minutos** si la instancia EC2 indicada en los requisitos ya está creada y accesible.
-
-    La creación detallada de VPC, subredes o infraestructura cloud no forma parte de esta práctica.
-
 ## Qué vas a practicar
 
 - **Desplegar** en un host remoto el mismo conjunto que funciona en local.
@@ -48,7 +43,7 @@ Después protegerás `/informes/` con autenticación básica y comprobarás por 
 - Una instancia **Amazon EC2 de AWS Academy Learner Lab** ya con:
   - acceso por SSH;
   - Docker y Docker Compose;
-  - al menos 4 GiB de RAM si la instancia se reutilizará después para Elasticsearch/Kibana;
+  - 8 GiB de RAM recomendados si la instancia se reutilizará después para Elasticsearch/Kibana (el recorrido conjunto se probó en una t3.large);
   - TCP/80 permitido;
   - posibilidad de permitir TCP/443.
 - Una IPv4 pública que vaya a mantenerse durante la sesión.
@@ -127,18 +122,36 @@ escaparate.<ip>.nip.io
 docs.<ip>.nip.io
 ```
 
-Desde tu equipo:
+Define la IP actual en cada terminal donde vayas a utilizarla (tu equipo y EC2):
 
 ```bash
-dig +short escaparate.<ip>.nip.io
-dig +short docs.<ip>.nip.io
+read -r -p 'IPv4 pública de EC2: ' IP_PUBLICA
+printf 'Catálogo: http://escaparate.%s.nip.io\n' "$IP_PUBLICA"
+```
+
+Introduce solo los números y puntos de la IPv4, sin corchetes ni guiones bajos. Desde tu equipo comprueba DNS:
+
+```bash
+dig +short "escaparate.${IP_PUBLICA}.nip.io"
+dig +short "docs.${IP_PUBLICA}.nip.io"
 ```
 
 Ambos nombres deben resolver hacia la misma IP.
 
 En EC2, clona tu rama utilizando el mecanismo de autenticación Git que tengas configurado. **No escribas un PAT dentro de la URL del repositorio.**
 
-Crea `.env` a partir de `.env.example` y completa los valores locales.
+Desde `practicas/compose/`, prepara los archivos locales que no viajan en Git:
+
+```bash
+cp .env.example .env
+cp secrets/bd_clave.example.txt secrets/bd_clave.txt
+chmod 755 secrets
+chmod 644 secrets/bd_clave.txt
+```
+
+Completa las referencias de imagen y los valores de `.env`: `IMAGEN_BD`, `IMAGEN_APP`, `BD_USUARIO` y `BD_NOMBRE`. Utiliza la contraseña ficticia de laboratorio. En una base nueva se aplicará al inicializar; si reutilizas un volumen, debe coincidir con la contraseña que ya tiene PostgreSQL. Conserva Secrets en las tres réplicas.
+
+Los comandos presuponen acceso a Docker. En Amazon Linux puedes anteponer `sudo` a las órdenes Docker cuando sea necesario.
 
 Desde `practicas/compose/`:
 
@@ -154,17 +167,17 @@ No instales Java ni Maven y no construyas la aplicación en la instancia.
 Desde tu equipo comprueba:
 
 ```bash
-curl -fsS http://escaparate.<ip>.nip.io/ > /dev/null \
+curl -fsS http://escaparate.${IP_PUBLICA}.nip.io/ > /dev/null \
   && echo "catálogo remoto OK"
 
-curl -fsS http://escaparate.<ip>.nip.io/api/salud/listo
+curl -fsS http://escaparate.${IP_PUBLICA}.nip.io/api/salud/listo
 ```
 
 Y verifica que siguen existiendo tres réplicas:
 
 ```bash
 for i in 1 2 3 4 5 6; do
-  curl -s http://escaparate.<ip>.nip.io/api/instancia
+  curl -s http://escaparate.${IP_PUBLICA}.nip.io/api/instancia
   echo
 done
 ```
@@ -202,6 +215,7 @@ mkdir -p practicas/nginx/auth
 HASH="$(openssl passwd -apr1)"
 printf 'alumno:%s\n' "$HASH" > practicas/nginx/auth/.htpasswd
 unset HASH
+chmod 644 practicas/nginx/auth/.htpasswd
 ```
 
 Utiliza una contraseña **inventada exclusivamente para esta práctica**.
@@ -237,11 +251,11 @@ Comprueba:
 
 ```bash
 curl -s -o /dev/null -w "sin credenciales: %{http_code}\n" \
-  http://docs.<ip>.nip.io/informes/
+  http://docs.${IP_PUBLICA}.nip.io/informes/
 
 curl -s -o /dev/null -w "con credenciales: %{http_code}\n" \
-  -u alumno:<clave-laboratorio> \
-  http://docs.<ip>.nip.io/informes/
+  -u alumno \
+  http://docs.${IP_PUBLICA}.nip.io/informes/
 ```
 
 Debes obtener:
@@ -253,39 +267,24 @@ Debes obtener:
 
 ### 2.2. Base64 no es cifrado
 
-Ejecuta desde tu equipo una petición verbosa:
+`curl -u alumno` solicita la contraseña sin dejarla escrita en el comando. Basic envía una cabecera `Authorization: Basic ...`, cuyo valor representa `usuario:contraseña` codificado en Base64.
+
+Comprueba que esa codificación es reversible usando datos ficticios independientes de tu contraseña:
 
 ```bash
-curl -v -u alumno:<clave-laboratorio> \
-  http://docs.<ip>.nip.io/informes/ \
-  -o /dev/null
+python3 - <<'PYTHON'
+import base64
+credenciales = b"demo:clave-ficticia"
+codificado = base64.b64encode(credenciales).decode()
+print("Authorization: Basic", codificado)
+print("Decodificado:", base64.b64decode(codificado).decode())
+PYTHON
 ```
 
-En la salida localiza:
-
-```text
-Authorization: Basic ...
-```
-
-Copia únicamente el valor situado después de `Basic` y descodifícalo:
-
-```bash
-echo '<valor-base64>' | base64 -d
-```
-
-Debes recuperar:
-
-```text
-alumno:<clave-laboratorio>
-```
-
-No incluyas la contraseña visible en ninguna captura.
+Debes recuperar `demo:clave-ficticia` sin necesitar ninguna clave de descifrado. Eso es lo que distingue codificar de cifrar. No incluyas credenciales reales en las evidencias.
 
 !!! question "Reflexiona"
     ¿Qué protege Basic Authentication y qué **no** protege mientras el transporte siga siendo HTTP?
-
-!!! tip "Ampliación opcional"
-    Si quieres observar la cabecera desde otro punto de la comunicación, puedes capturar **tu propio tráfico de laboratorio** con `tcpdump`. No es necesario para completar la actividad.
 
 ---
 
@@ -377,8 +376,8 @@ echo 'acme-ok' > \
 Desde tu equipo:
 
 ```bash
-curl http://escaparate.<ip>.nip.io/.well-known/acme-challenge/prueba
-curl http://docs.<ip>.nip.io/.well-known/acme-challenge/prueba
+curl http://escaparate.${IP_PUBLICA}.nip.io/.well-known/acme-challenge/prueba
+curl http://docs.${IP_PUBLICA}.nip.io/.well-known/acme-challenge/prueba
 ```
 
 Las dos respuestas deben ser:
@@ -392,16 +391,17 @@ acme-ok
 Desde `practicas/compose/`:
 
 ```bash
+read -r -p 'Correo para Let’s Encrypt: ' CORREO_ACME
 docker compose run --rm certbot certonly \
   --webroot -w /var/www/certbot \
   --dry-run \
   --agree-tos --non-interactive \
-  --email <correo> \
-  -d escaparate.<ip>.nip.io \
-  -d docs.<ip>.nip.io
+  --email "$CORREO_ACME" \
+  -d escaparate.${IP_PUBLICA}.nip.io \
+  -d docs.${IP_PUBLICA}.nip.io
 ```
 
-**No continúes si el `dry-run` falla.**
+**No continúes si el `dry-run` falla.** La opción `--agree-tos` acepta las condiciones de la autoridad de certificación.
 
 Cuando funcione, realiza una sola emisión real:
 
@@ -410,9 +410,9 @@ docker compose run --rm certbot certonly \
   --webroot -w /var/www/certbot \
   --cert-name daw-sesion08 \
   --agree-tos --non-interactive \
-  --email <correo> \
-  -d escaparate.<ip>.nip.io \
-  -d docs.<ip>.nip.io
+  --email "$CORREO_ACME" \
+  -d escaparate.${IP_PUBLICA}.nip.io \
+  -d docs.${IP_PUBLICA}.nip.io
 ```
 
 Comprueba:
@@ -537,7 +537,7 @@ Desde tu equipo:
 ### HTTP redirige
 
 ```bash
-curl -sI http://escaparate.<ip>.nip.io/ | head -n 3
+curl -sI http://escaparate.${IP_PUBLICA}.nip.io/ | head -n 3
 ```
 
 Debe aparecer un `301` hacia `https://...`.
@@ -545,7 +545,7 @@ Debe aparecer un `301` hacia `https://...`.
 ### El desafío continúa accesible por HTTP
 
 ```bash
-curl -s http://docs.<ip>.nip.io/.well-known/acme-challenge/prueba
+curl -s http://docs.${IP_PUBLICA}.nip.io/.well-known/acme-challenge/prueba
 ```
 
 Debe devolver:
@@ -557,7 +557,7 @@ acme-ok
 ### HTTPS es válido
 
 ```bash
-curl -fsS https://escaparate.<ip>.nip.io/ > /dev/null \
+curl -fsS https://escaparate.${IP_PUBLICA}.nip.io/ > /dev/null \
   && echo "HTTPS OK"
 ```
 
@@ -567,7 +567,7 @@ No utilices `-k`.
 
 ```bash
 for i in 1 2 3 4 5 6; do
-  curl -s https://escaparate.<ip>.nip.io/api/instancia
+  curl -s https://escaparate.${IP_PUBLICA}.nip.io/api/instancia
   echo
 done
 ```
@@ -576,11 +576,11 @@ done
 
 ```bash
 curl -s -o /dev/null -w "sin credenciales: %{http_code}\n" \
-  https://docs.<ip>.nip.io/informes/
+  https://docs.${IP_PUBLICA}.nip.io/informes/
 
 curl -s -o /dev/null -w "con credenciales: %{http_code}\n" \
-  -u alumno:<clave-laboratorio> \
-  https://docs.<ip>.nip.io/informes/
+  -u alumno \
+  https://docs.${IP_PUBLICA}.nip.io/informes/
 ```
 
 Debe devolver:
@@ -593,13 +593,40 @@ Debe devolver:
 ### Comprueba las cabeceras
 
 ```bash
-curl -sI https://escaparate.<ip>.nip.io/ \
+curl -sI https://escaparate.${IP_PUBLICA}.nip.io/ \
   | grep -iE 'strict-transport|x-content-type|referrer'
 ```
 
 **Captura 2:** `dry-run` correcto y certificado emitido para los dos nombres.
 
 **Captura 3:** redirección HTTP→HTTPS, acceso HTTPS válido y comprobación `401/200` de `/informes/`.
+
+### Comprueba la renovación
+
+Un certificado caduca. Vuelve a **EC2**, sitúate en `practicas/compose/` y comprueba que el procedimiento de renovación puede funcionar:
+
+```bash
+docker compose run --rm certbot renew --dry-run
+```
+
+La idea que debes reconocer es:
+
+```text
+renovar certificado
+      ↓
+nuevos ficheros en disco
+      ↓
+recargar Nginx
+      ↓
+nuevo certificado en uso
+```
+
+La simulación no programa renovaciones periódicas. En esta práctica comprobamos la renovación y explicamos la recarga posterior; no configuramos su automatización.
+
+Incluye el resultado de la simulación junto a la evidencia del certificado.
+
+---
+
 
 ### Documentación mínima
 
@@ -661,34 +688,15 @@ Al finalizar debe cumplirse:
 - [ ] HTTPS terminado en Nginx.
 - [ ] Redirección HTTP → HTTPS manteniendo HTTP-01.
 - [ ] Cabeceras básicas de seguridad.
+- [ ] Renovación simulada correcta.
 - [ ] Ficheros sensibles fuera de Git.
 - [ ] Pull Request `sesion-08 → main` fusionada.
 
 ---
 
-## Ampliación opcional: renovación
+## Si se interrumpe el laboratorio
 
-Un certificado caduca. Si terminas la actividad principal, prueba:
-
-```bash
-docker compose run --rm certbot renew --dry-run
-```
-
-La idea que debes reconocer es:
-
-```text
-renovar certificado
-      ↓
-nuevos ficheros en disco
-      ↓
-recargar Nginx
-      ↓
-nuevo certificado en uso
-```
-
-La automatización periódica de esta operación queda fuera de la parte obligatoria.
-
----
+Consulta la IP pública al reanudarlo. Si cambia, cambian los nombres de `nip.io`: el certificado anterior no cubre esos nuevos nombres aunque `server_name` use un comodín. Repite la comprobación HTTP-01 y, con el profesor, solicita el certificado para los nuevos nombres conservando `--cert-name daw-sesion08`. Valida y recarga Nginx después. No uses `curl -k` para dar por válida la recuperación ni borres los volúmenes.
 
 ## ✅ Cierre
 

@@ -1,0 +1,19 @@
+services:
+  tomcat-lab:
+    image: tomcat:11.0.25-jre21-temurin-noble
+    environment:
+      DB_HOST: bd
+      DB_PORT: "5432"
+      DB_NAME: ${BD_NOMBRE}
+      DB_USER: ${BD_USUARIO}
+      SPRING_CONFIG_IMPORT: "configtree:/run/secrets/"
+      APP_STORAGE_TYPE: filesystem
+      APP_STORAGE_PATH: /tmp/uploads
+    secrets:
+      - source: bd_clave
+        target: spring.datasource.password
+    volumes:
+      - ../aplicaciones/tomcat/escaparate.war:/usr/local/tomcat/webapps/escaparate.war:ro
+    depends_on:
+      bd:
+        condition: service_healthy

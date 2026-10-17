@@ -1,0 +1,66 @@
+[
+  {
+    "id": 1,
+    "nombre": "Teclado mecánico",
+    "descripcion": "Teclado compacto con conexión USB y distribución española.",
+    "precio": 39.90,
+    "imagenUrl": null,
+    "fechaAlta": "2026-01-08T09:00:00Z"
+  },
+  {
+    "id": 2,
+    "nombre": "Ratón inalámbrico",
+    "descripcion": "Ratón óptico inalámbrico para trabajo y estudio.",
+    "precio": 19.90,
+    "imagenUrl": null,
+    "fechaAlta": "2026-01-07T09:00:00Z"
+  },
+  {
+    "id": 3,
+    "nombre": "Auriculares USB",
+    "descripcion": "Auriculares cerrados con micrófono y conexión USB.",
+    "precio": 29.90,
+    "imagenUrl": null,
+    "fechaAlta": "2026-01-06T09:00:00Z"
+  },
+  {
+    "id": 4,
+    "nombre": "Webcam Full HD",
+    "descripcion": "Cámara Full HD para videollamadas y clases en línea.",
+    "precio": 34.90,
+    "imagenUrl": null,
+    "fechaAlta": "2026-01-05T09:00:00Z"
+  },
+  {
+    "id": 5,
+    "nombre": "Soporte para portátil",
+    "descripcion": "Soporte metálico regulable para elevar el portátil.",
+    "precio": 24.90,
+    "imagenUrl": null,
+    "fechaAlta": "2026-01-04T09:00:00Z"
+  },
+  {
+    "id": 6,
+    "nombre": "Lámpara de escritorio",
+    "descripcion": "Lámpara LED compacta con brazo regulable.",
+    "precio": 22.50,
+    "imagenUrl": null,
+    "fechaAlta": "2026-01-03T09:00:00Z"
+  },
+  {
+    "id": 7,
+    "nombre": "Libreta",
+    "descripcion": "Libreta de tapa dura para notas y bocetos.",
+    "precio": 7.95,
+    "imagenUrl": null,
+    "fechaAlta": "2026-01-02T09:00:00Z"
+  },
+  {
+    "id": 8,
+    "nombre": "Taza térmica",
+    "descripcion": "Taza reutilizable con tapa para bebidas calientes.",
+    "precio": 14.50,
+    "imagenUrl": null,
+    "fechaAlta": "2026-01-01T09:00:00Z"
+  }
+]

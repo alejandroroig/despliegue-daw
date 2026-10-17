@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Escaparate - documentación técnica</title><link rel="stylesheet" href="assets/style.css"></head>
+<body>
+<header>
+<h1>Escaparate</h1>
+<p>Documentación técnica del código y material de calidad del build</p>
+</header>
+<main>
+<div class="card">
+<h2>Documentación del código</h2>
+<p>Referencia estática preparada a partir del código de la distribución final de Escaparate utilizada en las prácticas.</p>
+<p><a href="paquetes/index.html">Ver índice de paquetes</a></p>
+</div>
+<div class="grid"><div class="card"><h3><a href="paquetes/es_escaparate.html"><code>es.escaparate</code></a></h3>
+<p>Aplicación didáctica Escaparate. El proyecto se utiliza para practicar empaquetado, despliegue, balanceo, observabilidad básica y escenarios de nube sin añadir complejidad funcional innecesaria.</p></div><div class="card"><h3><a href="paquetes/es_escaparate_almacenamiento.html"><code>es.escaparate.almacenamiento</code></a></h3>
+<p>Abstracciones e implementaciones para almacenar imágenes de productos. El catálogo depende de `AlmacenamientoImagenes` y no del soporte físico concreto. Las implementaciones disponibles son filesystem —válido también para volúmenes o EFS montado— y Amazon S3.</p></div><div class="card"><h3><a href="paquetes/es_escaparate_api.html"><code>es.escaparate.api</code></a></h3>
+<p>Componentes transversales de la API HTTP, como el tratamiento uniforme de errores.</p></div><div class="card"><h3><a href="paquetes/es_escaparate_configuracion.html"><code>es.escaparate.configuracion</code></a></h3>
+<p>Configuración transversal de la aplicación, independiente de la lógica de negocio.</p></div><div class="card"><h3><a href="paquetes/es_escaparate_infraestructura.html"><code>es.escaparate.infraestructura</code></a></h3>
+<p>Endpoints técnicos orientados al despliegue. Incluye identidad de instancia, liveness, readiness y generación de carga sintética para hacer visibles balanceo, probes y escalado.</p></div><div class="card"><h3><a href="paquetes/es_escaparate_infraestructura_dto.html"><code>es.escaparate.infraestructura.dto</code></a></h3>
+<p>Respuestas de los endpoints técnicos de despliegue.</p></div><div class="card"><h3><a href="paquetes/es_escaparate_producto.html"><code>es.escaparate.producto</code></a></h3>
+<p>Catálogo de productos de Escaparate. Contiene el modelo persistente, acceso a datos, lógica de aplicación y endpoints REST del catálogo.</p></div><div class="card"><h3><a href="paquetes/es_escaparate_producto_dto.html"><code>es.escaparate.producto.dto</code></a></h3>
+<p>Objetos de respuesta HTTP del catálogo de productos.</p></div></div>
+<div class="card">
+<h2>Informes</h2>
+<p>Los informes están deliberadamente en una carpeta <code>informes/</code> sin fichero índice. En la Actividad 3.1 Nginx se configura para mostrar su listado mediante <code>autoindex</code>.</p>
+<p><a href="informes/">Abrir carpeta de informes</a></p>
+</div>
+</main>
+<footer>Material docente · Escaparate</footer>
+</body></html>

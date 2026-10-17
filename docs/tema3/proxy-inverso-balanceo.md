@@ -1,21 +1,20 @@
 # 🔀 Proxy inverso y balanceo
 
 !!! info "Descarga de diapositivas"
-    <!-- [Descarga las diapositivas](diapositivas/proxy-inverso-balanceo.pptx){target="_blank" rel="noopener"} -->
+    [Descarga las diapositivas](diapositivas/proxy-inverso-balanceo.pdf){target="_blank" rel="noopener"}
 
 ---
 
 En la sesión anterior Nginx actuó como servidor web y puerta de entrada. Ahora añadiremos un segundo papel: **reenviar peticiones a aplicaciones internas**. Cuando un servidor recibe tráfico y lo dirige hacia uno o varios backends hablamos de proxy inverso.
 
-En nuestro despliegue esos backends no son “otro Nginx”: cada `app-*` contiene Escaparate y su **Tomcat embebido**. Desde esta sesión ya existe de forma explícita la cooperación:
-
-```mermaid
-flowchart LR
-    C["Cliente"] --> N["Nginx<br/>servidor web + proxy"]
-    N --> A["Spring Boot + Tomcat<br/>servidor de aplicaciones"]
-```
+Los backends son aplicaciones que atienden peticiones HTTP. Pueden estar implementadas con Java, Python, JavaScript u otras tecnologías. Nginx recibe la petición pública y coopera con esos servidores internos.
 
 Si existen varias copias equivalentes del backend, el mismo punto de entrada puede repartir entre ellas las peticiones. Esto introduce dos problemas que estudiaremos juntos: qué ocurre cuando una copia deja de responder y qué pasa si una réplica guarda localmente datos que después necesita cualquiera de las demás.
+
+!!! abstract "Mapa de la sesión"
+    **Recibir → reenviar → conservar información → repartir → gestionar fallos → compartir estado**
+
+    Usaremos nombres como `app-1` y rutas como `/api/productos` para ilustrar los conceptos. No dependen de una aplicación concreta.
 
 ---
 
@@ -23,30 +22,13 @@ Si existen varias copias equivalentes del backend, el mismo punto de entrada pue
 
 ### 1.1. Servir y reenviar son trabajos diferentes
 
-Cuando Nginx sirve un fichero estático, él mismo produce la respuesta:
+Nginx puede atender una petición leyendo un archivo o reenviándola a una aplicación. La diferencia está en **quién obtiene o genera el contenido de la respuesta**.
 
-```mermaid
-flowchart LR
-    C["GET /css/estilos.css"] --> N["Nginx"]
-    N --> F["/srv/www/web/css/estilos.css"]
-    F --> N
-    N --> C
-```
+![Comparación entre Nginx sirviendo un archivo estático y actuando como proxy inverso; la respuesta de la aplicación vuelve al navegador a través de Nginx.](img/nginx-servir-proxy.png)
 
-Un **proxy inverso** hace algo distinto. Recibe una petición, selecciona otro servidor, se la reenvía, espera la respuesta y después la devuelve al cliente:
+*Figura 1. Dos recorridos detrás del mismo punto de entrada.*
 
-```mermaid
-sequenceDiagram
-    participant C as Navegador
-    participant N as Nginx
-    participant A as app
-    C->>N: GET /api/productos
-    N->>A: reenvía petición
-    A-->>N: respuesta
-    N-->>C: respuesta
-```
-
-Para el navegador sigue existiendo un único origen. No necesita saber el nombre interno de la aplicación ni el puerto 8080.
+En el primer caso, Nginx lee el archivo. En el segundo, el backend procesa la petición y Nginx devuelve su respuesta. **El navegador se comunica con Nginx en ambos casos**: no necesita conocer el nombre interno `app` ni su puerto 8080.
 
 Conviene reconocer la diferencia:
 
@@ -82,7 +64,7 @@ Esto aporta varias ventajas que iremos utilizando durante el módulo:
 
 ### 2.1. La ruta que llega al backend
 
-El bloque mínimo utilizado en la sesión 6 era:
+Un ejemplo mínimo es:
 
 ```nginx
 location /api/ {
@@ -90,14 +72,15 @@ location /api/ {
 }
 ```
 
-`location` selecciona las URL que empiezan por `/api/`. `proxy_pass` indica a qué destino deben enviarse.
+En este ejemplo sencillo, el `location` de prefijo selecciona las rutas que empiezan por `/api/`. `proxy_pass` indica a qué destino deben enviarse.
 
 Hay un detalle pequeño con consecuencias importantes: **la URI escrita en `proxy_pass` modifica cómo Nginx construye la ruta del destino**.
 
-| `location` | `proxy_pass` | El cliente pide | El backend recibe |
-|---|---|---|---|
-| `/api/` | `http://backend:8080` | `/api/salud` | `/api/salud` |
-| `/api/` | `http://backend:8080/` | `/api/salud` | `/salud` |
+![Con location /api/, proxy_pass sin URI conserva /api/productos; con la URI / sustituye el prefijo /api/ y el backend recibe /productos.](img/nginx-proxy-pass-rutas.png)
+
+*Figura 2. La barra tras el puerto introduce una URI en `proxy_pass`.*
+
+Para la petición `/api/productos`, el primer caso conserva `/api/productos`; el segundo sustituye el prefijo que coincide con `location` por `/` y produce `/productos`.
 
 Si el backend publica realmente sus endpoints bajo `/api`, debemos conservar esa parte de la ruta:
 
@@ -105,19 +88,19 @@ Si el backend publica realmente sus endpoints bajo `/api`, debemos conservar esa
 proxy_pass http://backend:8080;
 ```
 
-Un `404` que solo aparece al atravesar el proxy es una señal clara para revisar esta diferencia.
+Un `404` que solo aparece al atravesar el proxy es una pista para revisar esta diferencia, aunque puede tener otras causas. La comparación presupone un `location` de prefijo, sin reescrituras ni variables en `proxy_pass`.
 
 ### 2.2. El backend ya no habla con el cliente
 
 Al introducir un proxy, la conexión que recibe el backend procede de Nginx. Si no hacemos nada, la aplicación pierde información sobre la petición original.
 
-Por eso Nginx puede reenviar información sobre el host, la dirección observada y el protocolo externo. En esta sesión basta con comprender qué problema resuelven esas cabeceras; el detalle interno de Spring Boot/Tomcat se estudiará cuando abramos el backend.
+Por eso Nginx puede reenviar información sobre el host, la dirección observada y el protocolo externo. En esta sesión basta con comprender qué problema resuelven esas cabeceras; la aplicación debe configurarse para interpretar la información reenviada y confiar únicamente en sus proxies conocidos.
 
-| Información original | Sin reenviarla, el backend ve | Cabecera habitual |
-|---|---|---|
-| nombre solicitado | el destino interno | `Host` |
-| IP del visitante | la IP del proxy | `X-Forwarded-For` |
-| protocolo externo | la conexión interna | `X-Forwarded-Proto` |
+![Nginx conserva el nombre solicitado mediante Host, la dirección observada mediante X-Forwarded-For y el protocolo externo mediante X-Forwarded-Proto.](img/nginx-cabeceras-reenviadas.png)
+
+*Figura 3. La conexión procede del proxy, pero las cabeceras permiten describir la petición original.*
+
+La figura anticipa un ejemplo con HTTPS hasta Nginx y HTTP en la conexión interna. Así se entiende por qué el backend necesita conocer el protocolo **externo**. La configuración de HTTPS se trabajará en la siguiente sesión; si el cliente accede por HTTP, `$scheme` tendrá el valor `http`.
 
 Una configuración habitual cuando Nginx es **la primera y única puerta de confianza** es:
 
@@ -127,7 +110,7 @@ proxy_set_header X-Forwarded-For   $remote_addr;
 proxy_set_header X-Forwarded-Proto $scheme;
 ```
 
-`$remote_addr` es la dirección desde la que Nginx ha recibido realmente la conexión.
+`$remote_addr` es la dirección del extremo que conecta con Nginx. Puede ser la dirección pública de un router que hace NAT, no necesariamente la dirección privada del dispositivo. Reenviarla en una cabecera no cambia la IP de la conexión que recibe el backend: esa conexión sigue procediendo de Nginx.
 
 !!! danger "No confíes en una cabecera porque venga escrita"
     Un cliente puede enviar por sí mismo `X-Forwarded-For: 1.2.3.4`. Si Nginx es la primera puerta de confianza, puede sobrescribir ese dato con la dirección que él mismo ha observado. En arquitecturas con varios proxies de confianza se conserva una cadena de direcciones, pero para hacerlo correctamente hay que saber qué intermediarios son fiables.
@@ -142,7 +125,7 @@ proxy_set_header X-Forwarded-Proto $scheme;
 
 En lugar de reenviar `/api/` a una única aplicación, vamos a crear un grupo llamado `backend_pool`.
 
-La configuración que utilizaremos es:
+Este ejemplo utiliza tres servicios en la misma red de Docker Compose. El bloque `upstream` se declara dentro del contexto `http` de Nginx, al mismo nivel que los bloques `server`:
 
 ```nginx
 upstream backend_pool {
@@ -155,17 +138,7 @@ upstream backend_pool {
 }
 ```
 
-La parte importante se puede leer así:
-
-```mermaid
-flowchart LR
-    C["Cliente"] --> N["Nginx"]
-    N --> A1["app-1"]
-    N --> A2["app-2"]
-    N --> A3["app-3"]
-```
-
-`upstream` simplemente da un nombre al grupo. Si no indicamos otro método, Nginx reparte las peticiones por turnos entre sus miembros.
+`upstream` simplemente da un nombre al grupo. Si no indicamos otro método, Nginx utiliza round robin ponderado. Con pesos iguales, reparte las peticiones entre los miembros disponibles. No implica que todas las peticiones cuesten lo mismo ni que siempre observemos una secuencia exacta 1–2–3.
 
 Para observar el reparto, una aplicación puede exponer un endpoint como:
 
@@ -173,11 +146,11 @@ Para observar el reparto, una aplicación puede exponer un endpoint como:
 /api/instancia
 ```
 
-para poder ver qué copia ha respondido.
+para poder ver qué copia ha respondido. Esta ruta es ilustrativa: la aplicación debe implementarla; Nginx no crea el endpoint.
 
 ### 3.2. Por qué aparecen `zone`, `resolver` y `resolve`
 
-Docker Compose nos permite hablar de `app-1`, `app-2` y `app-3` por nombre. Esos nombres son estables, pero la dirección IP interna de un contenedor puede cambiar cuando se detiene o se recrea.
+Docker Compose nos permite hablar de `app-1`, `app-2` y `app-3` por nombre. Esos nombres son estables, pero la dirección IP interna de un contenedor puede cambiar cuando se recrea.
 
 Queremos que Nginx siga los **nombres**, no una dirección antigua.
 
@@ -186,10 +159,13 @@ Las tres piezas necesarias son:
 | Directiva | Idea sencilla |
 |---|---|
 | `resolver 127.0.0.11` | pregunta al DNS interno de Docker |
-| `resolve` | vuelve a consultar el nombre si cambia |
-| `zone` | permite que Nginx mantenga actualizado el estado del grupo |
+| `resolve` | supervisa cambios DNS y actualiza las direcciones del grupo |
+| `zone` | comparte la configuración y el estado del grupo entre procesos de Nginx |
 
-`valid=5s` hace que la información DNS se renueve con frecuencia en este laboratorio. `ipv6=off` evita consultas IPv6 que aquí no necesitamos.
+`valid=5s` fija en cinco segundos la validez de las respuestas DNS almacenadas. **No comprueba si la aplicación está sana.** `ipv6=off` evita consultas IPv6 en este ejemplo.
+
+!!! info "Entorno del ejemplo"
+    Esta configuración requiere Nginx de código abierto **1.27.3 o posterior**. `127.0.0.11` es el DNS integrado de Docker en redes personalizadas, como la red habitual de Compose. Fuera de ese entorno hay que configurar el resolver correspondiente.
 
 No hace falta memorizar estas directivas. Lo importante es entender el problema que resuelven:
 
@@ -199,9 +175,9 @@ flowchart LR
     D --> I["IP actual<br/>del contenedor"]
 ```
 
-### 3.3. El proxy completo
+### 3.3. Reenvío al grupo y límites de los intentos
 
-El bloque de `/api/` queda:
+Dentro del bloque `server` que atiende al cliente, el `location` de `/api/` queda:
 
 ```nginx
 location /api/ {
@@ -217,16 +193,15 @@ location /api/ {
 }
 ```
 
-Las tres directivas nuevas tienen un único objetivo: **que una copia caída no bloquee una petición durante demasiado tiempo**.
+Estos fragmentos se integran en la configuración del servidor; no constituyen por sí solos un `nginx.conf` completo.
 
-```mermaid
-flowchart LR
-    A["Intenta conectar"] --> Q{"¿responde<br/>a tiempo?"}
-    Q -->|sí| R["usa la respuesta"]
-    Q -->|no| O["prueba otra copia"]
-```
+Las directivas de timeout y reintento controlan el establecimiento de conexión y los intentos de usar otro destino. **`proxy_connect_timeout 2s` limita la conexión con el backend**, no el tiempo total de respuesta. Una aplicación que acepta la conexión pero tarda en responder requiere analizar también los tiempos de lectura.
 
-`proxy_next_upstream_tries 3` limita el intento a las tres copias existentes.
+
+`proxy_next_upstream_tries 3` establece un máximo de tres intentos en total, incluido el inicial. No son tres reintentos adicionales ni una garantía de éxito.
+
+!!! note "No toda petición se puede repetir"
+    El cambio a otro backend solo es posible antes de enviar parte de la respuesta al cliente. Por defecto, una petición no idempotente, como un `POST`, no se reenvía a otro servidor si ya se había enviado al primero. Repetir una operación de escritura puede duplicar sus efectos. Los códigos HTTP 500 o 503 no provocan por sí solos un reintento con la configuración `error timeout`.
 
 ---
 
@@ -234,19 +209,15 @@ flowchart LR
 
 Nginx utiliza aquí una comprobación **pasiva**: no pregunta continuamente si las copias están sanas. Descubre un problema cuando intenta enviarles tráfico.
 
-Si `app-2` se detiene:
+![Nginx reparte peticiones entre tres réplicas; si falla la conexión con una, puede intentar otra y devolver su respuesta a través del proxy.](img/nginx-balanceo-fallos.png)
 
-| Réplica | Estado |
-|---|---|
-| `app-1` | ✅ disponible |
-| `app-2` | ❌ caída |
-| `app-3` | ✅ disponible |
+*Figura 4. El reparto y la detección pasiva de fallos utilizan peticiones reales.*
 
-una petición puede intentar primero `app-2`. Como hemos reducido el tiempo de conexión, Nginx no espera un minuto: abandona ese intento rápidamente y puede probar otra copia.
+Si `app-2` se detiene, una petición puede intentar conectarse a ella antes de que Nginx haya detectado el fallo. Una conexión rechazada puede fallar inmediatamente; si no llega a establecerse, actúa el timeout de conexión. **Probar otra réplica depende de que el reintento esté permitido.** Si no queda ningún destino utilizable, el cliente puede recibir un error.
 
-Las peticiones siguientes se siguen repartiendo entre los destinos disponibles.
+Los fallos pasivos pueden excluir temporalmente un destino del reparto. Esto se controla mediante `max_fails` y `fail_timeout`; por defecto, un intento fallido dentro de una ventana de diez segundos permite considerar el destino no disponible durante diez segundos. No es un sondeo periódico de readiness.
 
-Cuando `app-2` vuelve, `resolver` + `resolve` permiten que Nginx vuelva a localizarla por su nombre y la reincorpore al grupo sin tener que reiniciar el proxy.
+Si `app-2` vuelve con otra IP, `resolver` + `resolve` actualizan su dirección sin reiniciar el proxy. La resolución DNS y la recuperación tras un fallo son mecanismos diferentes: conocer su IP no garantiza que la aplicación esté lista; una nueva petición permite comprobar si responde.
 
 **No es lo mismo que el `healthcheck` de Compose.**
 
@@ -254,13 +225,15 @@ Ya utilizaste un `healthcheck` con PostgreSQL. Se parecen, pero hacen trabajos d
 
 | | Compose | Nginx |
 |---|---|---|
-| Para qué lo usamos | coordinar el arranque | repartir peticiones |
-| Cómo detecta el problema | ejecuta una comprobación definida | falla una conexión real |
+| Para qué lo usamos | observar salud y condicionar el arranque con `service_healthy` | repartir peticiones y evitar temporalmente destinos fallidos |
+| Cómo detecta el problema | Docker ejecuta periódicamente la comprobación definida | se produce un fallo al tramitar tráfico real |
 | Quién decide el destino HTTP | no lo hace | Nginx |
 
 La idea importante es sencilla:
 
-> Compose controla el estado de sus servicios; Nginx decide a qué copia envía cada petición.
+> El healthcheck informa del estado; Nginx decide el destino de cada petición.
+
+Marcar un contenedor como `unhealthy` no hace que este Nginx consulte automáticamente ese estado ni retire la réplica. Tampoco implica por sí solo reiniciar el contenedor.
 
 Las comprobaciones activas periódicas existen en otros balanceadores y servicios cloud. Aquí basta con entender el comportamiento pasivo que acabamos de configurar.
 
@@ -270,52 +243,28 @@ Las comprobaciones activas periódicas existen en otros balanceadores y servicio
 
 ### 5.1. Tres copias no comparten su sistema de ficheros
 
-Supón una aplicación que permite subir ficheros y los guarda en el filesystem. Cada réplica podría utilizar:
+Supón una aplicación que permite subir ficheros y los guarda en el filesystem. Una aplicación que interprete estas variables podría utilizar:
 
 ```text
 STORAGE_TYPE=filesystem
 STORAGE_PATH=/data/uploads
 ```
 
-Sin un volumen compartido, `/data/uploads` pertenece a cada contenedor:
+Estos nombres de variable son ilustrativos: solo funcionan si la aplicación los interpreta. Docker no añade esa lógica.
 
-```mermaid
-flowchart LR
-    N["Nginx"] --> A1["app-1"]
-    N --> A2["app-2"]
-    N --> A3["app-3"]
+Si cada réplica escribe en su propio sistema de archivos, utilizar la misma ruta `/data/uploads` **no significa acceder al mismo almacenamiento**.
 
-    A1 --> F1["Ficheros A"]
-    A2 --> F2["Ficheros B"]
-    A3 --> F3["Ficheros C"]
-```
+![Un archivo subido a app-1 no existe en el almacenamiento local de app-2; con un volumen común, tres réplicas del mismo host acceden al mismo archivo.](img/nginx-replicas-almacenamiento.png)
 
-La base de datos puede ser común y registrar la referencia al fichero, pero eso no hace que el fichero físico aparezca automáticamente en los discos de las demás réplicas.
+*Figura 5. La ruta dentro del contenedor y el origen del almacenamiento son decisiones diferentes.*
 
-Así puede ocurrir:
+Una subida puede llegar a `app-1` y una lectura posterior a `app-2`. Si el archivo solo existe en la primera, la segunda puede responder `404`. El resultado depende de la réplica que atienda la petición.
 
-```mermaid
-sequenceDiagram
-    participant C as Cliente
-    participant N as Nginx
-    participant A1 as app-1
-    participant A2 as app-2
-    C->>N: POST fichero
-    N->>A1: guardar
-    A1-->>C: creado
-    C->>N: GET fichero
-    N->>A2: buscar
-    A2-->>C: 404
-    C->>N: GET fichero
-    N->>A1: buscar
-    A1-->>C: 200
-```
-
-No es aleatorio: es una consecuencia directa del reparto.
+La base de datos puede ser común y registrar una referencia al archivo. **Eso no copia el archivo físico** al almacenamiento de las demás réplicas.
 
 ### 5.2. Estado compartido en un único host
 
-Mientras las tres copias viven en el mismo host Docker, podemos montar un **volumen nombrado común**:
+Mientras las tres copias viven en el mismo host Docker, podemos montar un **volumen con nombre común**, como en la parte derecha de la figura. Este fragmento muestra únicamente los montajes y la declaración del volumen:
 
 ```yaml
 services:
@@ -335,26 +284,13 @@ volumes:
   uploads-compartidos:
 ```
 
-Ahora:
-
-```mermaid
-flowchart LR
-    N["Balanceador"] --> A1["Réplica 1"]
-    N --> A2["Réplica 2"]
-    N --> A3["Réplica 3"]
-
-    A1 --> V["Almacenamiento<br/>compartido"]
-    A2 --> V
-    A3 --> V
-```
-
-Las tres copias ven los mismos ficheros.
+Las tres copias ven los mismos ficheros. También necesitan permisos adecuados y una aplicación que gestione los accesos concurrentes: compartir un volumen no resuelve por sí solo las escrituras simultáneas ni crea una copia de seguridad.
 
 La regla general es:
 
 > Si varias copias deben ser intercambiables, el estado que todas necesiten recuperar no debe vivir únicamente dentro de una de ellas.
 
-Este volumen resuelve el problema **porque las tres réplicas están en la misma máquina**. Cuando las copias vivan en hosts diferentes necesitaremos otro tipo de almacenamiento compartido, como un sistema de ficheros de red o almacenamiento de objetos.
+Este volumen local resuelve el acceso compartido **porque las tres réplicas están en la misma máquina**. Si ya existen archivos en el almacenamiento anterior, hay que trasladarlos al nuevo almacenamiento; añadir el montaje no los reúne automáticamente. Cuando las copias vivan en hosts diferentes necesitaremos otro tipo de almacenamiento compartido, como un sistema de ficheros de red o almacenamiento de objetos.
 
 ---
 
@@ -380,6 +316,8 @@ Esta concentración tendrá una consecuencia importante en la siguiente sesión:
 El principio general es:
 
 > **Una sola puerta pública permite aplicar una política común de entrada.**
+
+Tener varias réplicas de la aplicación no hace que todo el sistema sea altamente disponible: un único proxy, host o servidor de base de datos puede seguir siendo un punto único de fallo.
 
 ---
 
@@ -421,7 +359,7 @@ Lo que basta con **reconocer**:
     - Si no se indica otro algoritmo, Nginx reparte las peticiones entre los miembros del grupo.
     - Los nombres de los servicios son estables, pero las IP internas de los contenedores pueden cambiar; por eso interesa resolver de nuevo esos nombres.
     - La detección de fallos usada aquí es pasiva: Nginx descubre que una réplica falla al intentar utilizarla.
-    - Un timeout corto y el reintento permiten probar otra copia sin bloquear demasiado tiempo la petición.
+    - El timeout de conexión y los reintentos controlan parte del tratamiento de fallos; no garantizan el tiempo total ni el éxito de cualquier petición.
     - Varias réplicas no comparten automáticamente su filesystem.
     - Si cualquier réplica debe poder recuperar un dato, ese dato no puede vivir únicamente dentro de una de ellas.
     - Un volumen común resuelve el problema mientras las réplicas comparten host.
@@ -430,4 +368,11 @@ Lo que basta con **reconocer**:
 
 ---
 
-En la actividad aplicarás este patrón general al proyecto del módulo: varias réplicas de Spring Boot/Tomcat detrás de Nginx, detección pasiva de fallos y almacenamiento compartido entre copias del mismo host. El despliegue en una máquina pública se reserva para la siguiente sesión, donde esa nueva situación será necesaria para trabajar HTTPS y certificados.
+En la actividad aplicarás este patrón general al proyecto del módulo: varias réplicas de una aplicación detrás de Nginx, detección pasiva de fallos y almacenamiento compartido entre copias del mismo host. El despliegue en una máquina pública se reserva para la siguiente sesión, donde trabajaremos HTTPS y certificados en un entorno público.
+
+
+## 📚 Referencias
+
+- [Nginx: proxy HTTP, rutas y reintentos](https://nginx.org/en/docs/http/ngx_http_proxy_module.html).
+- [Nginx: grupos upstream, DNS y fallos pasivos](https://nginx.org/en/docs/http/ngx_http_upstream_module.html).
+- [Docker: redes y DNS de contenedores](https://docs.docker.com/engine/network/).

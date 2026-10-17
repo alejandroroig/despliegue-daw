@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:escaparate;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+
+app:
+  storage:
+    type: filesystem
+    path: ${java.io.tmpdir}/escaparate-tests

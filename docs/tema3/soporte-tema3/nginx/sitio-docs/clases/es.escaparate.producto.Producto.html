@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Producto</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header><h1>Producto</h1></header>
+<main>
+<nav><a href="../index.html">Inicio</a> · <a href="../paquetes/index.html">Paquetes</a> · <a href="../informes/">Informes</a></nav>
+
+<div class="card">
+<span class="badge">class</span>
+<h2><code>es.escaparate.producto.Producto</code></h2>
+<p>Producto persistente mostrado en el catálogo de Escaparate. /</p>
+<p class="small">Fuente: <code>src/main/java/es/escaparate/producto/Producto.java</code></p>
+</div>
+
+<h2>Operaciones públicas/protegidas detectadas</h2>
+<table><thead><tr><th>Firma</th><th>Descripción</th></tr></thead><tbody><tr><td><code>protected Producto()</code></td><td>Constructor requerido por JPA. /</td></tr><tr><td><code>public Producto(String nombre, String descripcion, BigDecimal precio, String imagenClave)</code></td><td>Crea un producto nuevo antes de persistirlo. /</td></tr><tr><td><code>public Long getId()</code></td><td>Devuelve el identificador asignado por la base de datos. /</td></tr><tr><td><code>public String getNombre()</code></td><td>Devuelve el nombre que se muestra en el catálogo. /</td></tr><tr><td><code>public String getDescripcion()</code></td><td>Devuelve la descripción del producto. /</td></tr><tr><td><code>public BigDecimal getPrecio()</code></td><td>Devuelve el precio del producto. /</td></tr><tr><td><code>public String getImagenClave()</code></td><td>Devuelve la clave con la que se recupera la imagen del almacenamiento. /</td></tr><tr><td><code>public Instant getFechaAlta()</code></td><td>Devuelve el instante en que el producto se dio de alta. /</td></tr></tbody></table>
+
+
+</main>
+<footer>Escaparate · documentación estática preparada para la práctica de despliegue</footer>
+</body>
+</html>

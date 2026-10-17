@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Configuración de calidad</title><link rel="stylesheet" href="../assets/style.css"></head>
+<body><header><h1>Configuración de calidad del build</h1></header><main>
+<nav><a href="../index.html">Inicio</a></nav>
+<div class="card">
+<h2>Validación prevista por Maven</h2>
+<p>El <code>pom.xml</code> de Escaparate configura:</p>
+<ul>
+<li><strong>JaCoCo 0.8.15</strong> para generar el informe de cobertura durante <code>verify</code>.</li>
+<li>Una puerta mínima del <strong>60 % de líneas cubiertas</strong>.</li>
+<li><strong>maven-javadoc-plugin 3.12.0</strong> para generar documentación durante <code>verify</code>.</li>
+</ul>
+<pre>./mvnw clean verify</pre>
+<p class="small">En un equipo con las dependencias Maven disponibles, ese comando genera los informes reales de ejecución y cobertura. Este ZIP se entrega ya preparado para que la sesión de Nginx no dependa de repetir el build.</p>
+</div>
+</main></body></html>

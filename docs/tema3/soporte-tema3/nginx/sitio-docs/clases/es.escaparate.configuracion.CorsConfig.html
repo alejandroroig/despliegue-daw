@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CorsConfig</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header><h1>CorsConfig</h1></header>
+<main>
+<nav><a href="../index.html">Inicio</a> · <a href="../paquetes/index.html">Paquetes</a> · <a href="../informes/">Informes</a></nav>
+
+<div class="card">
+<span class="badge">class</span>
+<h2><code>es.escaparate.configuracion.CorsConfig</code></h2>
+<p>Configura CORS para permitir que un frontend servido desde otro origen consuma la API REST de Escaparate. Los orígenes se reciben como una lista separada por comas mediante `APP_CORS_ALLOWED_ORIGINS`. No se habilitan credenciales porque la aplicación no utiliza sesiones ni autenticación de usuario. /</p>
+<p class="small">Fuente: <code>src/main/java/es/escaparate/configuracion/CorsConfig.java</code></p>
+</div>
+
+<h2>Operaciones públicas/protegidas detectadas</h2>
+<table><thead><tr><th>Firma</th><th>Descripción</th></tr></thead><tbody><tr><td><code>public CorsConfig(@Value(&quot;$</code></td><td>Crea la configuración CORS a partir de la propiedad de aplicación. /</td></tr><tr><td><code>public void addCorsMappings(CorsRegistry registry)</code></td><td>Aplica la política CORS únicamente a la API de Escaparate. /</td></tr></tbody></table>
+
+
+</main>
+<footer>Escaparate · documentación estática preparada para la práctica de despliegue</footer>
+</body>
+</html>

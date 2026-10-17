@@ -1,0 +1,19 @@
+ESCAPARATE - RESUMEN DEL PAQUETE DOCENTE
+
+Clases/tipos documentados: 21
+Paquetes documentados: 8
+Clases de prueba: 9
+Métodos @Test detectados: 27
+
+Build de referencia:
+  ./mvnw clean verify
+
+El pom.xml configura:
+  - JaCoCo 0.8.15
+  - cobertura mínima: 60 % de líneas
+  - maven-javadoc-plugin 3.12.0
+
+Nota:
+Este informe describe el contenido del código fuente usado para preparar
+el material docente. No sustituye a los informes reales producidos por
+una ejecución local de Maven.
