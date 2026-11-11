@@ -250,7 +250,7 @@ STORAGE_TYPE=filesystem
 STORAGE_PATH=/data/uploads
 ```
 
-Estos nombres de variable son ilustrativos: solo funcionan si la aplicación los interpreta. Docker no añade esa lógica.
+Estos nombres de variable son ilustrativos: solo funcionan si la aplicación los interpreta y, de hecho, no coinciden con los utilizados en la actividad. Docker no añade esa lógica.
 
 Si cada réplica escribe en su propio sistema de archivos, utilizar la misma ruta `/data/uploads` **no significa acceder al mismo almacenamiento**.
 
@@ -270,18 +270,18 @@ Mientras las tres copias viven en el mismo host Docker, podemos montar un **volu
 services:
   app-1:
     volumes:
-      - uploads-compartidos:/data/uploads
+      - imagenes-compartidas:/data/uploads
 
   app-2:
     volumes:
-      - uploads-compartidos:/data/uploads
+      - imagenes-compartidas:/data/uploads
 
   app-3:
     volumes:
-      - uploads-compartidos:/data/uploads
+      - imagenes-compartidas:/data/uploads
 
 volumes:
-  uploads-compartidos:
+  imagenes-compartidas:
 ```
 
 Las tres copias ven los mismos ficheros. También necesitan permisos adecuados y una aplicación que gestione los accesos concurrentes: compartir un volumen no resuelve por sí solo las escrituras simultáneas ni crea una copia de seguridad.

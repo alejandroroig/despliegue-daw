@@ -127,7 +127,7 @@ El fichero de usuarios contiene líneas como:
 usuario:hash-de-la-contraseña
 ```
 
-El fichero se genera con una herramienta como `htpasswd`, usando un formato de hash compatible. Aunque la contraseña no esté guardada en claro, sigue siendo **material sensible**: debe tener permisos limitados y quedar fuera del repositorio y de la imagen pública.
+El fichero se genera con una herramienta como `htpasswd`, usando un formato de hash compatible. También puede generarse un hash compatible mediante otras herramientas, como OpenSSL. Aunque la contraseña no esté guardada en claro, sigue siendo **material sensible**: debe tener permisos limitados y quedar fuera del repositorio y de la imagen pública.
 
 Aceptar las credenciales permite continuar la petición; no garantiza un `200 OK`, porque el contenido o la aplicación todavía pueden devolver otro resultado. Basic puede proteger una zona sencilla, pero no sustituye las reglas de autorización propias de una aplicación.
 
@@ -224,7 +224,7 @@ Para un certificado de validación de dominio, la CA comprueba que quien lo soli
 
 En el modo **webroot**, el cliente ACME escribe un fichero en un directorio que Nginx sirve. La CA pide la URL `http://<nombre>/.well-known/acme-challenge/<token>` y comprueba su contenido. La respuesta incluye información derivada del token y de la cuenta ACME; no es una clave privada.
 
-La carpeta local puede elegirse: `/var/www/html` en la ilustración es un ejemplo. Aquí usaremos `/var/www/acme`. Lo esencial es que el cliente ACME escriba donde Nginx lee, mediante una carpeta o un volumen compartido correctamente configurado.
+La carpeta local puede elegirse: `/var/www/html` en la ilustración es un ejemplo. Aquí usaremos `/var/www/certbot`. Lo esencial es que el cliente ACME escriba donde Nginx lee, mediante una carpeta o un volumen compartido correctamente configurado.
 
 ### 6.1. Qué debe funcionar antes de solicitar el certificado
 
@@ -316,7 +316,7 @@ server {
     server_name web.ejemplo.test;
 
     location ^~ /.well-known/acme-challenge/ {
-        root /var/www/acme;
+        root /var/www/certbot;
         auth_basic off;
         try_files $uri =404;
     }
@@ -327,7 +327,7 @@ server {
 }
 ```
 
-Para una petición a `/.well-known/acme-challenge/abc`, Nginx buscaría `/var/www/acme/.well-known/acme-challenge/abc`. El cliente ACME debe escribir el fichero en esa misma ubicación visible para Nginx.
+Para una petición a `/.well-known/acme-challenge/abc`, Nginx buscaría `/var/www/certbot/.well-known/acme-challenge/abc`. El cliente ACME debe escribir el fichero en esa misma ubicación visible para Nginx.
 
 La redirección conserva el nombre y la ruta solicitados. El ejemplo usa `301` para navegación; si un flujo necesita conservar estrictamente el método y el cuerpo de una petición, debe valorarse `308`.
 
